@@ -181,4 +181,25 @@ function zj() {
 }
 
 eval "$(zoxide init zsh)"
-source /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+
+# --- Modern Tool Aliases ---
+alias ls="eza --icons --group-directories-first"
+alias ll="eza -l --icons --git --group-directories-first"
+alias cat="batcat"
+
+# --- Init Tools ---
+# source <(fzf --zsh)
+
+# --- Yazi Wrapper ---
+# This makes it so when you quit yazi, your shell stays in the directory you were in.
+function y() {
+	local tmp="$(mktemp -t "yazi-cwd.XXXXXX")"
+	yazi "$@" --cwd-file="$tmp"
+	if cwd="$(cat -- "$tmp")" && [ -n "$cwd" ] && [ "$cwd" != "$PWD" ]; then
+		cd -- "$cwd"
+	fi
+	rm -f -- "$tmp"
+}
+
+source /home/chong/Documents/Repos/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+export PATH="$PATH:/snap/bin"
