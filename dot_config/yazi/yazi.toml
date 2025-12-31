@@ -1,0 +1,9 @@
+[opener]
+edit = [
+    { run = 'micro "$@"', block = true, for = "unix" }
+]
+
+[preview]
+image_filter = "triangle"
+image_quality = 75
+# Yazi will automatically use Chafa for Sixel if available
