@@ -18,13 +18,6 @@ export ZSH="$HOME/.oh-my-zsh"
 # See https://github.com/ohmyzsh/ohmyzsh/wiki/Themes
 ZSH_THEME="powerlevel10k/powerlevel10k"
 
-
-# Set list of themes to pick from when loading at random
-# Setting this variable when ZSH_THEME=random will cause zsh to load
-# a theme from this variable instead of looking in $ZSH/themes/
-# If set to an empty array, this variable will have no effect.
-# ZSH_THEME_RANDOM_CANDIDATES=( "robbyrussell" "agnoster" )
-
 # Uncomment the following line to use case-sensitive completion.
 # CASE_SENSITIVE="true"
 
@@ -71,15 +64,11 @@ ZSH_THEME="powerlevel10k/powerlevel10k"
 # see 'man strftime' for details.
 # HIST_STAMPS="mm/dd/yyyy"
 
-# Would you like to use another custom folder than $ZSH/custom?
-# ZSH_CUSTOM=/path/to/new-custom-folder
-
 # Which plugins would you like to load?
 # Standard plugins can be found in $ZSH/plugins/
 # Custom plugins may be added to $ZSH_CUSTOM/plugins/
-# Example format: plugins=(rails git textmate ruby lighthouse)
 # Add wisely, as too many plugins slow down shell startup.
-plugins=(git zsh-autosuggestions zsh-claude-code-shell)
+plugins=(git zsh-autosuggestions zsh-claude-code-shell zsh-history-substring-search)
 
 source $ZSH/oh-my-zsh.sh
 
@@ -147,11 +136,6 @@ ask() {
     sgpt -s "$*"
 }
 
-alias bat="batcat"
-alias sz="source ~/.zshrc"
-alias nano="micro"
-
-
 # Interactive search through file contents
 fzr() {
   # 1. Search for text in files using Ripgrep
@@ -169,8 +153,8 @@ fzr() {
 # preview both files and folders with fzf
 alias fz='fzf --preview "[[ -d {} ]] && eza --tree --color=always {} | head -200 || batcat --color=always --style=numbers --line-range=:500 {}"'
 export FZF_DEFAULT_COMMAND='fdfind --type f --strip-cwd-prefix --hidden --follow --exclude .git'
-alias sze="micro ~/.zshrc"
-alias fd=fdfind
+alias zse="micro ~/.zshrc"
+alias zss="source ~/.zshrc"
 
 export EDITOR='micro'
 export VISUAL='micro'
@@ -185,7 +169,12 @@ eval "$(zoxide init zsh)"
 # --- Modern Tool Aliases ---
 alias ls="eza --icons --group-directories-first"
 alias ll="eza -l --icons --git --group-directories-first"
+alias fd=fdfind
 alias cat="batcat"
+alias du="dust"
+alias c="claude"
+alias bat="batcat"
+alias nano="micro"
 
 # --- Init Tools ---
 # source <(fzf --zsh)
@@ -203,3 +192,7 @@ function y() {
 
 source /home/chong/Documents/Repos/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 export PATH="$PATH:/snap/bin"
+
+bindkey '^[[H' beginning-of-line
+bindkey '^[[F' end-of-line
+
