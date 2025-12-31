@@ -1,0 +1,16 @@
+{
+    "Alt-/": "lua:comment.comment",
+    "CtrlUnderscore": "lua:comment.comment",
+    "Ctrl-/": "lua:comment.comment",
+
+    "Ctrl-d": "SpawnMultiCursor",
+    "CtrlLeft": "WordLeft",
+    "CtrlRight": "WordRight",
+    "CtrlShiftEnd": "SelectToEnd",
+    "CtrlShiftHome": "SelectToStart",
+    "CtrlShiftLeft": "SelectWordLeft",
+    "CtrlShiftRight": "SelectWordRight",
+    "CtrlBackspace": "DeleteWordLeft",
+    "CtrlDelete": "DeleteWordRight",
+    "\u001b[112;6u": "CommandMode"
+}
