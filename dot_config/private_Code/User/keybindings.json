@@ -1,0 +1,186 @@
+[
+  {
+    "key": "alt+m u",
+    "command": "workbench.action.toggleStatusbarVisibility"
+  },
+  {
+    "key": "alt+m .",
+    "command": "workbench.action.toggleMenuBar"
+  },
+  {
+    "key": "alt+m j",
+    "command": "workbench.action.togglePanel"
+  },
+  {
+    "key": "ctrl+j",
+    "command": "-workbench.action.togglePanel"
+  },
+  {
+    "key": "alt+m b",
+    "command": "workbench.action.toggleSidebarVisibility"
+  },
+  {
+    "key": "ctrl+b",
+    "command": "-workbench.action.toggleSidebarVisibility"
+  },
+  {
+    "key": "alt+m p",
+    "command": "breadcrumbs.toggle"
+  },
+  {
+    "key": "shift+enter",
+    "command": "jupyter.runcurrentcelladvance",
+    "when": "editorTextFocus && jupyter.featureenabled && jupyter.hascodecells && !editorHasSelection"
+  },
+  {
+    "key": "shift+enter",
+    "command": "-editor.action.insertLineAfter",
+    "when": "editorTextFocus && !editorReadonly"
+  },
+  {
+    "key": "ctrl+w",
+    "command": "workbench.action.closeActiveEditor"
+  },
+  {
+    "key": "ctrl+f4",
+    "command": "-workbench.action.closeActiveEditor"
+  },
+  {
+    "key": "alt+m m",
+    "command": "editor.action.toggleMinimap"
+  },
+  {
+    "key": "alt+m t",
+    "command": "workbench.action.terminal.toggleTerminal",
+    "when": "terminal.active"
+  },
+  {
+    "key": "alt+\\",
+    "command": "editor.toggleFold",
+    "when": "editorTextFocus && foldingEnabled"
+  },
+  {
+    "key": "ctrl+k ctrl+l",
+    "command": "-editor.toggleFold",
+    "when": "editorTextFocus && foldingEnabled"
+  },
+  {
+    "key": "ctrl+e",
+    "command": "expand_region",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "ctrl+w",
+    "command": "-expand_region",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "ctrl+shift+k",
+    "command": "editor.action.deleteLines",
+    "when": "textInputFocus && !editorReadonly"
+  },
+  {
+    "key": "ctrl+d",
+    "command": "editor.action.addSelectionToNextFindMatch"
+  },
+  {
+    "key": "ctrl+w",
+    "command": "-editor.action.addSelectionToNextFindMatch"
+  },
+  {
+    "key": "ctrl+enter",
+    "command": "jupyter.execSelectionInteractive",
+    "when": "editorTextFocus && jupyter.featureenabled && jupyter.ownsSelection && !findInputFocussed && !replaceInputFocussed && editorLangId == 'python'"
+  },
+  {
+    "key": "shift+enter",
+    "command": "-jupyter.execSelectionInteractive",
+    "when": "editorTextFocus && jupyter.featureenabled && jupyter.ownsSelection && !findInputFocussed && !replaceInputFocussed && editorLangId == 'python'"
+  },
+  {
+    "key": "ctrl+shift+up",
+    "command": "editor.action.moveLinesUpAction",
+    "when": "editorTextFocus && !editorReadonly"
+  },
+  {
+    "key": "ctrl+shift+down",
+    "command": "editor.action.moveLinesDownAction",
+    "when": "editorTextFocus && !editorReadonly"
+  },
+  {
+    "key": "ctrl+shift+enter",
+    "command": "jupyter.debugcurrentcell.palette"
+  },
+  {
+    "key": "alt+m c",
+    "command": "workbench.debug.action.toggleRepl"
+  },
+  {
+    "key": "ctrl+shift+y",
+    "command": "-workbench.debug.action.toggleRepl"
+  },
+  {
+    "key": "ctrl+`",
+    "command": "workbench.action.debug.disconnect",
+    "when": "debugState == 'running'"
+  },
+  {
+    "key": "ctrl+shift+l",
+    "command": "editor.action.insertCursorAtEndOfEachLineSelected",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "ctrl+enter",
+    "command": "jupyter.execSelectionInteractive"
+  },
+  {
+    "key": "ctrl+left",
+    "command": "cursorWordPartLeft",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "ctrl+right",
+    "command": "cursorWordPartRight",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "shift+ctrl+left",
+    "command": "cursorWordPartLeftSelect",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "shift+ctrl+right",
+    "command": "cursorWordPartRightSelect",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "alt+m e",
+    "command": "workbench.view.explorer",
+    "when": "viewContainer.workbench.view.explorer.enabled"
+  },
+  {
+    "key": "ctrl+alt+l",
+    "command": "-workbench.view.explorer",
+    "when": "viewContainer.workbench.view.explorer.enabled"
+  },
+  {
+    "key": "ctrl+r",
+    "command": "workbench.action.showAllSymbols"
+  },
+  {
+    "key": "ctrl+t",
+    "command": "-workbench.action.showAllSymbols"
+  },
+  {
+    "key": "alt+m g",
+    "command": "workbench.scm.focus"
+},
+{
+    "key": "shift+enter",
+    "command": "workbench.action.terminal.sendSequence",
+    "args": {
+        "text": "\u001b\r"
+    },
+    "when": "terminalFocus"
+}
+]

@@ -1,0 +1,257 @@
+{
+    "terminal.external.osxExec": "iTerm.app",
+    "python.languageServer": "Pylance",
+    "python.analysis.autoImportCompletions": false,
+    "settingsSync.keybindingsPerPlatform": false,
+    
+    // === line numbers and the breakpoint margin section (change to give more space, on a small screen)
+    "editor.lineNumbers": "off", //"on" or "off"
+    "editor.glyphMargin": true, //true or false
+    "editor.fontSize": 14, //13-15
+    "editor.lineHeight": 20, //17-21
+    "editor.showFoldingControls": "always", //always or never
+    // === END make more space by disabling margins
+    
+    "editor.smoothScrolling": true,
+    "zoomer.zoomIncrement": 0.01,
+    // "editor.folding": false,
+    // "cursor.general.disableHttp2": true,
+    "terminal.explorerKind": "external",
+    "terminal.integrated.fontFamily": "Hack Nerd Font",
+    "window.commandCenter": false,
+    "workbench.layoutControl.enabled": false,
+    // below: change to "native" and then decline to restart, to hide the title bar.
+    // change to "custom" to show it again.
+    "window.titleBarStyle": "custom", 
+    "chat.commandCenter.enabled": false,
+    // == END Title bar controls
+    
+    // "http.proxy": "",
+    // "http.proxy": "http://cba.proxy.prismaaccess.com:8080",
+    // "http.proxySupport": "on",
+    // "http.proxyStrictSSL": false,
+    // "http.proxyAuthorization": null,
+    "workbench.colorCustomizations": {
+        "tree.indentGuidesStroke": "#ffee00",
+        "tree.inactiveIndentGuidesStroke": "#5d5700",
+        "[Vira*]": {
+            "statusBar.debuggingBackground": "#80CBC433",
+            "statusBar.debuggingForeground": "#80CBC4",
+            "toolbar.activeBackground": "#80CBC426",
+            "button.background": "#80CBC4",
+            "button.hoverBackground": "#80CBC4cc",
+            "extensionButton.separator": "#80CBC433",
+            "extensionButton.background": "#80CBC414",
+            "extensionButton.foreground": "#80CBC4",
+            "extensionButton.hoverBackground": "#80CBC433",
+            "extensionButton.prominentForeground": "#80CBC4",
+            "extensionButton.prominentBackground": "#80CBC414",
+            "extensionButton.prominentHoverBackground": "#80CBC433",
+            "activityBarBadge.background": "#80CBC4",
+            "activityBar.activeBorder": "#80CBC4",
+            "activityBarTop.activeBorder": "#80CBC4",
+            "list.inactiveSelectionIconForeground": "#80CBC4",
+            "list.activeSelectionForeground": "#80CBC4",
+            "list.inactiveSelectionForeground": "#80CBC4",
+            "list.highlightForeground": "#80CBC4",
+            "sash.hoverBorder": "#80CBC480",
+            "list.activeSelectionIconForeground": "#80CBC4",
+            "scrollbarSlider.activeBackground": "#80CBC480",
+            "editorSuggestWidget.highlightForeground": "#80CBC4",
+            "textLink.foreground": "#80CBC4",
+            "progressBar.background": "#80CBC4",
+            "pickerGroup.foreground": "#80CBC4",
+            "tab.activeBorder": "#80CBC4",
+            "tab.activeBorderTop": "#80CBC400",
+            "tab.unfocusedActiveBorder": "#80CBC4",
+            "tab.unfocusedActiveBorderTop": "#80CBC400",
+            "tab.activeModifiedBorder": "#80CBC400",
+            "notificationLink.foreground": "#80CBC4",
+            "editorWidget.resizeBorder": "#80CBC4",
+            "editorWidget.border": "#80CBC4",
+            "settings.modifiedItemIndicator": "#80CBC4",
+            "panelTitle.activeBorder": "#80CBC4",
+            "breadcrumb.activeSelectionForeground": "#80CBC4",
+            "menu.selectionForeground": "#80CBC4",
+            "menubar.selectionForeground": "#80CBC4",
+            "editor.findMatchBorder": "#80CBC4",
+            "selection.background": "#80CBC440",
+            "statusBarItem.remoteBackground": "#80CBC414",
+            "statusBarItem.remoteHoverBackground": "#80CBC4",
+            "statusBarItem.remoteForeground": "#80CBC4",
+            "notebook.inactiveFocusedCellBorder": "#80CBC480",
+            "commandCenter.activeBorder": "#80CBC480",
+            "chat.slashCommandForeground": "#80CBC4",
+            "chat.avatarForeground": "#80CBC4",
+            "activityBarBadge.foreground": "#000000",
+            "button.foreground": "#000000",
+            "statusBarItem.remoteHoverForeground": "#000000"
+        }
+    },
+    "workbench.tree.indent": 10,
+    "workbench.tree.renderIndentGuides": "always",
+    // "workbench.statusBar.visible": false,
+    "editor.fontFamily": "'Ubuntu Mono','Droid Sans Mono', 'monospace', monospace, 'Droid Sans Fallback'",
+    "terminal.integrated.shell.windows": "/bin/zsh",
+    "terminal.integrated.inheritEnv": false,
+    "editor.suggestSelection": "first",
+    "update.mode": "none",
+    "vsintellicode.modify.editor.suggestSelection": "automaticallyOverrodeDefaultValue",
+  
+    // END hiding title bar
+    "BracketHighlighter.fontWeight": "",
+    "BracketHighlighter.highlightScopeFromText": true,
+    "BracketHighlighter.fontStyle": "",
+    "BracketHighlighter.letterSpacing": "",
+    "BracketHighlighter.outline": "1px solid blue",
+    "BracketHighlighter.textDecoration": "",
+    "editor.cursorBlinking": "phase",
+    "editor.wordWrap": "off",
+    "workbench.list.smoothScrolling": false,
+    "ProjectTree.distFileName": "ProjectTree.md",
+    "editor.tokenColorCustomizations": {
+        "textMateRules": [
+            {
+                "scope": "meta.function-call.generic.python",
+                "settings": {
+                    "foreground": "#7ec850"
+                }
+            }
+        ]
+    },
+    "files.autoSave": "off",
+    "workbench.editor.tabCloseButton": "off",
+    "editor.tabSize": 4,
+    "editor.trimAutoWhitespace": false,
+    "editor.multiCursorModifier": "ctrlCmd",
+    "editor.snippetSuggestions": "top",
+    "python.linting.enabled": false,
+    "jupyter.askForKernelRestart": false,
+    "jupyter.alwaysTrustNotebooks": true,
+    "workbench.editorAssociations": {
+        "*.ipynb": "jupyter-notebook"
+    },
+    "[json]": {
+        "editor.defaultFormatter": "vscode.json-language-features"
+    },
+    "security.workspace.trust.untrustedFiles": "open",
+    "notebook.cellToolbarLocation": {
+        "default": "right",
+        "jupyter-notebook": "left"
+    },
+    "editor.find.addExtraSpaceOnTop": false,
+    "files.exclude": {
+        ".roo": true,
+        "*.code-workspace": true,
+        "**/__pycache__": true,
+        "**/.classpath": true,
+        "**/.factorypath": true,
+        "**/.ipynb_checkpoints": true,
+        "**/.project": true,
+        "**/.ruff_cache": true,
+        "**/.settings": true,
+        "**/.vscode": true,
+        "**/*.pdf": true,
+        "**/bun.lock": true,
+        "**/bun.lockb": true,
+        "**/node_modules": true,
+        "**/package-lock.json": true,
+        "**/tiktoken_cache": true
+    },
+    "notebook.output.textLineLimit": 100,
+    "window.menuBarVisibility": "toggle",
+    "python.defaultInterpreterPath": "/home/chong/miniconda3/envs/agents",
+    "[python]": {
+        "editor.formatOnType": true
+    },
+    "editor.inlineSuggest.enabled": true,
+    "jupyter.interactiveWindow.textEditor.executeSelection": true,
+    "jupyter.interactiveWindow.codeLens.enable": false,
+    "workbench.editor.tabActionCloseVisibility": false,
+    "interactiveWindow.executeWithShiftEnter": true,
+    "explorer.confirmDragAndDrop": false,
+    "svelte.enable-ts-plugin": true,
+    "sync.gist": "d7775299fbe214330fe9e6d01c3f2f28",
+    "[jsonc]": {
+        "editor.defaultFormatter": "vscode.json-language-features"
+    },
+    "roo-cline.allowedCommands": [
+        "git log",
+        "git diff",
+        "git show",
+        "npm test",
+        "npm install",
+        "tsc"
+    ],
+    "continue.enableTabAutocomplete": false,
+    "snyk.yesWelcomeNotification": false,
+    "git.autofetch": true,
+    "git.confirmSync": false,
+    "terminal.integrated.defaultProfile.osx": "zsh",
+    "database-client.autoSync": true,
+    "terminal.integrated.shellIntegration.enabled": false,
+    "github.copilot.enable": {
+        "*": true,
+        "plaintext": false,
+        "markdown": false,
+        "scminput": false,
+        "python": true
+    },
+    "github.copilot.nextEditSuggestions.enabled": true,
+    "roo-cline.deniedCommands": [],
+    "editor.minimap.enabled": false,
+    "workbench.secondarySideBar.defaultVisibility": "hidden",
+    "git.suggestSmartCommit": false,
+    "workbench.editor.empty.hint": "hidden",
+    "github.copilot.selectedCompletionModel": "",
+    "aws.cloudformation.telemetry.enabled": false,
+    "extensions.ignoreRecommendations": true,
+    "workbench.colorTheme": "Monokai +Orange",
+    "workbench.iconTheme": "icons",
+    "breadcrumbs.enabled": false,
+    "snyk.folderConfigs": [
+        {
+            "folderPath": "/Users/wangc26/Documents/Repos/Supervisor_fs_sql_weaver_v2",
+            "baseBranch": "main",
+            "localBranches": [
+                "RCP",
+                "chong",
+                "dhp_deploy",
+                "env_in_image_name",
+                "eval_improvement",
+                "graviton",
+                "main",
+                "new_flow",
+                "no_tool_prompt",
+                "parallel_select",
+                "rbs-weaver",
+                "rbs_weaver_wrong_folder",
+                "refactor",
+                "refactor-rbs",
+                "refactor_vector_tools",
+                "sagemaker",
+                "separate_backend",
+                "separate_terminology",
+                "similarity_search",
+                "single_graph",
+                "supervisor_agent",
+                "tool_refactor",
+                "valid_values_30"
+            ],
+            "preferredOrg": "",
+            "autoDeterminedOrg": "",
+            "orgMigratedFromGlobalConfig": false,
+            "orgSetByUser": true,
+            "featureFlags": {
+                "internal_iaw_enabled": false,
+                "snykCodeConsistentIgnores": false,
+                "snykCodeInlineIgnore": false
+            },
+            "sastSettings": null
+        }
+    ],
+    "claudeCode.preferredLocation": "sidebar",
+    "workbench.activityBar.location": "hidden",
+    "claudeCode.selectedModel": "default",
+    
+}
