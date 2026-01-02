@@ -172,7 +172,7 @@ alias ll="eza -l --icons --git --group-directories-first"
 alias fd=fdfind
 alias cat="batcat"
 alias du="dust"
-alias c="claude"
+alias cc="claude"
 alias bat="batcat"
 alias nano="micro"
 
