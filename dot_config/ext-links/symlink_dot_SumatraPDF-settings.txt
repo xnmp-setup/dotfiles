@@ -1,1 +1,0 @@
-SumatraPDF-settings.txt
