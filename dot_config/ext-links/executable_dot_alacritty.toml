@@ -1,0 +1,43 @@
+[window]
+# Position: X = (3440-1720)/2, Y = top of the upper monitor
+position = { x = 860, y = 0 }
+
+# Size: 50% of 3440 is 1720. 
+# 1720px width / 500px height (adjust height as you like)
+# On Windows Alacritty, dimensions are still mostly character-based.
+# Try these values for a 3440px width display:
+dimensions = { columns = 152, lines = 48 }
+
+opacity= 0.85
+
+# Set to "None" to remove the title bar and borders for that clean "rice" look
+decorations = "None"
+
+# Adds a little "breathing room" around the visualizer
+padding = { x = 10, y = 10 }
+startup_mode = "Windowed"
+
+[font]
+# Use a Nerd Font if you have one (e.g., "JetBrainsMono Nerd Font")
+size = 12.0
+builtin_box_drawing = true
+
+[font.normal]
+family = "MesloLGS NF"
+style = "Regular"
+
+[font.bold]
+family = "MesloLGS NF"
+style = "Bold"
+
+[font.italic]
+family = "MesloLGS NF"
+style = "Italic"
+
+[font.bold_italic]
+family = "MesloLGS NF"
+style = "Bold Italic"
+
+[terminal.shell]
+program = "powershell"
+args = ["-Command", "wsl.exe", "~"]
