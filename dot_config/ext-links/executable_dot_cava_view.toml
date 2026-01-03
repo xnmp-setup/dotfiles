@@ -1,0 +1,14 @@
+[window]
+title = "CavaVisualizer"
+opacity = 0.5
+position = { x = 450, y = -1440 }
+level = "AlwaysOnTop"
+decorations = "None"
+padding = { x = 10, y = 10 }
+startup_mode = "Windowed"
+blur = true
+dimensions = { columns = 150, lines = 20 }
+
+[terminal.shell]
+program = "powershell"
+args = ["-Command", "C:\\Users\\chonw\\AppData\\Local\\Programs\\cava\\cava.exe"]
