@@ -165,11 +165,15 @@ fzr() {
 alias fz='fzf --preview "[[ -d {} ]] && eza --tree --color=always {} | head -200 || batcat --color=always --style=numbers --line-range=:500 {}"'
 export FZF_DEFAULT_COMMAND='fdfind --type f --strip-cwd-prefix --hidden --follow --exclude .git'
 zse() {
-    # if command -v chezmoi &> /dev/null; then
-    #     chezmoi edit ~/.zshrc
-    # else
+    local checksum_before=$(md5sum ~/.zshrc | cut -d' ' -f1)
     ${EDITOR:-nano} ~/.zshrc
-    # fi
+    local checksum_after=$(md5sum ~/.zshrc | cut -d' ' -f1)
+
+    if [[ "$checksum_before" == "$checksum_after" ]]; then
+        echo "ℹ️  No changes made to .zshrc."
+        return
+    fi
+
     if zsh -n ~/.zshrc; then
         # if command -v chezmoi &> /dev/null; then
         #     chezmoi apply ~/.zshrc
