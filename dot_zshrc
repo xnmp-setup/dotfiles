@@ -154,9 +154,15 @@ fzr() {
 alias fz='fzf --preview "[[ -d {} ]] && eza --tree --color=always {} | head -200 || batcat --color=always --style=numbers --line-range=:500 {}"'
 export FZF_DEFAULT_COMMAND='fdfind --type f --strip-cwd-prefix --hidden --follow --exclude .git'
 zse() {
-    chezmoi edit ~/.zshrc
+    if command -v chezmoi &> /dev/null; then
+        chezmoi edit ~/.zshrc
+    else
+        ${EDITOR:-nano} ~/.zshrc
+    fi
     if zsh -n ~/.zshrc; then
-        chezmoi apply ~/.zshrc
+        if command -v chezmoi &> /dev/null; then
+            chezmoi apply ~/.zshrc
+        fi
         source ~/.zshrc
         echo "🚀 Updated and sourced .zshrc."
     else
