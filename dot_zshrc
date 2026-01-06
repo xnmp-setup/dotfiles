@@ -143,7 +143,7 @@ else
 fi
 alias du="dust"
 alias cc="claude"
-alias micro="micro +9999999"
+# alias micro="micro +9999999"
 alias nano="micro +9999999"
 
 
@@ -166,7 +166,7 @@ alias fz='fzf --preview "[[ -d {} ]] && eza --tree --color=always {} | head -200
 export FZF_DEFAULT_COMMAND='fdfind --type f --strip-cwd-prefix --hidden --follow --exclude .git'
 zse() {
     local checksum_before=$(md5sum ~/.zshrc | cut -d' ' -f1)
-    ${EDITOR:-nano} ~/.zshrc
+    micro +9999999 ~/.zshrc
     local checksum_after=$(md5sum ~/.zshrc | cut -d' ' -f1)
 
     if [[ "$checksum_before" == "$checksum_after" ]]; then
@@ -283,8 +283,6 @@ chz() {
 
 alias ve="source .venv/bin/activate"
 
-. "$HOME/.local/bin/env"
-
-. "$HOME/.atuin/bin/env"
+[[ -f "$HOME/.local/bin/env" ]] && . "$HOME/.local/bin/env"
 
 eval "$(atuin init zsh --disable-up-arrow)"
