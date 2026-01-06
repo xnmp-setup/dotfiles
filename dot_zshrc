@@ -132,9 +132,20 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
 alias ai="NODE_NO_WARNINGS=1 ai"
 
-ask() {
-    sgpt -s "$*"
-}
+# --- Modern Tool Aliases ---
+alias ls="eza --icons --group-directories-first"
+alias ll="eza -l --icons --git --group-directories-first"
+command -v fdfind &> /dev/null && alias fd=fdfind
+if command -v batcat &> /dev/null; then
+    alias cat="batcat"
+else
+    alias cat="bat"
+fi
+alias du="dust"
+alias cc="claude"
+alias micro="micro +9999999"
+alias nano="micro +9999999"
+
 
 # Interactive search through file contents
 fzr() {
@@ -154,15 +165,15 @@ fzr() {
 alias fz='fzf --preview "[[ -d {} ]] && eza --tree --color=always {} | head -200 || batcat --color=always --style=numbers --line-range=:500 {}"'
 export FZF_DEFAULT_COMMAND='fdfind --type f --strip-cwd-prefix --hidden --follow --exclude .git'
 zse() {
-    if command -v chezmoi &> /dev/null; then
-        chezmoi edit ~/.zshrc
-    else
-        ${EDITOR:-nano} ~/.zshrc
-    fi
+    # if command -v chezmoi &> /dev/null; then
+    #     chezmoi edit ~/.zshrc
+    # else
+    ${EDITOR:-nano} ~/.zshrc
+    # fi
     if zsh -n ~/.zshrc; then
-        if command -v chezmoi &> /dev/null; then
-            chezmoi apply ~/.zshrc
-        fi
+        # if command -v chezmoi &> /dev/null; then
+        #     chezmoi apply ~/.zshrc
+        # fi
         source ~/.zshrc
         echo "🚀 Updated and sourced .zshrc."
     else
@@ -178,20 +189,6 @@ function zj() {
 
 eval "$(zoxide init zsh)"
 
-# --- Modern Tool Aliases ---
-alias ls="eza --icons --group-directories-first"
-alias ll="eza -l --icons --git --group-directories-first"
-command -v fdfind &> /dev/null && alias fd=fdfind
-if command -v batcat &> /dev/null; then
-    alias cat="batcat"
-else
-    alias cat="bat"
-fi
-alias du="dust"
-alias cc="claude"
-alias micro="micro +9999999"
-alias nano="micro +9999999"
-
 # --- Editor Settings ---
 export EDITOR='micro'
 export VISUAL='micro'
@@ -199,7 +196,7 @@ export VISUAL='micro'
 # --- Init Tools ---
 # source <(fzf --zsh)
 
-source /home/chong/Repos/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+source ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 export PATH="$PATH:/snap/bin"
 
 bindkey '^[[H' beginning-of-line
