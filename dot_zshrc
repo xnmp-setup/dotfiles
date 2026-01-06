@@ -153,11 +153,17 @@ fzr() {
 # preview both files and folders with fzf
 alias fz='fzf --preview "[[ -d {} ]] && eza --tree --color=always {} | head -200 || batcat --color=always --style=numbers --line-range=:500 {}"'
 export FZF_DEFAULT_COMMAND='fdfind --type f --strip-cwd-prefix --hidden --follow --exclude .git'
-alias zse="micro ~/.zshrc"
-alias zss="source ~/.zshrc"
-
-export EDITOR='micro'
-export VISUAL='micro'
+zse() {
+    chezmoi edit ~/.zshrc
+    if zsh -n ~/.zshrc; then
+        chezmoi apply ~/.zshrc
+        source ~/.zshrc
+        echo "🚀 Updated and sourced .zshrc."
+    else
+        echo "❌ Syntax error detected in .zshrc! Not sourcing."
+    fi
+}
+alias zss="source ~/.zshrc && echo '✅ sourced .zshrc.'"
 
 function zj() {
     # Lists sessions and lets you pick one to attach, or starts a new one
@@ -169,30 +175,109 @@ eval "$(zoxide init zsh)"
 # --- Modern Tool Aliases ---
 alias ls="eza --icons --group-directories-first"
 alias ll="eza -l --icons --git --group-directories-first"
-alias fd=fdfind
-alias cat="batcat"
+command -v fdfind &> /dev/null && alias fd=fdfind
+if command -v batcat &> /dev/null; then
+    alias cat="batcat"
+else
+    alias cat="bat"
+fi
 alias du="dust"
 alias cc="claude"
-alias bat="batcat"
-alias nano="micro"
+alias micro="micro +9999999"
+alias nano="micro +9999999"
+
+# --- Editor Settings ---
+export EDITOR='micro'
+export VISUAL='micro'
 
 # --- Init Tools ---
 # source <(fzf --zsh)
 
-# --- Yazi Wrapper ---
-# This makes it so when you quit yazi, your shell stays in the directory you were in.
-function y() {
-	local tmp="$(mktemp -t "yazi-cwd.XXXXXX")"
-	yazi "$@" --cwd-file="$tmp"
-	if cwd="$(cat -- "$tmp")" && [ -n "$cwd" ] && [ "$cwd" != "$PWD" ]; then
-		cd -- "$cwd"
-	fi
-	rm -f -- "$tmp"
-}
-
-source /home/chong/Documents/Repos/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+source /home/chong/Repos/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 export PATH="$PATH:/snap/bin"
 
 bindkey '^[[H' beginning-of-line
 bindkey '^[[F' end-of-line
 
+# --- Yazi Wrapper ---
+# This makes it so when you quit yazi, your shell stays in the directory you were in.
+function ycd() {
+	local tmp="$(mktemp -t "yazi-cwd.XXXXXX")"
+	yazi "$@" --cwd-file="$tmp"
+	if cwd="$(command cat -- "$tmp")" && [ -n "$cwd" ] && [ "$cwd" != "$PWD" ]; then
+		builtin cd -- "$cwd"
+	fi
+	rm -f -- "$tmp"
+}
+
+chz() {
+	if [[ "$1" == "link" && -n "$2" ]]; then
+		local target_file=$(realpath "$2")
+        local filename=$(basename "$target_file")
+
+        # Determine local name
+        local clean_name
+        [[ "$filename" == .* ]] && clean_name="$filename" || clean_name=".$filename"
+
+        local link_dir="$HOME/.config/ext-links"
+        mkdir -p "$link_dir"
+        local link_path="$link_dir/$clean_name"
+
+        # Create the symlink locally
+        echo "🔗 Linking $target_file to $link_path..."
+        ln -sf "$target_file" "$link_path"
+
+        # IMPORTANT: Add with --follow to track CONTENT, not the link
+        command chezmoi add --follow "$link_path"
+        echo "✅ Content tracked! Use 'chz addp' to push."
+	elif [[ "$1" == "addp" ]]; then
+        shift # Remove 'addp'
+
+        if [[ $# -gt 0 ]]; then
+            # Arguments exist: track the file first
+            echo "📦 Tracking new files..."
+            command chezmoi add --follow "$@"
+            local msg="feat: update $filename ($*)"
+        else
+            # No arguments: just sync existing changes
+            echo "🚀 No files specified. Syncing existing changes..."
+            local msg="chore: bulk sync dotfiles $(date +'%Y-%m-%d %H:%M')"
+        fi
+
+        # Git sequence
+        command chezmoi git add .
+        command chezmoi git commit -- -m "$msg"
+        command chezmoi git push
+
+        echo "✅ Changes committed and pushed!"
+    elif [[ "$1" == "add" && -n "$2" ]]; then
+        shift
+    	echo "NB: to add, commit and push, use \"cz addp\" with a p."
+    	chezmoi add "$@"
+    	chezmoi git add .
+    elif [[ "$1" == "git" ]]; then
+        # This allows you to run 'chz git remote set-url ...' or any git command
+        shift
+        command chezmoi git -- "$@"
+    else
+        # Pass all other commands (status, apply, edit, etc.) through to chezmoi
+        case "$1" in
+            add|commit|push)
+                # Route these specifically to 'chezmoi git'
+                chezmoi git "$@"
+                ;;
+            *)
+                # All other commands go to standard 'chezmoi'
+                command chezmoi "$@"
+                ;;
+        esac
+    fi
+}
+
+alias ve="source .venv/bin/activate"
+
+. "$HOME/.local/bin/env"
+
+. "$HOME/.atuin/bin/env"
+
+eval "$(atuin init zsh --disable-up-arrow)"
