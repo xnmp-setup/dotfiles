@@ -8,9 +8,16 @@
     "CtrlRight": "WordRight",
     "CtrlShiftEnd": "SelectToEnd",
     "CtrlShiftHome": "SelectToStart",
+    "AltShiftEnd": "SelectToEnd",
+    "AltShiftHome": "SelectToStart",
     "CtrlShiftLeft": "SelectWordLeft",
     "CtrlShiftRight": "SelectWordRight",
     "CtrlBackspace": "DeleteWordLeft",
     "CtrlDelete": "DeleteWordRight",
-    "\u001b[112;6u": "CommandMode"
+    "AltHome": "command:goto 1",
+    "AltEnd": "command:goto -1",
+    "Ctrl-g": "command-edit:goto ",
+    "Ctrl-p": "CommandMode",
+    "Ctrl-u": "DeleteLine",
+    "Ctrl-w": "DeleteWordLeft",
 }
