@@ -7,3 +7,8 @@ edit = [
 image_filter = "triangle"
 image_quality = 75
 # Yazi will automatically use Chafa for Sixel if available
+
+
+[[open.prepend_rules]]
+url = "*/"
+use = []

@@ -1,0 +1,5 @@
+[mgr]
+
+prepend_keymap = [
+  { on = "<Enter>", run = "plugin smart-enter", desc = "Enter child directory" },
+]
