@@ -1,0 +1,9 @@
+[colors]
+fg  = "#7aa2f7"
+bg  = "#1f1f1f"
+dim = "#5f7fd6"
+
+[filetype]
+rules = [
+  { url = "*/", fg = "#7aa2f7" }, # directories
+]
