@@ -1,0 +1,28 @@
+# Quick terminal: top + centered, 60% tall, 75% wide
+quick-terminal-position = top
+quick-terminal-size = 65%,1000px
+
+background-opacity = 0.9
+macos-hidden = always
+macos-titlebar-style = tabs
+macos-window-buttons = hidden
+
+keybind = global:F10=toggle_quick_terminal
+
+keybind = ctrl+shift+t=new_tab
+keybind = ctrl+shift+w=close_tab
+keybind = ctrl+page_up=previous_tab
+keybind = ctrl+page_down=next_tab
+keybind = ctrl+v=paste_from_clipboard
+keybind = shift+insert=paste_from_clipboard
+keybind = performable:ctrl+c=copy_to_clipboard
+keybind = ctrl+shift+p=toggle_command_palette
+
+# ctrl+delete
+keybind = alt+delete=text:\x1bd
+keybind = shift+,=open_config
+keybind = ctrl+shift+k=text:\x0b
+
+font-size = 15
+
+
