@@ -1,10 +1,21 @@
 ## Personal Preferences
-- Tone: Be concise and technical.
-- Style: Prefer functional programming patterns where possible.
+- Tone: Concise, technical, no filler.
+- Style: Prefer functional programming patterns (immutability, pure functions, composition) where practical.
 
-## Architecture and Design
-- Build clean abstractions, with special consideration for code readability, reuse, composition, and maintanence. 
-- Adhere to SOLID design principles. Create domain logic before implementation logic. 
+## Architecture & Design
+- Design domain logic first; separate it clearly from infrastructure and implementation details.
+- Build small, composable abstractions with a bias toward readability and long-term maintainability.
+- Adhere to SOLID principles; avoid premature generalization.
+- Optimize for clarity over cleverness.
 
-## Universal workflow
-- if you're not sure about what's causing a bug, suggest that we add logging to debug before changing anything
+## Coding Standards
+- Write code that is easy to reason about, test, and refactor.
+- Favor explicit types, clear naming, and minimal side effects.
+- Avoid unnecessary abstractions, frameworks, or indirection.
+
+## Workflow & Debugging
+- Do not change behavior without understanding the cause.
+- If the root cause of a bug is unclear, add targeted logging or instrumentation before modifying logic.
+- Make incremental, verifiable changes; prefer small diffs.
+- When unsure, ask clarifying questions rather than guessing.
+
