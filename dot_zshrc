@@ -271,12 +271,15 @@ chz() {
     	command cd ~/.local/share/chezmoi
     elif [[ "$1" == "commit-main" ]]; then
     	local CHEZMOI_BRANCH="$(chezmoi git --  branch --show-current)"
-    	chezmoi re-add # must re-add before checking out, otherwise will include all the changes made by the current branch
-    	chezmoi git -- checkout main
-    	chezmoi git -- add -u
-    	chezmoi git -- commit -m"updated existing files"
-    	chezmoi git -- checkout $CHEZMOI_BRANCH
-    	chezmoi git -- rebase main
+    	chezmoi re-add || return 1 # must re-add before checking out, otherwise will include all the changes made by the current branch
+    	chezmoi git -- checkout main || {
+    		echo "Checkout to main failed (likely uncommitted changes)."
+    	    return 1
+    	}
+    	chezmoi git -- add -u || return 1
+    	chezmoi git -- commit -m"updated existing files" || true
+    	chezmoi git -- checkout $CHEZMOI_BRANCH || return 1
+    	chezmoi git -- rebase main || return 1
     else
         # Pass all other commands (status, apply, edit, etc.) through to chezmoi
         case "$1" in
