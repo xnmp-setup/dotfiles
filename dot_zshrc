@@ -138,16 +138,19 @@ alias ai="NODE_NO_WARNINGS=1 ai"
 # --- Modern Tool Aliases ---
 alias ls="eza --icons --group-directories-first"
 alias ll="eza -l --icons --git --group-directories-first"
-command -v fdfind &> /dev/null && alias fd=fdfind
+command -v fdfind >/dev/null && alias fd=fdfind || alias fdfind=fd
 if command -v batcat &> /dev/null; then
     alias cat="batcat"
+    export PAGER="batcat"
 else
     alias cat="bat"
+    export PAGER="bat"
 fi
 alias du="dust"
 alias cc="claude"
 # alias micro="micro +9999999"
-alias nano="micro +9999999"
+# alias nano="micro +9999999"
+alias zell="zellij"
 
 
 # Interactive search through file contents
@@ -166,7 +169,12 @@ fzr() {
 
 # preview both files and folders with fzf
 alias fz='fzf --preview "[[ -d {} ]] && eza --tree --color=always {} | head -200 || batcat --color=always --style=numbers --line-range=:500 {}"'
-export FZF_DEFAULT_COMMAND='fdfind --strip-cwd-prefix --hidden --follow --exclude .git'
+if command -v fd >/dev/null; then
+  	export FZF_DEFAULT_COMMAND='fd --strip-cwd-prefix --hidden --follow --exclude .git'
+else
+  	export FZF_DEFAULT_COMMAND='fdfind --strip-cwd-prefix --hidden --follow --exclude .git'
+fi
+
 
 zse() {
     local checksum_before=$(md5sum ~/.zshrc | cut -d' ' -f1)
