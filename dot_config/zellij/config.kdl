@@ -1,0 +1,40 @@
+keybinds {
+  // Give Ctrl-q back to apps like micro
+  unbind "Ctrl q"
+
+  normal {
+    // Alt+p enters Pane mode
+    bind "Alt p" { SwitchToMode "Pane"; }
+  }
+
+    shared_except "locked" {
+        unbind "Alt f"
+    }
+
+  pane {
+    // In Pane mode, pl;' moves between panes
+    // (then return to Normal so you can keep typing)
+    bind "w" { CloseFocus; }
+
+    bind "p" { MoveFocus "Up"; }
+    bind "l" { MoveFocus "Left"; }
+    bind ";" { MoveFocus "Down"; }
+    bind "'" { MoveFocus "Right"; }
+
+    bind "Super p" { NewPane "Up"; }
+    bind "Super l" { NewPane "Left"; }
+    bind "Super ;" { NewPane "Down"; }
+    bind "Super '" { NewPane "Right"; }
+
+    // Optional: zoom toggle while you're here
+    bind "o" { ToggleFocusFullscreen; }
+
+    // Exit Pane mode without doing anything
+    bind "Esc" { SwitchToMode "Normal"; }
+  }
+
+  // Make Ctrl-b q quit (tmux-style chord)
+  tmux {
+    bind "q" { Quit; }
+  }
+}
