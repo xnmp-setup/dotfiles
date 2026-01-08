@@ -150,7 +150,8 @@ alias du="dust"
 alias cc="claude"
 # alias micro="micro +9999999"
 # alias nano="micro +9999999"
-alias zell="zellij"
+# alias zell="zellij"
+[ -f ~/.zellig_rc.sh ] && source ~/.zellig_rc.sh
 
 
 # Interactive search through file contents
