@@ -185,6 +185,7 @@ zse() {
     fi
 }
 alias zss="source ~/.zshrc && echo '✅ sourced .zshrc.'"
+alias zsr="exec $SHELL -l"
 
 function zj() {
     # Lists sessions and lets you pick one to attach, or starts a new one
@@ -268,6 +269,14 @@ chz() {
         command chezmoi git -- "$@"
     elif [[ "$1" == "cd" ]]; then
     	command cd ~/.local/share/chezmoi
+    elif [[ "$1" == "commit-main" ]]; then
+    	local CHEZMOI_BRANCH="$(chezmoi git --  branch --show-current)"
+    	chezmoi re-add # must re-add before checking out, otherwise will include all the changes made by the current branch
+    	chezmoi git -- checkout main
+    	chezmoi git -- add -u
+    	chezmoi git -- commit -m"updated existing files"
+    	chezmoi git -- checkout $CHEZMOI_BRANCH
+    	chezmoi git -- rebase main
     else
         # Pass all other commands (status, apply, edit, etc.) through to chezmoi
         case "$1" in
