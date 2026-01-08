@@ -1,0 +1,16 @@
+layout {
+    pane split_direction="horizontal" {
+        pane {
+            command "zsh"
+            args "-ic" "claude"
+        }
+        pane split_direction="vertical" {
+            pane {
+                command "yazi"
+            }
+            pane {
+                command "zsh"
+            }
+        }
+    }
+}
