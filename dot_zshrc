@@ -126,7 +126,6 @@ fi
 unset __conda_setup
 # <<< conda initialize <<<
 
-
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
@@ -163,7 +162,8 @@ fzr() {
 
 # preview both files and folders with fzf
 alias fz='fzf --preview "[[ -d {} ]] && eza --tree --color=always {} | head -200 || batcat --color=always --style=numbers --line-range=:500 {}"'
-export FZF_DEFAULT_COMMAND='fdfind --type f --strip-cwd-prefix --hidden --follow --exclude .git'
+export FZF_DEFAULT_COMMAND='fdfind --strip-cwd-prefix --hidden --follow --exclude .git'
+
 zse() {
     local checksum_before=$(md5sum ~/.zshrc | cut -d' ' -f1)
     micro +9999999 ~/.zshrc
@@ -266,12 +266,14 @@ chz() {
         # This allows you to run 'chz git remote set-url ...' or any git command
         shift
         command chezmoi git -- "$@"
+    elif [[ "$1" == "cd" ]]; then
+    	command cd ~/.local/share/chezmoi
     else
         # Pass all other commands (status, apply, edit, etc.) through to chezmoi
         case "$1" in
-            add|commit|push)
+            commit|push)
                 # Route these specifically to 'chezmoi git'
-                chezmoi git "$@"
+                command chezmoi git -- "$@"
                 ;;
             *)
                 # All other commands go to standard 'chezmoi'

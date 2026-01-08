@@ -2,6 +2,8 @@
     "Alt-/": "lua:comment.comment",
     "CtrlUnderscore": "lua:comment.comment",
     "Ctrl-/": "lua:comment.comment",
+    "Ctrl-k": "DeleteLine",
+    
 
     "Ctrl-d": "SpawnMultiCursor",
     "CtrlLeft": "WordLeft",
