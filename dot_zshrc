@@ -126,11 +126,15 @@ fi
 unset __conda_setup
 # <<< conda initialize <<<
 
+# >>> CBA zshrc >>>
+[ -f ~/.cba_zshrc.sh ] && source ~/.cba_zshrc.sh
+# <<< CBA zshrc <<<
+
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
 alias ai="NODE_NO_WARNINGS=1 ai"
-
+    
 # --- Modern Tool Aliases ---
 alias ls="eza --icons --group-directories-first"
 alias ll="eza -l --icons --git --group-directories-first"
