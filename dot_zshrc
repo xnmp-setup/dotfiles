@@ -139,6 +139,11 @@ alias ai="NODE_NO_WARNINGS=1 ai"
 alias ls="eza --icons --group-directories-first"
 alias ll="eza -l --icons --git --group-directories-first"
 command -v fdfind >/dev/null && alias fd=fdfind || alias fdfind=fd
+if command -v fdfind >/dev/null; then
+  export FZF_DEFAULT_COMMAND='fdfind --strip-cwd-prefix --hidden --follow --exclude .git'
+elif command -v fd >/dev/null; then
+  export FZF_DEFAULT_COMMAND='fd --strip-cwd-prefix --hidden --follow --exclude .git'
+fi
 if command -v batcat &> /dev/null; then
     alias cat="batcat"
     export PAGER="batcat"
@@ -170,11 +175,6 @@ fzr() {
 
 # preview both files and folders with fzf
 alias fz='fzf --preview "[[ -d {} ]] && eza --tree --color=always {} | head -200 || batcat --color=always --style=numbers --line-range=:500 {}"'
-if command -v fd >/dev/null; then
-  	export FZF_DEFAULT_COMMAND='fd --strip-cwd-prefix --hidden --follow --exclude .git'
-else
-  	export FZF_DEFAULT_COMMAND='fdfind --strip-cwd-prefix --hidden --follow --exclude .git'
-fi
 
 
 zse() {
@@ -312,4 +312,5 @@ alias ve="source .venv/bin/activate"
 
 [[ -f "$HOME/.local/bin/env" ]] && . "$HOME/.local/bin/env"
 
+[[ -x "$HOME/.atuin/bin/atuin" ]] && export PATH="$HOME/.atuin/bin:$PATH"
 eval "$(atuin init zsh --disable-up-arrow)"
