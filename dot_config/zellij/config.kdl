@@ -4,7 +4,7 @@ keybinds {
 
   normal {
     // Alt+p enters Pane mode
-    bind "Alt p" { SwitchToMode "Pane"; }
+    // bind "Alt p" { SwitchToMode "Pane"; }
   }
 
     shared_except "locked" {
@@ -21,10 +21,10 @@ keybinds {
     bind ";" { MoveFocus "Down"; }
     bind "'" { MoveFocus "Right"; }
 
-    bind "Super p" { NewPane "Up"; }
-    bind "Super l" { NewPane "Left"; }
-    bind "Super ;" { NewPane "Down"; }
-    bind "Super '" { NewPane "Right"; }
+    bind "Alt p" { NewPane "Up"; }
+    bind "Alt l" { NewPane "Left"; }
+    bind "Alt ;" { NewPane "Down"; }
+    bind "Alt '" { NewPane "Right"; }
 
     // Optional: zoom toggle while you're here
     bind "o" { ToggleFocusFullscreen; }
