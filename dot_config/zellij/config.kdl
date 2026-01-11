@@ -1,10 +1,12 @@
 keybinds {
   // Give Ctrl-q back to apps like micro
   unbind "Ctrl q"
+  unbind "Ctrl s"
 
   normal {
     // Alt+p enters Pane mode
     // bind "Alt p" { SwitchToMode "Pane"; }
+    unbind "Ctrl s"
   }
 
     shared_except "locked" {
