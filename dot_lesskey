@@ -1,0 +1,3 @@
+#command
+\e[1;3F  goto-end
+\e[1;3H  goto-line
