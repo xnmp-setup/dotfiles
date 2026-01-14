@@ -111,6 +111,7 @@ source $ZSH/oh-my-zsh.sh
 export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
 export PATH=$PATH:~/miniconda3/bin
+export PATH=$PATH:/opt/homebrew/bin
 # >>> conda initialize >>>
 # !! Contents within this block are managed by 'conda init' !!
 __conda_setup="$('/home/chong/miniconda3/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
@@ -139,18 +140,7 @@ alias ai="NODE_NO_WARNINGS=1 ai"
 alias ls="eza --icons --group-directories-first"
 alias ll="eza -l --icons --git --group-directories-first"
 command -v fdfind >/dev/null && alias fd=fdfind || alias fdfind=fd
-if command -v fdfind >/dev/null; then
-  export FZF_DEFAULT_COMMAND='fdfind --strip-cwd-prefix --hidden --follow --exclude .git'
-elif command -v fd >/dev/null; then
-  export FZF_DEFAULT_COMMAND='fd --strip-cwd-prefix --hidden --follow --exclude .git'
-fi
-if command -v batcat &> /dev/null; then
-    alias cat="batcat"
-    export PAGER="batcat"
-else
-    alias cat="bat"
-    export PAGER="bat"
-fi
+
 alias du="dust"
 alias cc="claude"
 # alias micro="micro +9999999"
@@ -173,8 +163,47 @@ fzr() {
         --bind "enter:become(code -g {1}:{2})"
 }
 
-# preview both files and folders with fzf
-alias fz='fzf --preview "[[ -d {} ]] && eza --tree --color=always {} | head -200 || batcat --color=always --style=numbers --line-range=:500 {}"'
+if command -v fd >/dev/null; then
+  	export FZF_DEFAULT_COMMAND='fd --strip-cwd-prefix --hidden --follow --exclude .git'
+else
+  	export FZF_DEFAULT_COMMAND='fdfind --strip-cwd-prefix --hidden --follow --exclude .git'
+fi
+
+fz() {
+  if command -v batcat &>/dev/null; then
+    fzf --preview '[[ -d {} ]] && eza --tree --color=always {} | head -200 || batcat --color=always --style=numbers --line-range=:500 {}'
+  else
+    fzf --preview '[[ -d {} ]] && eza --tree --color=always {} | head -200 || bat --color=always --style=numbers --line-range=:500 {}'
+  fi
+}
+
+if command -v batcat &> /dev/null; then
+	# preview both files and folders with fzf
+    alias cat="batcat --plain --tabs 0 --number --style=grid"
+    export PAGER="batcat"
+else
+    alias cat="bat --plain --tabs 0 --number --style=grid"
+    export PAGER="bat"
+fi
+
+# ctrl+p widget
+fzf-file-widget() {
+  local sel quoted
+
+  sel=$(eval "$FZF_DEFAULT_COMMAND" | fz --multi) || { zle reset-prompt; return }
+
+  quoted=()
+  for f in ${(f)sel}; do
+    quoted+=("${(q)f}")
+  done
+
+  LBUFFER+="${(j: :)quoted} "
+  zle reset-prompt
+}
+zle -N fzf-file-widget
+bindkey '^P' fzf-file-widget
+
+
 
 
 zse() {
@@ -312,5 +341,4 @@ alias ve="source .venv/bin/activate"
 
 [[ -f "$HOME/.local/bin/env" ]] && . "$HOME/.local/bin/env"
 
-[[ -x "$HOME/.atuin/bin/atuin" ]] && export PATH="$HOME/.atuin/bin:$PATH"
 eval "$(atuin init zsh --disable-up-arrow)"
