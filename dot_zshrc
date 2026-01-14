@@ -149,19 +149,26 @@ alias cc="claude"
 [ -f ~/.zellig_rc.sh ] && source ~/.zellig_rc.sh
 
 
+if command -v batcat &>/dev/null; then
+  BAT=batcat
+else
+  BAT=bat
+fi
+
+export PAGER="$BAT"
+alias cat="$BAT --plain --tabs 0 --number --style=grid"
+
+
 # Interactive search through file contents
 fzr() {
-  # 1. Search for text in files using Ripgrep
-  # 2. Interactively narrow down the list using fzf
-  # 3. Open the file in your editor (e.g., VS Code or Vim)
-  rg --column --line-number --no-heading --color=always --smart-case -- "${*:-}" | \
+  rg --column --line-number --no-heading --color=always --smart-case -- "${*:-}" |
     fzf --ansi \
-        --color "hl:-1:underline,hl+:-1:underline:reverse" \
         --delimiter : \
-        --preview 'batcat --color=always {1} --highlight-line {2}' \
-        --preview-window 'up,60%,border-bottom,+{2}+3/3,~3' \
-        --bind "enter:become(code -g {1}:{2})"
+        --preview 'sh -c "$BAT --color=always {1} --highlight-line {2}"' \
+        --preview-window 'up,60%,border-bottom,+{2}+3/3,~3'
 }
+
+
 
 if command -v fd >/dev/null; then
   	export FZF_DEFAULT_COMMAND='fd --strip-cwd-prefix --hidden --follow --exclude .git'
@@ -176,15 +183,6 @@ fz() {
     fzf --preview '[[ -d {} ]] && eza --tree --color=always {} | head -200 || bat --color=always --style=numbers --line-range=:500 {}'
   fi
 }
-
-if command -v batcat &> /dev/null; then
-	# preview both files and folders with fzf
-    alias cat="batcat --plain --tabs 0 --number --style=grid"
-    export PAGER="batcat"
-else
-    alias cat="bat --plain --tabs 0 --number --style=grid"
-    export PAGER="bat"
-fi
 
 # ctrl+p widget
 fzf-file-widget() {
@@ -203,6 +201,21 @@ fzf-file-widget() {
 zle -N fzf-file-widget
 bindkey '^P' fzf-file-widget
 
+fzr-widget() {
+  local line file lineno out
+
+  line=$(fzr) || { zle reset-prompt; return }
+
+  file=${line%%:*}
+  lineno=${line#*:}; lineno=${lineno%%:*}
+  out="${file}:${lineno}"
+
+  LBUFFER+="${(q)out} "
+  zle reset-prompt
+}
+
+zle -N fzr-widget
+bindkey '^[[102;6u' fzr-widget   # your Ctrl+Shift+F
 
 
 
