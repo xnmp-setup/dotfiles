@@ -1,0 +1,43 @@
+environment {
+    terminal "Ghostty"
+    textEditor "Sublime Text"
+}
+
+behavior {
+    theme "Kon"
+    layout {
+        showActionBar false
+    }
+    table {
+        showIcons true
+        iconSize 32
+    }
+    
+}
+
+keyBindings {
+    "Ctrl+PageDown" "core.tab.next"
+    "Ctrl+PageUp" "core.tab.previous"
+    "Ctrl+Opt+Left" "core.back"
+    "Ctrl+Opt+Right" "core.forward"
+    "Cmd+Shift+C" "core.path.folder"
+    "Cmd+Shift+B" "core.favorites"
+    "Cmd+Shift+D" "core.favorites.add" 
+    "Delete" "core.trash"
+}
+
+fonts {
+    actionBar [ "Default" 14 ]
+    breadcrumbs [ "Default" 14 ]
+    virtualTabs [ "Default Bold" 14 ]
+    files [ "Default" 14 ]
+    statusBar [ "Default Light" 10 ]
+    tableHeader [ "Default" 11 ]
+    tabs [ "Default" 14 ]
+    preferences [ "Monaco" 14 ]
+}
+
+etty {
+    shell "/Users/wangc26/.local/bin/marta-zsh"
+    fonts { normal [ "MesloLGS NF" 14 ] }
+}
