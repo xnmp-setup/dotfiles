@@ -171,9 +171,11 @@ fzr() {
 
 
 if command -v fd >/dev/null; then
-  	export FZF_DEFAULT_COMMAND='fd --strip-cwd-prefix --hidden --follow --exclude .git'
+  	#export FZF_DEFAULT_COMMAND='fd --strip-cwd-prefix --hidden --follow --exclude .git'
+  	export FZF_DEFAULT_COMMAND="fd --type f --hidden --follow --exclude .git"
 else
-  	export FZF_DEFAULT_COMMAND='fdfind --strip-cwd-prefix --hidden --follow --exclude .git'
+  	#export FZF_DEFAULT_COMMAND='fdfind --strip-cwd-prefix --hidden --follow --exclude .git'
+  	export FZF_DEFAULT_COMMAND="fdfind --type f --hidden --follow --exclude .git"
 fi
 
 fz() {
@@ -208,13 +210,19 @@ fzr-widget() {
 
   file=${line%%:*}
   lineno=${line#*:}; lineno=${lineno%%:*}
-  out="${file}:${lineno}"
 
-  LBUFFER+="${(q)out} "
+  # doesn't work
+  #out="${file}:${lineno}"
+  #LBUFFER+="${(q)out} "
+
+  cmd=(micro +$lineno "$file")
+  LBUFFER+="micro +${lineno} ${(q)file} "
+  
   zle reset-prompt
 }
 
 zle -N fzr-widget
+KEYTIMEOUT=10
 bindkey '^[[102;6u' fzr-widget   # your Ctrl+Shift+F
 
 
@@ -264,7 +272,7 @@ bindkey '^[[F' end-of-line
 
 # --- Yazi Wrapper ---
 # This makes it so when you quit yazi, your shell stays in the directory you were in.
-function ycd() {
+function yz() {
 	local tmp="$(mktemp -t "yazi-cwd.XXXXXX")"
 	yazi "$@" --cwd-file="$tmp"
 	if cwd="$(command cat -- "$tmp")" && [ -n "$cwd" ] && [ "$cwd" != "$PWD" ]; then
