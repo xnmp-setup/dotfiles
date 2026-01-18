@@ -1,12 +1,19 @@
 layout {
-    pane split_direction="horizontal" {
-        pane {
-            command "zsh"
-            args "-ic" "claude"
-        }
-        pane split_direction="vertical" {
+    pane split_direction="vertical" {
+        pane split_direction="horizontal" {
             pane {
-                command "yazi"
+                command "zsh"
+                args "-ic" "claude"
+            }
+            pane {
+                cwd "../${PWD##*/}-tree2"
+                command "zsh"
+                args "-ic" "claude"
+            }
+        }
+        pane split_direction="horizontal" {
+            pane {
+                command "zsh"
             }
             pane {
                 command "zsh"
