@@ -361,5 +361,23 @@ chz() {
 alias ve="source .venv/bin/activate"
 
 [[ -f "$HOME/.local/bin/env" ]] && . "$HOME/.local/bin/env"
-
+[[ -x "$HOME/.atuin/bin/atuin" ]] && export PATH="$HOME/.atuin/bin:$PATH"
 eval "$(atuin init zsh --disable-up-arrow)"
+
+# Disable sharing history between sessions
+unsetopt share_history
+unsetopt inc_append_history
+unsetopt inc_append_history_time
+
+# Ensure history is only appended when the session exits
+setopt append_history
+
+# Kill process on a specific port
+killon() {
+  if [ -z "$1" ]; then
+    echo "Please provide a port number (e.g., killon 1420)"
+  else
+    echo "Killing process on port $1..."
+    lsof -ti :$1 | xargs kill -9
+  fi
+}
