@@ -225,6 +225,58 @@ zle -N fzr-widget
 KEYTIMEOUT=10
 bindkey '^[[102;6u' fzr-widget   # your Ctrl+Shift+F
 
+# move widget
+function _fzf_copy_move() {
+	local cmd="cp -v"
+
+	if [[ "$LBUFFER" == *m ]]; then
+	  cmd="mv -v"
+	  LBUFFER="${LBUFFER%m}"
+	fi
+
+	  # (optional) flush any pending input before launching full-screen UI
+	zle -I
+
+	local sources
+	sources=$(
+	  eval "$FZF_DEFAULT_COMMAND" 2>/dev/null | \
+	    fzf --multi --height=40% --border --prompt="Select file(s) to ${cmd%% *}: " \
+	        --header="TAB to multi-select, ENTER to confirm" \
+	        --preview='[[ -d {} ]] && eza --tree --level=2 --color=always {} || bat --color=always --style=numbers --line-range=:100 {} 2>/dev/null || cat {}'
+	)
+
+	[[ -z "$sources" ]] && { zle reset-prompt; return; }
+    
+    # Select destination using zoxide + fzf for frecency-ranked dirs
+    local dest
+    dest=$(
+        {
+            # Start with zoxide top dirs
+            zoxide query -l 2>/dev/null | head -30
+            # Add current dir subdirs
+            fd -t d --max-depth 3 . 2>/dev/null
+            # Add home subdirs
+            fd -t d --max-depth 2 . ~ 2>/dev/null
+        } | awk '!seen[$0]++' | fzf --height=40% --border --prompt="Destination: " \
+            --header="Select destination folder" \
+            --preview='eza --tree --level=2 --color=always {}'
+    )
+    
+    [[ -z "$dest" ]] && { zle reset-prompt; return; }
+    
+    # Build and execute command
+    local file_array=("${(@f)sources}")
+    echo
+    for src in "${file_array[@]}"; do
+        echo "${cmd} ${(q)src} → ${(q)dest}"
+        eval "$cmd ${(q)src} ${(q)dest}"
+    done
+    
+    zle reset-prompt
+}
+
+zle -N _fzf_copy_move
+bindkey '^Y' _fzf_copy_move
 
 
 zse() {
@@ -359,6 +411,7 @@ chz() {
 }
 
 alias ve="source .venv/bin/activate"
+alias copy=pbcopy
 
 [[ -f "$HOME/.local/bin/env" ]] && . "$HOME/.local/bin/env"
 [[ -x "$HOME/.atuin/bin/atuin" ]] && export PATH="$HOME/.atuin/bin:$PATH"
