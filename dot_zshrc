@@ -434,3 +434,18 @@ killon() {
     lsof -ti :$1 | xargs kill -9
   fi
 }
+
+fzf-cd() {
+  local dir
+  zle -I
+
+  dir=$(zoxide query -l | fzf --height=40% --border --prompt="cd > ") || return
+
+  builtin cd -- "$dir" || return
+
+  BUFFER=""          # don't run anything
+  zle accept-line    # forces a new prompt render
+}
+zle -N fzf-cd
+bindkey '^O' fzf-cd
+
