@@ -1,0 +1,68 @@
+-- Create an event tap for key events
+local keyWatcher = hs.eventtap.new({ hs.eventtap.event.types.keyDown }, function(event)
+    local flags = event:getFlags()
+    local keyCode = event:getKeyCode()
+    
+    -- Skip if we're in VS Code or iTerm2
+    local currentApp = hs.application.frontmostApplication()
+    if currentApp:name() == "Code" or currentApp:name() == "iTerm2" then
+        return false
+    end
+    
+    -- Alt (Option) to Ctrl mappings
+    if flags.alt and not flags.cmd then
+        if keyCode == hs.keycodes.map["c"] then
+            hs.eventtap.keyStroke({"ctrl"}, "c", 0)
+            return true
+        end
+    end
+    
+    -- Manual reload with CMD+ALT+R
+    hs.hotkey.bind({"cmd", "alt"}, "R", function()
+        hs.reload()
+    end)
+    
+    -- Command (CTRL) + All shortcuts
+    if flags.cmd then
+        if keyCode == hs.keycodes.map["left"] then
+            if flags.shift then
+                hs.eventtap.keyStroke({"alt", "shift"}, "left", 0)
+            else
+                hs.eventtap.keyStroke({"alt"}, "left", 0)
+            end
+            return true
+        elseif keyCode == hs.keycodes.map["right"] then
+            if flags.shift then
+                hs.eventtap.keyStroke({"alt", "shift"}, "right", 0)
+            else
+                hs.eventtap.keyStroke({"alt"}, "right", 0)
+            end
+            return true
+        elseif keyCode == hs.keycodes.map["delete"] then
+            hs.eventtap.keyStroke({"alt"}, "delete", 0)
+            return true
+        elseif keyCode == hs.keycodes.map["forwarddelete"] then
+            hs.eventtap.keyStroke({"alt"}, "forwarddelete", 0)
+            return true
+        elseif keyCode == hs.keycodes.map["home"] then
+            if flags.shift then
+                hs.eventtap.keyStroke({"cmd", "shift"}, "up", 0)
+            else
+                hs.eventtap.keyStroke({"cmd"}, "up", 0)
+            end
+            return true
+        elseif keyCode == hs.keycodes.map["end"] then
+            if flags.shift then
+                hs.eventtap.keyStroke({"cmd", "shift"}, "down", 0)
+            else
+                hs.eventtap.keyStroke({"cmd"}, "down", 0)
+            end
+            return true
+        end
+    end
+    
+    return false
+end)
+
+-- Start watching for events
+keyWatcher:start()
