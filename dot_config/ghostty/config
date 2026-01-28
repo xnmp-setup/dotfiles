@@ -30,6 +30,12 @@ keybind = performable:ctrl+c=copy_to_clipboard
 keybind = ctrl+shift+p=toggle_command_palette
 keybind = alt+backspace=text:\x1b\x7f
 
+# Super (Win key) + key  -> send Alt+key (encoded as ESC + key)
+keybind = super+l=esc:l
+keybind = super+p=esc:p
+keybind = super+;=esc:;
+keybind = super+'=esc:'
+
 # ctrl+delete
 keybind = alt+delete=text:\x1bd
 keybind = shift+,=open_config

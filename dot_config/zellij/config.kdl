@@ -4,10 +4,10 @@ keybinds {
   unbind "Ctrl s"
   
   shared {
-    bind "Super+'" { MoveFocus "Right"; }
-    bind "Super+l" { MoveFocus "Left"; }
-    bind "Super+p" { MoveFocus "Up"; }
-    bind "Super+;" { MoveFocus "Down"; }
+    bind "Alt '" { MoveFocus "Right"; }
+    bind "Alt l" { MoveFocus "Left"; }
+    bind "Alt p" { MoveFocus "Up"; }
+    bind "Alt ;" { MoveFocus "Down"; }
   }
 
   normal {
