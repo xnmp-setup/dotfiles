@@ -166,7 +166,17 @@ helpers.moveLeft = withFocusedWindow(function(win)
   local state = helpers.getCurrentState(win)
 
   if state == "left_third" then
-    -- Already at leftmost position, do nothing
+    -- Try to move to the monitor on the left
+    local leftScreen = win:screen():toWest()
+    if leftScreen then
+      local sf = leftScreen:frame()
+      win:setFrame({
+        x = sf.x + (sf.w * (2/3)),
+        y = sf.y,
+        w = sf.w * (1/3),
+        h = sf.h
+      })
+    end
     return
   elseif state == "left_half" then
     -- Move to left_third, check for window in right_half to expand to right_two_thirds
@@ -241,7 +251,17 @@ helpers.moveRight = withFocusedWindow(function(win)
       leftHalfWin:setFrame(helpers.getLeftTwoThirdsFrame(leftHalfWin))
     end
   elseif state == "right_third" then
-    -- Already at rightmost position, do nothing
+    -- Try to move to the monitor on the right
+    local rightScreen = win:screen():toEast()
+    if rightScreen then
+      local sf = rightScreen:frame()
+      win:setFrame({
+        x = sf.x,
+        y = sf.y,
+        w = sf.w * (1/3),
+        h = sf.h
+      })
+    end
     return
   else
     -- Not in a known state, move to right_half as default
