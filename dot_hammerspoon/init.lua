@@ -14,7 +14,7 @@ hs.hotkey.bind({}, "F3", function() windowCycling.cycleOrRun("Code", "Visual Stu
 hs.hotkey.bind({}, "F8", function() windowCycling.cycleOrRun("Marta", "Marta") end)
 
 -- hs.hotkey.bind({}, "F5", function() windowCycling.cycleOrRun("Google Chrome", "Google Chrome") end)
-hs.hotkey.bind({"alt"}, "N", function() windowCycling.cycleOrRun("Sublime Text", "Sublime Text", "hide") end)
+hs.hotkey.bind({"alt"}, "N", function() windowCycling.cycleOrRun("Sublime Text", "Sublime Text", "top") end)
 
 -- Chained hotkey: Alt+M then E for Marta
 -- helpers.bindSequence({"alt"}, {"M", "E"}, 0.5, function()
