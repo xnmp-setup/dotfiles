@@ -2,6 +2,13 @@ keybinds {
   // Give Ctrl-q back to apps like micro
   unbind "Ctrl q"
   unbind "Ctrl s"
+  
+  shared {
+    bind "Super+'" { MoveFocus "Right"; }
+    bind "Super+l" { MoveFocus "Left"; }
+    bind "Super+p" { MoveFocus "Up"; }
+    bind "Super+;" { MoveFocus "Down"; }
+  }
 
   normal {
     // Alt+p enters Pane mode
