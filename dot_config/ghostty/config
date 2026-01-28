@@ -2,16 +2,23 @@
 quick-terminal-position = top
 quick-terminal-size = 65%,1000px
 
-background-opacity = 0.9
+background-opacity = 0.95
 macos-hidden = always
 macos-titlebar-style = tabs
+
 macos-window-buttons = hidden
 split-divider-color = #FFBF00
 font-thicken = true
 font-thicken-strength = 80
 theme = vercel
+mouse-scroll-multiplier = 1
+
+window-padding-x = 10
+# window-padding-y = 10
 
 keybind = global:F10=toggle_quick_terminal
+keybind = ctrl+shift+,=reload_config
+keybind = ctrl+shift+c=write_screen_file:paste
 
 keybind = ctrl+t=new_tab
 keybind = ctrl+w=close_surface
