@@ -193,8 +193,12 @@ helpers.moveLeft = withFocusedWindow(function(win)
       rightThirdWin:setFrame(helpers.getRightHalfFrame(rightThirdWin))
     end
   elseif state == "right_two_thirds" then
-    -- Move to left_two_thirds
+    -- Move to left_two_thirds, check for window in left_third to move to right_third
     win:setFrame(helpers.getLeftTwoThirdsFrame(win))
+    local leftThirdWin = helpers.findWindowInRegion(helpers.getLeftThirdFrame(win), win)
+    if leftThirdWin then
+      leftThirdWin:setFrame(helpers.getRightThirdFrame(leftThirdWin))
+    end
   elseif state == "right_half" then
     -- Move to right_two_thirds, check for window in left_half to reduce to left_third
     win:setFrame(helpers.getRightTwoThirdsFrame(win))
@@ -234,8 +238,12 @@ helpers.moveRight = withFocusedWindow(function(win)
       rightHalfWin:setFrame(helpers.getRightThirdFrame(rightHalfWin))
     end
   elseif state == "left_two_thirds" then
-    -- Move to right_two_thirds
+    -- Move to right_two_thirds, check for window in right_third to move to left_third
     win:setFrame(helpers.getRightTwoThirdsFrame(win))
+    local rightThirdWin = helpers.findWindowInRegion(helpers.getRightThirdFrame(win), win)
+    if rightThirdWin then
+      rightThirdWin:setFrame(helpers.getLeftThirdFrame(rightThirdWin))
+    end
   elseif state == "right_two_thirds" then
     -- Move to right_half, check for window in left_third to expand to left_half
     win:setFrame(helpers.getRightHalfFrame(win))
