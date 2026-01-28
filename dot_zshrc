@@ -410,7 +410,48 @@ chz() {
     fi
 }
 
-alias ve="source .venv/bin/activate"
+
+ve() {
+  local root main_root rel dir venv
+
+  # must be inside a git repo
+  root=$(git rev-parse --show-toplevel 2>/dev/null) || {
+    echo "Not in a git repo"
+    return 1
+  }
+
+  # primary/main worktree path (first entry)
+  main_root=$(git worktree list --porcelain 2>/dev/null | awk '/^worktree / {print $2; exit}')
+  [[ -z "$main_root" ]] && main_root="$root"
+
+  # compute path relative to current worktree root
+  rel="${PWD#$root}"
+  rel="${rel#/}"  # trim leading slash if present
+
+  # start searching from the same subdir inside main worktree
+  dir="$main_root"
+  [[ -n "$rel" ]] && dir="$main_root/$rel"
+
+  # walk upwards until we hit main_root, looking for .venv
+  while :; do
+    venv="$dir/.venv"
+    if [[ -f "$venv/bin/activate" ]]; then
+      source "$venv/bin/activate"
+      return 0
+    fi
+
+    # stop when we've reached the main root
+    [[ "$dir" == "$main_root" ]] && break
+
+    # go up one directory
+    dir="${dir:h}"
+  done
+
+  echo "No .venv found under $main_root (starting from $main_root/${rel})"
+  return 1
+}
+
+
 alias copy=pbcopy
 
 [[ -f "$HOME/.local/bin/env" ]] && . "$HOME/.local/bin/env"
@@ -444,6 +485,7 @@ fzf-cd() {
   builtin cd -- "$dir" || return
 
   BUFFER=""          # don't run anything
+  zle -M "cd → $PWD"
   zle accept-line    # forces a new prompt render
 }
 zle -N fzf-cd
