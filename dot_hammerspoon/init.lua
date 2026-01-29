@@ -23,9 +23,12 @@ hs.hotkey.bind({"alt"}, "N", function() windowCycling.cycleOrRun("Sublime Text",
 
 
 -- ---------- Window movement hotkeys ----------
-hs.hotkey.bind({"cmd","ctrl"}, "Left", helpers.moveLeft)
+hs.hotkey.bind({"cmd","ctrl"}, "Left", helpers.moveWindowLeft)
+hs.hotkey.bind({"cmd", "ctrl"}, "Right", helpers.moveWindowRight)
 
-hs.hotkey.bind({"cmd", "ctrl"}, "Right", helpers.moveRight)
+-- ---------- Window resize hotkeys ----------
+hs.hotkey.bind({"cmd", "ctrl"}, "-", helpers.shrinkWindow)
+hs.hotkey.bind({"cmd", "ctrl"}, "=", helpers.growWindow)
 
 hs.hotkey.bind({"cmd", "ctrl"}, "Up", helpers.toggleTopCenterMaximize)
 

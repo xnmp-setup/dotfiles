@@ -117,6 +117,275 @@ helpers.getRightTwoThirdsFrame = withFocusedWindow(function(win)
   }
 end)
 
+-- Size ratios for resize cycling (ordered from smallest to largest)
+local SIZE_RATIOS = { 1/3, 1/2, 2/3 }
+
+-- Tolerance for frame comparisons
+local TOLERANCE = 5
+
+-- Check if window is flush against left or right edge of screen
+-- Returns "left", "right", or nil if not flush
+helpers.getFlushSide = withFocusedWindow(function(win)
+  local f = win:frame()
+  local sf = win:screen():frame()
+
+  local flushLeft = math.abs(f.x - sf.x) <= TOLERANCE
+  local flushRight = math.abs((f.x + f.w) - (sf.x + sf.w)) <= TOLERANCE
+
+  if flushLeft and not flushRight then
+    return "left"
+  elseif flushRight and not flushLeft then
+    return "right"
+  end
+  return nil
+end)
+
+-- Determine which side of the screen a window is on (by center position)
+helpers.getWindowSide = withFocusedWindow(function(win)
+  local f = win:frame()
+  local sf = win:screen():frame()
+  local winCenter = f.x + (f.w / 2)
+  local screenCenter = sf.x + (sf.w / 2)
+  return winCenter < screenCenter and "left" or "right"
+end)
+
+-- Get the current size ratio of a window (as fraction of screen width)
+helpers.getWindowSizeRatio = withFocusedWindow(function(win)
+  local f = win:frame()
+  local sf = win:screen():frame()
+  return f.w / sf.w
+end)
+
+-- Find the closest matching size ratio
+local function findClosestSizeIndex(ratio)
+  local closest = 1
+  local minDiff = math.abs(ratio - SIZE_RATIOS[1])
+  for i, r in ipairs(SIZE_RATIOS) do
+    local diff = math.abs(ratio - r)
+    if diff < minDiff then
+      minDiff = diff
+      closest = i
+    end
+  end
+  return closest
+end
+
+-- Get frame for a given side and size ratio
+function helpers.getFrameForSideAndSize(win, side, ratio)
+  local sf = win:screen():frame()
+  if ratio >= 1 then
+    return { x = sf.x, y = sf.y, w = sf.w, h = sf.h }
+  end
+  local x = (side == "left") and sf.x or (sf.x + sf.w * (1 - ratio))
+  return { x = x, y = sf.y, w = sf.w * ratio, h = sf.h }
+end
+
+-- Logger for debugging
+local log = hs.logger.new('helpers', 'debug')
+
+-- Find complement window on the opposite side
+function helpers.findComplementWindow(win)
+  if not win then
+    log.d("findComplementWindow: no window passed")
+    return nil
+  end
+
+  local screen = win:screen()
+  local side = helpers.getWindowSide(win)
+  local oppositeSide = (side == "left") and "right" or "left"
+
+  log.df("findComplementWindow: main window '%s' on %s side, looking for window on %s",
+    win:application():name(), side, oppositeSide)
+
+  local windows = hs.window.visibleWindows()
+  log.df("findComplementWindow: found %d visible windows", #windows)
+
+  for _, w in ipairs(windows) do
+    local wApp = w:application()
+    local wAppName = wApp and wApp:name() or "unknown"
+    local wScreen = w:screen()
+
+    if w:id() == win:id() then
+      log.df("  - skipping '%s' (same as main window)", wAppName)
+    elseif not wScreen or wScreen:id() ~= screen:id() then
+      log.df("  - skipping '%s' (different screen)", wAppName)
+    else
+      local wSide = helpers.getWindowSide(w)
+      log.df("  - checking '%s': side=%s", wAppName, wSide)
+      if wSide == oppositeSide then
+        log.df("  -> FOUND complement: '%s'", wAppName)
+        return w
+      end
+    end
+  end
+
+  -- log.d("findComplementWindow: no complement found")
+  return nil
+end
+
+-- Find a fullscreen (or near-fullscreen) window on a given screen, excluding a specific window
+function helpers.findFullscreenWindowOnScreen(targetScreen, excludeWin)
+  local tsf = targetScreen:frame()
+  local windows = hs.window.visibleWindows()
+
+  for _, w in ipairs(windows) do
+    if (not excludeWin or w:id() ~= excludeWin:id()) and w:screen():id() == targetScreen:id() then
+      local f = w:frame()
+      -- Check if window is fullscreen (within tolerance)
+      local isFullscreen = math.abs(f.x - tsf.x) <= TOLERANCE and
+                           math.abs(f.y - tsf.y) <= TOLERANCE and
+                           math.abs(f.w - tsf.w) <= TOLERANCE and
+                           math.abs(f.h - tsf.h) <= TOLERANCE
+      if isFullscreen then
+        log.df("findFullscreenWindowOnScreen: found '%s'", w:application():name())
+        return w
+      end
+    end
+  end
+  return nil
+end
+
+-- Move window to the specified side, flip complement if exists
+-- If not flush, snap to target side first
+-- If already flush on target side, move to adjacent monitor
+function helpers.moveToSide(targetSide)
+  return withFocusedWindow(function(win)
+    local screen = win:screen()
+    local sf = screen:frame()
+    local flushSide = helpers.getFlushSide(win)
+    local ratio = helpers.getWindowSizeRatio(win)
+
+    -- Find complement BEFORE any changes
+    local complement = helpers.findComplementWindow(win)
+    local complementRatio = complement and helpers.getWindowSizeRatio(complement) or nil
+
+    log.df("moveToSide: targetSide=%s, flushSide=%s, ratio=%.2f, complement=%s",
+      targetSide, flushSide or "nil", ratio, complement and "yes" or "nil")
+
+    -- Calculate all frames BEFORE applying any changes
+    local winNewFrame, complementNewFrame
+    local invaded, invadedNewFrame  -- for invading fullscreen windows on target monitor
+
+    if not flushSide then
+      -- Not flush: snap to target side at half width (default)
+      log.d("moveToSide: not flush, snapping to target side")
+      local snapRatio = 0.5
+      local x = (targetSide == "left") and sf.x or (sf.x + sf.w * (1 - snapRatio))
+      winNewFrame = { x = x, y = sf.y, w = sf.w * snapRatio, h = sf.h }
+    elseif flushSide == targetSide then
+      -- Already flush on target side: try to move to adjacent monitor
+      local nextScreen = (targetSide == "left") and screen:toWest() or screen:toEast()
+      if nextScreen then
+        log.d("moveToSide: moving to adjacent monitor")
+        local nsf = nextScreen:frame()
+        local oppositeSide = (targetSide == "left") and "right" or "left"
+        local x = (oppositeSide == "left") and nsf.x or (nsf.x + nsf.w * (1 - ratio))
+        winNewFrame = { x = x, y = nsf.y, w = nsf.w * ratio, h = nsf.h }
+
+        -- Complement on original screen takes full screen since main window left
+        if complement then
+          complementNewFrame = { x = sf.x, y = sf.y, w = sf.w, h = sf.h }
+        end
+
+        -- Check for fullscreen window on target monitor to invade
+        invaded = helpers.findFullscreenWindowOnScreen(nextScreen, win)
+        if invaded then
+          log.df("moveToSide: invading fullscreen window '%s'", invaded:application():name())
+          -- Invaded window shrinks to the opposite side (becomes complement on new screen)
+          local invadedRatio = 1 - ratio
+          local ix = (targetSide == "left") and nsf.x or (nsf.x + nsf.w * (1 - invadedRatio))
+          invadedNewFrame = { x = ix, y = nsf.y, w = nsf.w * invadedRatio, h = nsf.h }
+        end
+      end
+    else
+      -- Flush on opposite side: swap with complement
+      log.d("moveToSide: swapping sides with complement")
+      local oppositeSide = (targetSide == "left") and "right" or "left"
+
+      -- Main window frame
+      local x = (targetSide == "left") and sf.x or (sf.x + sf.w * (1 - ratio))
+      winNewFrame = { x = x, y = sf.y, w = sf.w * ratio, h = sf.h }
+
+      -- Complement window frame (swap to opposite side)
+      if complement and complementRatio then
+        local cx = (oppositeSide == "left") and sf.x or (sf.x + sf.w * (1 - complementRatio))
+        complementNewFrame = { x = cx, y = sf.y, w = sf.w * complementRatio, h = sf.h }
+      end
+    end
+
+    -- Apply all changes (using references from BEFORE move)
+    if winNewFrame then
+      win:setFrame(winNewFrame)
+    end
+    if complementNewFrame and complement then
+      complement:setFrame(complementNewFrame)
+    end
+    if invadedNewFrame and invaded then
+      invaded:setFrame(invadedNewFrame)
+    end
+  end)
+end
+
+helpers.moveWindowLeft = helpers.moveToSide("left")
+helpers.moveWindowRight = helpers.moveToSide("right")
+
+-- Resize window, cycling through SIZE_RATIOS
+-- Only works if window is flush to left or right edge
+-- direction: 1 for grow, -1 for shrink
+function helpers.resizeWindow(direction)
+  return withFocusedWindow(function(win)
+    local flushSide = helpers.getFlushSide(win)
+
+    -- Only allow resize if window is flush to an edge
+    if not flushSide then
+      log.d("resizeWindow: window not flush, ignoring")
+      return
+    end
+
+    local screen = win:screen()
+    local sf = screen:frame()
+    local complement = helpers.findComplementWindow(win)
+
+    local currentRatio = helpers.getWindowSizeRatio(win)
+    local currentIndex = findClosestSizeIndex(currentRatio)
+
+    log.df("resizeWindow: direction=%d, flushSide=%s, currentRatio=%.2f, currentIndex=%d",
+      direction, flushSide, currentRatio, currentIndex)
+
+    local newIndex = currentIndex + direction
+    if newIndex < 1 then newIndex = 1 end
+    if newIndex > #SIZE_RATIOS then newIndex = #SIZE_RATIOS end
+
+    local newRatio = SIZE_RATIOS[newIndex]
+    log.df("resizeWindow: newIndex=%d, newRatio=%.2f", newIndex, newRatio)
+
+    -- Calculate all frames BEFORE applying any changes
+    local winNewFrame, complementNewFrame
+
+    -- Main window frame (stays flush to same side)
+    local x = (flushSide == "left") and sf.x or (sf.x + sf.w * (1 - newRatio))
+    winNewFrame = { x = x, y = sf.y, w = sf.w * newRatio, h = sf.h }
+
+    -- Complement window frame (fills remaining space on opposite side)
+    if complement then
+      local complementSide = (flushSide == "left") and "right" or "left"
+      local complementRatio = 1 - newRatio
+      local cx = (complementSide == "left") and sf.x or (sf.x + sf.w * (1 - complementRatio))
+      complementNewFrame = { x = cx, y = sf.y, w = sf.w * complementRatio, h = sf.h }
+      log.df("resizeWindow: complement will resize to %.2f on %s", complementRatio, complementSide)
+    end
+
+    -- Apply all changes
+    win:setFrame(winNewFrame)
+    if complementNewFrame and complement then
+      complement:setFrame(complementNewFrame)
+    end
+  end)
+end
+
+helpers.growWindow = helpers.resizeWindow(1)
+helpers.shrinkWindow = helpers.resizeWindow(-1)
+
 -- Detect current window state
 helpers.getCurrentState = withFocusedWindow(function(win)
   local f = win:frame()
