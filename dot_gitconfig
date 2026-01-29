@@ -1,0 +1,8 @@
+[include]
+    path = ~/.gitconfig.local
+[alias]
+    fp = push --force-with-lease
+    force = !echo "Use: git fp"; false
+
+[push]
+	autoSetupRemote = true
