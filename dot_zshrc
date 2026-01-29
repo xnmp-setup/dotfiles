@@ -476,3 +476,49 @@ fzf-cd() {
 zle -N fzf-cd
 bindkey '^O' fzf-cd
 
+# Navigate to equivalent directory in next git worktree (alphabetically)
+cd-tree() {
+  local current_root rel_path worktrees next_tree
+
+  current_root=$(git rev-parse --show-toplevel 2>/dev/null) || {
+    echo "Not in a git repo"
+    return 1
+  }
+
+  # Get all worktree paths, sorted alphabetically
+  worktrees=($(git worktree list --porcelain | awk '/^worktree / {print $2}' | sort))
+
+  if (( ${#worktrees[@]} <= 1 )); then
+    echo "(no other worktrees)"
+    return 0
+  fi
+
+  # Find current worktree index and compute next (with wrap-around)
+  local idx=0
+  for i in {1..${#worktrees[@]}}; do
+    if [[ "${worktrees[$i]}" == "$current_root" ]]; then
+      idx=$i
+      break
+    fi
+  done
+
+  local next_idx=$(( (idx % ${#worktrees[@]}) + 1 ))
+  next_tree="${worktrees[$next_idx]}"
+
+  # Compute relative path from current worktree root
+  rel_path="${PWD#$current_root}"
+  rel_path="${rel_path#/}"
+
+  local target="$next_tree"
+  [[ -n "$rel_path" ]] && target="$next_tree/$rel_path"
+
+  if [[ -d "$target" ]]; then
+    builtin cd -- "$target"
+    echo "→ $target"
+  else
+    # Directory doesn't exist in target worktree, go to root
+    builtin cd -- "$next_tree"
+    echo "→ $next_tree (subdir '$rel_path' not found)"
+  fi
+}
+
