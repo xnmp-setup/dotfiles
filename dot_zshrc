@@ -128,6 +128,8 @@ command -v fdfind >/dev/null && alias fd=fdfind || alias fdfind=fd
 
 alias du="dust"
 alias cc="claude"
+alias cc-dsp='docker sandbox run claude . --dangerously-skip-permissions'
+
 # alias micro="micro +9999999"
 # alias nano="micro +9999999"
 # alias zell="zellij"
