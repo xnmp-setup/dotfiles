@@ -15,6 +15,10 @@
     "key": "ctrl+j",
     "command": "-workbench.action.togglePanel"
   },
+  { 
+    "key": "ctrl+t",
+    "command": "workbench.action.files.newUntitledFile" 
+  },
   {
     "key": "alt+m b",
     "command": "workbench.action.toggleSidebarVisibility"
@@ -54,6 +58,7 @@
     "command": "workbench.action.terminal.toggleTerminal",
     "when": "terminal.active"
   },
+  { "key": "alt+m r",            "command": "workbench.action.toggleAuxiliaryBar" },
   {
     "key": "alt+\\",
     "command": "editor.toggleFold",
@@ -90,12 +95,12 @@
   {
     "key": "ctrl+enter",
     "command": "jupyter.execSelectionInteractive",
-    "when": "editorTextFocus && jupyter.featureenabled && jupyter.ownsSelection && !findInputFocussed && !replaceInputFocussed && editorLangId == 'python'"
+    "when": "editorTextFocus && isWorkspaceTrusted && jupyter.ownsSelection && !findInputFocussed && !isCompositeNotebook && !notebookEditorFocused && !replaceInputFocussed && editorLangId == 'python'"
   },
   {
     "key": "shift+enter",
     "command": "-jupyter.execSelectionInteractive",
-    "when": "editorTextFocus && jupyter.featureenabled && jupyter.ownsSelection && !findInputFocussed && !replaceInputFocussed && editorLangId == 'python'"
+    "when": "editorTextFocus && isWorkspaceTrusted && jupyter.ownsSelection && !findInputFocussed && !isCompositeNotebook && !notebookEditorFocused && !replaceInputFocussed && editorLangId == 'python'"
   },
   {
     "key": "ctrl+shift+up",
@@ -129,9 +134,14 @@
     "command": "editor.action.insertCursorAtEndOfEachLineSelected",
     "when": "editorTextFocus"
   },
+  // {
+  //   "key": "ctrl+enter",
+  //   "command": "jupyter.execSelectionInteractive"
+  // },
   {
-    "key": "ctrl+enter",
-    "command": "jupyter.execSelectionInteractive"
+    "key": "enter",
+    "command": "scm.acceptInput",
+    "when": "scmRepository"
   },
   {
     "key": "ctrl+left",
@@ -174,13 +184,73 @@
   {
     "key": "alt+m g",
     "command": "workbench.scm.focus"
-},
-{
-    "key": "shift+enter",
-    "command": "workbench.action.terminal.sendSequence",
-    "args": {
-        "text": "\u001b\r"
-    },
+  },
+  {
+      "key": "shift+enter",
+      "command": "workbench.action.terminal.sendSequence",
+      "args": {
+          "text": "\u001b\r"
+      },
+      "when": "terminalFocus"
+  },
+  {
+    "key": "ctrl+alt+g",
+    "command": "git-graph.view"
+  },
+  {
+    "key": "ctrl+shift+o",
+    "command": "workbench.action.openRecent"
+  },
+  {
+    "key": "ctrl+q",
+    "command": "-workbench.action.quickOpenView"
+  },
+  {
+    "key": "ctrl+e",
+    "command": "-workbench.action.quickOpen"
+  },
+  {
+    "key": "ctrl+shift+t",
+    "command": "workbench.action.terminal.new",
     "when": "terminalFocus"
-}
+  },
+  {
+      "key": "ctrl+shift+w",
+      "command": "workbench.action.terminal.kill",
+      "when": "terminalFocus"
+  },
+  {
+      "key": "ctrl+v",
+      "command": "workbench.action.terminal.paste",
+      "when": "terminalFocus"
+  },
+  {
+        "key": "alt+h",
+        "command": "workbench.action.navigateLeft"
+    },
+    {
+        "key": "alt+l",
+        "command": "workbench.action.navigateRight"
+    },
+    {
+        "key": "alt+k",
+        "command": "workbench.action.navigateUp"
+    },
+    {
+        "key": "alt+j",
+        "command": "workbench.action.navigateDown"
+    },
+    
+    { "key": "ctrl+,",                  "command": "workbench.action.openSettingsJson" },
+    { "key": "ctrl+.",                  "command": "workbench.action.openGlobalKeybindingsJson" },
+    
+    {
+        "key": "ctrl+alt+p",
+        "command": "workbench.profiles.actions.switchProfile"
+    },
+    {
+        "key": "alt+m r",
+        "command": "claude-vscode.focus",
+        "when": "editorTextFocus && !config.claudeCode.useTerminal"
+    },
 ]
