@@ -10,7 +10,7 @@ macos-window-buttons = hidden
 split-divider-color = #FFBF00
 font-thicken = true
 font-thicken-strength = 80
-theme = vercel
+theme = Vercel
 mouse-scroll-multiplier = 1
 
 window-padding-x = 10
@@ -52,6 +52,9 @@ keybind = alt+l=goto_split:left
 keybind = alt+p=goto_split:up
 keybind = alt+;=goto_split:down
 keybind = ctrl+shift+t=undo
+keybind = ctrl+backspace=text:\x17
+keybind = shift+home=text:\x1b[1;2H
+keybind = shift+end=text:\x1b[1;2F
 
 font-size = 15
 
