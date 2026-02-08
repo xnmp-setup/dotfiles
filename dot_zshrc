@@ -370,7 +370,7 @@ chz() {
         shift
         command chezmoi git -- "$@"
     elif [[ "$1" == "cd" ]]; then
-    	command cd ~/.local/share/chezmoi
+    	builtin cd ~/.local/share/chezmoi
     elif [[ "$1" == "commit-main" ]]; then
     	local CHEZMOI_BRANCH="$(chezmoi git --  branch --show-current)"
     	chezmoi re-add || return 1 # must re-add before checking out, otherwise will include all the changes made by the current branch

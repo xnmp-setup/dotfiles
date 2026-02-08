@@ -1,0 +1,3 @@
+#%PAM-1.0
+auth      sufficient    pam_pwdfile.so pwdfile=/etc/pinfile
+auth      include       login
