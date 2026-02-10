@@ -1,5 +1,6 @@
 ---@diagnostic disable: undefined-global
 hs.window.animationDuration = 0
+require("hs.ipc").cliInstall()
 
 local helpers = require("helpers")
 local windowCycling = require("window_cycling")
@@ -8,12 +9,11 @@ local dropdownTerminal = require("dropdown_terminal")
 -- ---------- App cycling like your F-keys ----------
 hs.hotkey.bind({}, "F9", dropdownTerminal.toggle)
 hs.hotkey.bind({}, "F6", function() windowCycling.cycleOrRun("Google Chrome", "Google Chrome") end)
+hs.hotkey.bind({}, "F5", function() windowCycling.cycleOrRun("Arc", "Arc") end)
 hs.hotkey.bind({}, "F4", function() windowCycling.cycleOrRun("Obsidian", "Obsidian") end)
 hs.hotkey.bind({}, "F3", function() windowCycling.cycleOrRun("Code", "Visual Studio Code") end)
 
 hs.hotkey.bind({}, "F8", function() windowCycling.cycleOrRun("Marta", "Marta") end)
-
--- hs.hotkey.bind({}, "F5", function() windowCycling.cycleOrRun("Google Chrome", "Google Chrome") end)
 hs.hotkey.bind({"alt"}, "N", function() windowCycling.cycleOrRun("Sublime Text", "Sublime Text", "top") end)
 
 -- Chained hotkey: Alt+M then E for Marta
@@ -22,11 +22,11 @@ hs.hotkey.bind({"alt"}, "N", function() windowCycling.cycleOrRun("Sublime Text",
 -- end)
 
 
--- ---------- Window movement hotkeys ----------
+---------- Window movement hotkeys ----------
 hs.hotkey.bind({"cmd","ctrl"}, "Left", helpers.moveWindowLeft)
 hs.hotkey.bind({"cmd", "ctrl"}, "Right", helpers.moveWindowRight)
 
--- ---------- Window resize hotkeys ----------
+---------- Window resize hotkeys ----------
 hs.hotkey.bind({"cmd", "ctrl"}, "-", helpers.shrinkWindow)
 hs.hotkey.bind({"cmd", "ctrl"}, "=", helpers.growWindow)
 
@@ -36,27 +36,27 @@ hs.hotkey.bind({"cmd", "ctrl"}, "Up", helpers.toggleTopCenterMaximize)
 local unmaximizeSavedFrames = {}
 
 -- "Ctrl+Cmd+Down": unmaximize if maximized, minimize otherwise
-hs.hotkey.bind({"cmd", "ctrl"}, "Down", function()
-  local win = hs.window.focusedWindow()
-  if not win then return end
+-- hs.hotkey.bind({"cmd", "ctrl"}, "Down", function()
+--   local win = hs.window.focusedWindow()
+--   if not win then return end
 
-  if helpers.isMaximized(win) then
-    local winId = win:id()
-    if unmaximizeSavedFrames[winId] then
-      -- unmaximize if maximized
-      win:setFrame(unmaximizeSavedFrames[winId])
-      unmaximizeSavedFrames[winId] = nil
-    else
-      -- If no saved frame, go to top-center
-      local centerFrame = helpers.getTopCenterFrame(win)
-      if centerFrame then
-        win:setFrame(centerFrame)
-      end
-    end
-  -- else
-  --   win:minimize()
-  end
-end)
+--   if helpers.isMaximized(win) then
+--     local winId = win:id()
+--     if unmaximizeSavedFrames[winId] then
+--       -- unmaximize if maximized
+--       win:setFrame(unmaximizeSavedFrames[winId])
+--       unmaximizeSavedFrames[winId] = nil
+--     else
+--       -- If no saved frame, go to top-center
+--       local centerFrame = helpers.getTopCenterFrame(win)
+--       if centerFrame then
+--         win:setFrame(centerFrame)
+--       end
+--     end
+--   -- else
+--   --   win:minimize()
+--   end
+-- end)
 
 local function toggleMaximize()
   local win = hs.window.focusedWindow()
