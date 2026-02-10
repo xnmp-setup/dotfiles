@@ -240,3 +240,47 @@ EOF
 
 # If you previously had `alias zell=zellij`, remove it so the function is used:
 # unalias zell 2>/dev/null
+
+# Launch zellij with one claude code pane per git worktree
+zcc() {
+  git rev-parse --git-dir &>/dev/null || {
+    echo "Not in a git repo"
+    return 1
+  }
+
+  local worktrees=($(git worktree list --porcelain | awk '/^worktree / {print $2}'))
+
+  if (( ${#worktrees[@]} == 0 )); then
+    echo "No worktrees found"
+    return 1
+  fi
+
+  # Create temporary layout file
+  local layout_file=$(mktemp -t "zellij-worktrees.XXXXXX.kdl")
+
+  # Generate layout header (use command to bypass cat alias)
+  command cat > "$layout_file" <<'EOF'
+layout {
+    pane split_direction="vertical" {
+EOF
+
+  # Add a pane for each worktree
+  for worktree in "${worktrees[@]}"; do
+    command cat >> "$layout_file" <<EOF
+        pane cwd="$worktree" {
+            command "claude"
+        }
+EOF
+  done
+
+  # Close layout
+  command cat >> "$layout_file" <<'EOF'
+    }
+}
+EOF
+
+  echo "Launching Zellij with ${#worktrees[@]} Claude Code panes..."
+  zellij --layout "$layout_file"
+
+  rm -f "$layout_file"
+}
