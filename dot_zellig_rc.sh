@@ -242,7 +242,7 @@ EOF
 # unalias zell 2>/dev/null
 
 # Launch zellij with one claude code pane per git worktree
-zcc() {
+zellcc() {
   git rev-parse --git-dir &>/dev/null || {
     echo "Not in a git repo"
     return 1
@@ -253,6 +253,20 @@ zcc() {
   if (( ${#worktrees[@]} == 0 )); then
     echo "No worktrees found"
     return 1
+  fi
+
+  # Generate session name based on current directory
+  local dir="${PWD##*/}"
+  dir="$(_zell_sanitize "$dir")"
+  [[ -n "$dir" ]] || dir="root"
+  local sess="${dir}_worktrees"
+  sess="$(_zell_shorten_session "$sess")"
+
+  # Check if session already exists
+  if _zell_session_exists "$sess"; then
+    echo "Attaching to existing session: $sess"
+    _zell_attach "$sess"
+    return
   fi
 
   # Create temporary layout file
@@ -279,8 +293,8 @@ EOF
 }
 EOF
 
-  echo "Launching Zellij with ${#worktrees[@]} Claude Code panes..."
-  zellij --layout "$layout_file"
+  echo "Creating new session: $sess with ${#worktrees[@]} Claude Code panes..."
+  zellij --session "$sess" --layout "$layout_file"
 
   rm -f "$layout_file"
 }
