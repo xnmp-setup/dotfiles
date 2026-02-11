@@ -72,6 +72,8 @@ plugins=(git zsh-autosuggestions zsh-claude-code-shell zsh-history-substring-sea
 
 source $ZSH/oh-my-zsh.sh
 source /usr/share/nvm/init-nvm.sh
+#secrets
+[[ -f ~/.secrets ]] && source ~/.secrets
 
 # User configuration
 
@@ -128,6 +130,7 @@ alias ll="eza -l --icons --git --group-directories-first"
 command -v fdfind >/dev/null && alias fd=fdfind || alias fdfind=fd
 
 alias du="dust"
+alias tv='tidy-viewer'
 alias cc="claude"
 alias cc-dsp='docker sandbox run claude . --dangerously-skip-permissions'
 
