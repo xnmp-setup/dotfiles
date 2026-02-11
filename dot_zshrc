@@ -71,6 +71,7 @@ ZSH_THEME="powerlevel10k/powerlevel10k"
 plugins=(git zsh-autosuggestions zsh-claude-code-shell zsh-history-substring-search)
 
 source $ZSH/oh-my-zsh.sh
+source /usr/share/nvm/init-nvm.sh
 
 # User configuration
 
@@ -134,6 +135,14 @@ alias cc-dsp='docker sandbox run claude . --dangerously-skip-permissions'
 # alias nano="micro +9999999"
 # alias zell="zellij"
 [ -f ~/.zellig_rc.sh ] && source ~/.zellig_rc.sh
+alias m="micro"
+# Claude Code Sandbox Alias
+alias cc-box='docker run -it --rm \
+  -e IS_SANDBOX=1 \
+  -v "$(pwd):/home/claudeuser/app" \
+  -v "$HOME/.claude:/home/claudeuser/.claude" \
+  -w /home/claudeuser/app \
+  my-claude-code'
 
 
 if command -v batcat &>/dev/null; then
