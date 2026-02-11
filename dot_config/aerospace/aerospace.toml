@@ -123,15 +123,15 @@ on-mode-changed = []
     ctrl-cmd-equal = 'resize smart +50'
 
     # See: https://nikitabobko.github.io/AeroSpace/commands#workspace
-    cmd-1 = 'workspace 1'
-    cmd-2 = 'workspace 2'
-    cmd-3 = 'workspace 3'
-    cmd-4 = 'workspace 4'
-    cmd-5 = 'workspace 5'
-    cmd-6 = 'workspace 6'
-    cmd-7 = 'workspace 7'
-    cmd-8 = 'workspace 8'
-    cmd-9 = 'workspace 9'
+    cmd-shift-1 = 'workspace 1'
+    cmd-shift-2 = 'workspace 2'
+    cmd-shift-3 = 'workspace 3'
+    cmd-shift-4 = 'workspace 4'
+    cmd-shift-5 = 'workspace 5'
+    cmd-shift-6 = 'workspace 6'
+    cmd-shift-7 = 'workspace 7'
+    cmd-shift-8 = 'workspace 8'
+    cmd-shift-9 = 'workspace 9'
 
     # See: https://nikitabobko.github.io/AeroSpace/commands#move-node-to-workspace
     alt-shift-1 = 'move-node-to-workspace 1'
