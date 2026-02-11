@@ -240,3 +240,61 @@ EOF
 
 # If you previously had `alias zell=zellij`, remove it so the function is used:
 # unalias zell 2>/dev/null
+
+# Launch zellij with one claude code pane per git worktree
+zellcc() {
+  git rev-parse --git-dir &>/dev/null || {
+    echo "Not in a git repo"
+    return 1
+  }
+
+  local worktrees=($(git worktree list --porcelain | awk '/^worktree / {print $2}'))
+
+  if (( ${#worktrees[@]} == 0 )); then
+    echo "No worktrees found"
+    return 1
+  fi
+
+  # Generate session name based on current directory
+  local dir="${PWD##*/}"
+  dir="$(_zell_sanitize "$dir")"
+  [[ -n "$dir" ]] || dir="root"
+  local sess="${dir}_worktrees"
+  sess="$(_zell_shorten_session "$sess")"
+
+  # Check if session already exists
+  if _zell_session_exists "$sess"; then
+    echo "Attaching to existing session: $sess"
+    _zell_attach "$sess"
+    return
+  fi
+
+  # Create temporary layout file
+  local layout_file=$(mktemp -t "zellij-worktrees.XXXXXX.kdl")
+
+  # Generate layout header (use command to bypass cat alias)
+  command cat > "$layout_file" <<'EOF'
+layout {
+    pane split_direction="vertical" {
+EOF
+
+  # Add a pane for each worktree
+  for worktree in "${worktrees[@]}"; do
+    command cat >> "$layout_file" <<EOF
+        pane cwd="$worktree" {
+            command "claude"
+        }
+EOF
+  done
+
+  # Close layout
+  command cat >> "$layout_file" <<'EOF'
+    }
+}
+EOF
+
+  echo "Creating new session: $sess with ${#worktrees[@]} Claude Code panes..."
+  zellij --session "$sess" --layout "$layout_file"
+
+  rm -f "$layout_file"
+}

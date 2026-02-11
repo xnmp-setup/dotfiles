@@ -71,6 +71,9 @@ ZSH_THEME="powerlevel10k/powerlevel10k"
 plugins=(git zsh-autosuggestions zsh-claude-code-shell zsh-history-substring-search)
 
 source $ZSH/oh-my-zsh.sh
+source /usr/share/nvm/init-nvm.sh
+#secrets
+[[ -f ~/.secrets ]] && source ~/.secrets
 
 # User configuration
 
@@ -127,6 +130,7 @@ alias ll="eza -l --icons --git --group-directories-first"
 command -v fdfind >/dev/null && alias fd=fdfind || alias fdfind=fd
 
 alias du="dust"
+alias tv='tidy-viewer'
 alias cc="claude"
 alias cc-dsp='docker sandbox run claude . --dangerously-skip-permissions'
 
@@ -134,7 +138,15 @@ alias cc-dsp='docker sandbox run claude . --dangerously-skip-permissions'
 # alias nano="micro +9999999"
 # alias zell="zellij"
 [ -f ~/.zellig_rc.sh ] && source ~/.zellig_rc.sh
-
+alias m="micro"
+# Claude Code Sandbox Alias
+alias cc-box='docker run -it --rm \
+  -e IS_SANDBOX=1 \
+  -v "$(pwd):/home/claudeuser/app" \
+  -v "$HOME/.claude:/home/claudeuser/.claude" \
+  -v "$HOME/.claude.json:/home/claudeuser/.claude.json" \
+  -w /home/claudeuser/app \
+  my-claude-code'
 
 if command -v batcat &>/dev/null; then
   BAT=batcat
@@ -370,7 +382,7 @@ chz() {
         shift
         command chezmoi git -- "$@"
     elif [[ "$1" == "cd" ]]; then
-    	command cd ~/.local/share/chezmoi
+    	builtin cd ~/.local/share/chezmoi
     elif [[ "$1" == "commit-main" ]]; then
     	local CHEZMOI_BRANCH="$(chezmoi git --  branch --show-current)"
     	chezmoi re-add || return 1 # must re-add before checking out, otherwise will include all the changes made by the current branch
