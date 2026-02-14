@@ -1,0 +1,11 @@
+{
+  "enabledPlugins": {
+    "rust-analyzer-lsp@claude-plugins-official": true,
+    "ralph-loop@claude-plugins-official": true
+  },
+  "skipDangerousModePermissionPrompt": true,
+  "statusLine": {
+    "type": "command",
+    "command": "~/.claude/statusline.sh"
+  }
+}
