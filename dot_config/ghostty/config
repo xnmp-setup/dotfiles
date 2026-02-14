@@ -10,7 +10,7 @@ macos-window-buttons = hidden
 split-divider-color = #FFBF00
 font-thicken = true
 font-thicken-strength = 80
-theme = Vercel
+theme = Rapture
 mouse-scroll-multiplier = 1
 
 window-padding-x = 10
@@ -38,6 +38,7 @@ keybind = super+'=esc:'
 
 # ctrl+delete
 keybind = alt+delete=text:\x1bd
+keybind = ctrl+delete=text:\x1bd
 keybind = shift+,=open_config
 keybind = ctrl+shift+k=text:\x0b
 
@@ -47,14 +48,15 @@ keybind = alt+super+l=new_split:left
 keybind = alt+super+p=new_split:up
 keybind = alt+super+;=new_split:down
 keybind = alt+o=toggle_split_zoom
-keybind = alt+'=goto_split:right
-keybind = alt+l=goto_split:left
-keybind = alt+p=goto_split:up
-keybind = alt+;=goto_split:down
+keybind = super+'=goto_split:right
+keybind = super+l=goto_split:left
+keybind = super+p=goto_split:up
+keybind = super+;=goto_split:down
 keybind = ctrl+shift+t=undo
 keybind = ctrl+backspace=text:\x17
 keybind = shift+home=text:\x1b[1;2H
 keybind = shift+end=text:\x1b[1;2F
+keybind = ctrl+n=new_window
 
-font-size = 15
+font-size = 14
 
