@@ -84,17 +84,5 @@ hs.hotkey.bind({"cmd", "ctrl"}, "O", toggleMaximize)
 hs.hotkey.bind({"cmd"}, "`", helpers.toggleDesktop)
 
 -- ---------- App quit ----------
-hs.hotkey.bind({"alt"}, "F4", function()
-  local win = hs.window.focusedWindow()
-  if win then
-    local app = win:application()
-    local windows = app:allWindows()
-
-    -- Close window if multiple windows exist, otherwise quit the app
-    if #windows > 1 then
-      win:close()
-    else
-      app:kill()
-    end
-  end
-end)
+hs.hotkey.bind({"alt"}, "F4", helpers.quitOrCloseApp)
+hs.hotkey.bind({"cmd"}, "escape", helpers.quitOrCloseApp)

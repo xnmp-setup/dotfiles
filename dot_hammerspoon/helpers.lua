@@ -589,6 +589,21 @@ function helpers.toggleDesktop()
   end
 end
 
+-- Close window if multiple windows exist, otherwise quit the app
+helpers.quitOrCloseApp = function()
+  local win = hs.window.focusedWindow()
+  if win then
+    local app = win:application()
+    local windows = app:allWindows()
+
+    if #windows > 1 then
+      win:close()
+    else
+      app:kill()
+    end
+  end
+end
+
 -- Bind a sequence of keys with timeout
 -- Example: helpers.bindSequence({"alt"}, {"M", "E"}, 0.5, function() ... end, function() return true end)
 -- condition: optional function that returns true if sequence should be active
