@@ -14,7 +14,7 @@ hs.hotkey.bind({}, "F4", function() windowCycling.cycleOrRun("Obsidian", "Obsidi
 hs.hotkey.bind({}, "F3", function() windowCycling.cycleOrRun("Code", "Visual Studio Code") end)
 
 hs.hotkey.bind({}, "F8", function() windowCycling.cycleOrRun("Marta", "Marta") end)
-hs.hotkey.bind({"alt"}, "N", function() windowCycling.cycleOrRun("Sublime Text", "Sublime Text", "top") end)
+hs.hotkey.bind({"alt"}, "N", function() windowCycling.cycleOrRun("Lite XL", "Lite XL", "top") end)
 
 -- Chained hotkey: Alt+M then E for Marta
 -- helpers.bindSequence({"alt"}, {"M", "E"}, 0.5, function()
