@@ -2,6 +2,12 @@
 edit = [
     { run = 'micro "$@"', block = true, for = "unix" }
 ]
+image = [
+    { run = 'imv "$(dirname "$1")"', block = true, desc = "imv" }
+]
+view_csv = [
+    { run = 'csvlens "$@"', block = true, desc = "View CSV" }
+]
 
 [preview]
 image_filter = "triangle"
@@ -10,5 +16,17 @@ image_quality = 75
 
 
 [[open.prepend_rules]]
-url = "*/"
-use = []
+mime = "image/*"
+use = "image"
+
+[[open.prepend_rules]]
+name = "*.csv"
+use = "view_csv"
+
+[[open.prepend_rules]]
+mime = "text/html"
+use = "open"  # "open" is Yazi's built-in command for the system default (Chrome, etc.)
+
+[[open.prepend_rules]]
+mime = "text/*"
+use = "edit"

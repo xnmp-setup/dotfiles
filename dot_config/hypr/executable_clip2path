@@ -1,0 +1,27 @@
+#!/bin/bash
+# clip2path - smart paste: clipboard images become file paths in Ghostty, passthrough elsewhere
+
+ACTIVE=$(hyprctl activewindow -j 2>/dev/null | jq -r '.class // empty')
+
+if [[ "$ACTIVE" != "com.mitchellh.ghostty" ]]; then
+    # Not Ghostty — send the original keypress via ydotool (bypasses Hyprland bind)
+    ydotool key 29:1 42:1 47:1 47:0 42:0 29:0  # ctrl+shift+v
+    exit 0
+fi
+
+MIME=$(wl-paste --list-types 2>/dev/null | grep -m1 '^image/')
+
+if [[ -n "$MIME" ]]; then
+    EXT="${MIME#image/}"
+    FILE="/tmp/clipboard-$(date +%Y%m%d_%H%M%S).${EXT}"
+    wl-paste --type "$MIME" > "$FILE" 2>/dev/null
+    if [[ -s "$FILE" ]]; then
+        wtype -- "$FILE"
+    fi
+else
+    # Text clipboard in Ghostty — paste via wtype
+    TEXT=$(wl-paste 2>/dev/null)
+    if [[ -n "$TEXT" ]]; then
+        wtype -- "$TEXT"
+    fi
+fi
