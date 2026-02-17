@@ -112,6 +112,9 @@ on-mode-changed = []
     alt-slash = 'layout tiles horizontal vertical'
     alt-comma = 'layout accordion horizontal vertical'
 
+    # Retile windows to fill screen completely
+    cmd-slash = ['flatten-workspace-tree', 'layout tiles', 'balance-sizes']
+
     # See: https://nikitabobko.github.io/AeroSpace/commands#focus
     cmd-left = 'focus left'
     cmd-down = 'focus down'
@@ -157,6 +160,16 @@ on-mode-changed = []
     ctrl-cmd-up    = 'move --boundaries all-monitors-outer-frame up'
     ctrl-cmd-down  = 'move --boundaries all-monitors-outer-frame down'
 
+
+# Window-specific rules
+# See: https://nikitabobko.github.io/AeroSpace/guide#window-rules
+[[on-window-detected]]
+if.app-id = 'com.mitchellh.ghostty'
+run = 'layout floating'
+
+[[on-window-detected]]
+if.app-id = 'com.lite-xl'
+run = 'layout floating'
 
 # 'service' binding mode declaration.
 # See: https://nikitabobko.github.io/AeroSpace/guide#binding-modes
