@@ -201,6 +201,10 @@ run = 'layout floating'
 if.app-id = 'com.lite-xl'
 run = 'layout floating'
 
+[[on-window-detected]]
+if.app-id = 'company.thebrowser.Browser'
+run = 'layout floating'
+
 # 'service' binding mode declaration.
 # See: https://nikitabobko.github.io/AeroSpace/guide#binding-modes
 [mode.service.binding]
