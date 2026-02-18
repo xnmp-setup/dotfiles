@@ -141,6 +141,8 @@ outer.right = 0
 # See: https://nikitabobko.github.io/AeroSpace/commands#layout
 alt-cmd-slash = 'layout tiles horizontal vertical'
 alt-cmd-comma = 'layout accordion horizontal vertical'
+alt-cmd-o = 'layout tiles accordion'
+alt-cmd-home = 'layout tiles accordion'
 
 # See: https://nikitabobko.github.io/AeroSpace/commands#focus
 alt-cmd-left = 'focus --boundaries workspace --ignore-floating left'
