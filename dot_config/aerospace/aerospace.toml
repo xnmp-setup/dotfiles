@@ -143,10 +143,10 @@ alt-slash = 'layout tiles horizontal vertical'
 alt-comma = 'layout accordion horizontal vertical'
 
 # See: https://nikitabobko.github.io/AeroSpace/commands#focus
-cmd-left = 'focus left'
-cmd-down = 'focus down'
-cmd-up = 'focus up'
-cmd-right = 'focus right'
+cmd-left = 'focus --boundaries workspace --ignore-floating left'
+cmd-down = 'focus --boundaries workspace --ignore-floating down'
+cmd-up = 'focus --boundaries workspace --ignore-floating up'
+cmd-right = 'focus --boundaries workspace --ignore-floating right'
 
 # See: https://nikitabobko.github.io/AeroSpace/commands#resize
 ctrl-cmd-minus = 'resize smart -50'
