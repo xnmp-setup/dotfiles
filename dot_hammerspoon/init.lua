@@ -14,7 +14,7 @@ hs.hotkey.bind({}, "F4", function() windowCycling.cycleOrRun("Obsidian", "Obsidi
 hs.hotkey.bind({}, "F3", function() windowCycling.cycleOrRun("Code", "Visual Studio Code") end)
 
 hs.hotkey.bind({}, "F8", function() windowCycling.cycleOrRun("Marta", "Marta") end)
-hs.hotkey.bind({"alt"}, "N", function() windowCycling.cycleOrRun("Lite XL", "Lite XL", "top") end)
+hs.hotkey.bind({ "alt" }, "N", function() windowCycling.cycleOrRun("Lite XL", "Lite XL", "top") end)
 
 -- Chained hotkey: Alt+M then E for Marta
 -- helpers.bindSequence({"alt"}, {"M", "E"}, 0.5, function()
@@ -22,15 +22,15 @@ hs.hotkey.bind({"alt"}, "N", function() windowCycling.cycleOrRun("Lite XL", "Lit
 -- end)
 
 
----------- Window movement hotkeys ----------
-hs.hotkey.bind({"cmd","ctrl"}, "Left", helpers.moveWindowLeft)
-hs.hotkey.bind({"cmd", "ctrl"}, "Right", helpers.moveWindowRight)
+-- ---------- Window movement hotkeys ----------
+-- hs.hotkey.bind({"cmd","ctrl"}, "Left", helpers.moveWindowLeft)
+-- hs.hotkey.bind({"cmd", "ctrl"}, "Right", helpers.moveWindowRight)
 
----------- Window resize hotkeys ----------
-hs.hotkey.bind({"cmd", "ctrl"}, "-", helpers.shrinkWindow)
-hs.hotkey.bind({"cmd", "ctrl"}, "=", helpers.growWindow)
+-- ---------- Window resize hotkeys ----------
+-- hs.hotkey.bind({"cmd", "ctrl"}, "-", helpers.shrinkWindow)
+-- hs.hotkey.bind({"cmd", "ctrl"}, "=", helpers.growWindow)
 
-hs.hotkey.bind({"cmd", "ctrl"}, "Up", helpers.toggleTopCenterMaximize)
+-- hs.hotkey.bind({"cmd", "ctrl"}, "Up", helpers.toggleTopCenterMaximize)
 
 -- Store previous frames for unmaximize
 local unmaximizeSavedFrames = {}
@@ -76,13 +76,13 @@ local function toggleMaximize()
 end
 
 -- "Win+Home": maximize/restore toggle
-hs.hotkey.bind({"cmd", "ctrl"}, "Home", toggleMaximize)
-hs.hotkey.bind({"cmd", "ctrl"}, "O", toggleMaximize)
+hs.hotkey.bind({ "cmd", "ctrl" }, "Home", toggleMaximize)
+hs.hotkey.bind({ "cmd", "ctrl" }, "O", toggleMaximize)
 
 -- ---------- Desktop switching ----------
 
-hs.hotkey.bind({"cmd"}, "`", helpers.toggleDesktop)
+-- hs.hotkey.bind({ "cmd" }, "`", helpers.toggleDesktop)
 
 -- ---------- App quit ----------
-hs.hotkey.bind({"alt"}, "F4", helpers.quitOrCloseApp)
-hs.hotkey.bind({"cmd"}, "escape", helpers.quitOrCloseApp)
+hs.hotkey.bind({ "alt" }, "F4", helpers.quitOrCloseApp)
+hs.hotkey.bind({ "cmd" }, "escape", helpers.quitOrCloseApp)
