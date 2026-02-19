@@ -309,8 +309,8 @@ function zj() {
 eval "$(zoxide init zsh)"
 
 # --- Editor Settings ---
-export EDITOR='micro'
-export VISUAL='micro'
+export EDITOR='lite-xl'
+export VISUAL='lite-xl'
 
 # --- Init Tools ---
 # source <(fzf --zsh)

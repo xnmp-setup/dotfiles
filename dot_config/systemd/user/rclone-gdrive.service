@@ -1,0 +1,13 @@
+[Unit]
+Description=rclone Google Drive mount
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStartPre=/bin/mkdir -p %h/GDrive
+ExecStart=rclone mount gdrive: %h/GDrive --vfs-cache-mode full --dir-cache-time 48h --poll-interval 15s --vfs-read-ahead 128M
+ExecStop=fusermount -u %h/GDrive
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
