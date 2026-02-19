@@ -76,8 +76,8 @@ local function toggleMaximize()
 end
 
 -- "Win+Home": maximize/restore toggle
-hs.hotkey.bind({ "cmd", "ctrl" }, "Home", toggleMaximize)
-hs.hotkey.bind({ "cmd", "ctrl" }, "O", toggleMaximize)
+-- hs.hotkey.bind({ "cmd", "ctrl" }, "Home", toggleMaximize)
+-- hs.hotkey.bind({ "cmd", "ctrl" }, "O", toggleMaximize)
 
 -- ---------- Desktop switching ----------
 
