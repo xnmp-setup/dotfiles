@@ -39,7 +39,7 @@ keybind = super+'=esc:'
 # ctrl+delete
 keybind = alt+delete=text:\x1bd
 keybind = ctrl+delete=text:\x1bd
-keybind = shift+,=open_config
+keybind = ctrl+,=open_config
 keybind = ctrl+shift+k=text:\x0b
 
 # pane navigation
@@ -57,6 +57,7 @@ keybind = ctrl+backspace=text:\x17
 keybind = shift+home=text:\x1b[1;2H
 keybind = shift+end=text:\x1b[1;2F
 keybind = ctrl+n=new_window
+keybind = ctrl+c=copy_to_clipboard
 
-font-size = 14
+font-size = 13
 
