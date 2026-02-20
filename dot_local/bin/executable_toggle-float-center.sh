@@ -1,5 +1,6 @@
 #!/bin/bash
 # Toggle floating and position at top-center: 50% width, 80% height.
+# Dims inactive windows when floating, reloads config to restore on unfloat.
 
 addr=$(hyprctl activewindow -j 2>/dev/null | jq -r '.address')
 floating=$(hyprctl activewindow -j 2>/dev/null | jq -r '.floating')
@@ -7,7 +8,7 @@ floating=$(hyprctl activewindow -j 2>/dev/null | jq -r '.floating')
 hyprctl dispatch togglefloating
 
 if [[ "$floating" == "false" ]]; then
-    # Was tiled, now floating — resize and position
+    # Was tiled, now floating — resize, position, and dim background
     mon=$(hyprctl monitors -j 2>/dev/null | jq -c 'first(.[] | select(.focused))')
     mon_x=$(echo "$mon" | jq -r '.x')
     mon_y=$(echo "$mon" | jq -r '.y')
@@ -23,4 +24,10 @@ if [[ "$floating" == "false" ]]; then
     hyprctl --batch "\
         dispatch resizewindowpixel exact ${w} ${h},address:${addr};\
         dispatch movewindowpixel exact ${x} ${y},address:${addr}"
+    hyprctl --batch "\
+        keyword decoration:dim_inactive true;\
+        keyword decoration:dim_strength 0.2"
+else
+    # Was floating, now tiled — reload config to cleanly restore dim settings
+    hyprctl reload
 fi
