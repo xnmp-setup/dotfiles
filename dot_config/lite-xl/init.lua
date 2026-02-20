@@ -49,6 +49,7 @@ keymap.add({
   ["ctrl+s"]          = "doc:save",
   ["ctrl+w"]          = "root:close",
   ["ctrl+shift+w"]    = "core:quit",
+  ["ctrl+q"]          = "core:quit",
 
   -- Navigation
   ["ctrl+g"]          = "doc:go-to-line",
