@@ -23,8 +23,10 @@ hide_if_visible() {
     local ws
     ws=$(hyprctl clients -j 2>/dev/null | jq -r --arg a "$addr" \
         '(.[] | select(.address == $a) | .workspace.name) // empty')
-    [[ -n "$ws" && "$ws" != special:* ]] && \
+    if [[ -n "$ws" && "$ws" != special:* ]]; then
         hyprctl --quiet dispatch movetoworkspacesilent "special:${name},address:${addr}"
+        hyprctl --quiet keyword decoration:dim_inactive false
+    fi
 }
 
 socat - "UNIX-CONNECT:${SOCKET}" | while IFS= read -r line; do

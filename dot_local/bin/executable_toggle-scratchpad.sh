@@ -40,6 +40,9 @@ ADDR_FILE="/tmp/scratchpad-${NAME}.addr"
 
 # --- Helpers ---
 
+dim_on()  { hyprctl --quiet keyword decoration:dim_inactive true; }
+dim_off() { hyprctl --quiet keyword decoration:dim_inactive false; }
+
 show_window() {
     local addr="$1"
     local active_ws
@@ -53,11 +56,13 @@ show_window() {
     else
         hyprctl dispatch centerwindow
     fi
+    dim_on
 }
 
 hide_window() {
     local addr="$1"
     hyprctl dispatch movetoworkspacesilent "special:${NAME},address:${addr}"
+    dim_off
 }
 
 save_addr() { echo "$1" > "$ADDR_FILE"; }
@@ -103,6 +108,7 @@ if [[ "$SINGLETON" == true ]]; then
     sleep 0.05
     show_window "$addr"
 else
+    dim_on
     if [[ -n "$TARGET_X" ]]; then
         hyprctl dispatch exec "[float;size ${W} ${H}] ${CMD}"
     else
