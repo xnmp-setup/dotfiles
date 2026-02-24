@@ -2,14 +2,30 @@
 input=$(cat)
 
 DIR=$(echo "$input" | jq -r '.workspace.current_dir')
-PCT=$(echo "$input" | jq -r '.context_window.used_percentage // 0' | cut -d. -f1)
+
+# --- Context % (cache last non-null to avoid jumping to 0% while thinking) ---
+PCT_CACHE_KEY="/tmp/statusline-pct-$(echo "$DIR" | md5 -q 2>/dev/null || echo "$DIR" | md5sum | cut -d' ' -f1)"
+
+RAW_PCT=$(echo "$input" | jq -r '.context_window.used_percentage')
+
+if [ "$RAW_PCT" != "null" ] && [ -n "$RAW_PCT" ] && [ "$RAW_PCT" != "0" ] && [ "$RAW_PCT" != "0.0" ]; then
+  PCT=$(printf "%.0f" "$RAW_PCT" 2>/dev/null || echo "$RAW_PCT" | cut -d. -f1)
+  echo "$PCT" > "$PCT_CACHE_KEY"
+else
+  if [ -f "$PCT_CACHE_KEY" ]; then
+    PCT=$(cat "$PCT_CACHE_KEY")
+  else
+    PCT=0
+  fi
+fi
+# ---------------------------------------------------------------------------
 
 CYAN='\033[36m'; GREEN='\033[32m'; YELLOW='\033[33m'; RED='\033[31m'; DIM='\033[2m'; RESET='\033[0m'
 
 # Git branch (cached)
 CACHE_DIR="$DIR"
-CACHE_KEY="/tmp/statusline-git-$(echo "$CACHE_DIR" | md5sum | cut -d' ' -f1)"
-if [ ! -f "$CACHE_KEY" ] || [ $(($(date +%s) - $(stat -c %Y "$CACHE_KEY" 2>/dev/null || echo 0))) -gt 5 ]; then
+CACHE_KEY="/tmp/statusline-git-$(echo "$CACHE_DIR" | md5 -q 2>/dev/null || echo "$CACHE_DIR" | md5sum | cut -d' ' -f1)"
+if [ ! -f "$CACHE_KEY" ] || [ $(($(date +%s) - $(stat -f %m "$CACHE_KEY" 2>/dev/null || stat -c %Y "$CACHE_KEY" 2>/dev/null || echo 0))) -gt 5 ]; then
     git -C "$CACHE_DIR" branch --show-current 2>/dev/null > "$CACHE_KEY" || echo "" > "$CACHE_KEY"
 fi
 BRANCH=$(tr -d '\n' < "$CACHE_KEY")
