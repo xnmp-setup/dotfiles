@@ -6,14 +6,23 @@ DIR=$(echo "$input" | jq -r '.workspace.current_dir')
 # --- Context % (cache last non-null to avoid jumping to 0% while thinking) ---
 PCT_CACHE_KEY="/tmp/statusline-pct-$(echo "$DIR" | md5 -q 2>/dev/null || echo "$DIR" | md5sum | cut -d' ' -f1)"
 
+SESSION_ID=$(echo "$input" | jq -r '.session_id // empty')
 RAW_PCT=$(echo "$input" | jq -r '.context_window.used_percentage')
 
 if [ "$RAW_PCT" != "null" ] && [ -n "$RAW_PCT" ] && [ "$RAW_PCT" != "0" ] && [ "$RAW_PCT" != "0.0" ]; then
   PCT=$(printf "%.0f" "$RAW_PCT" 2>/dev/null || echo "$RAW_PCT" | cut -d. -f1)
-  echo "$PCT" > "$PCT_CACHE_KEY"
+  echo "$SESSION_ID:$PCT" > "$PCT_CACHE_KEY"
 else
   if [ -f "$PCT_CACHE_KEY" ]; then
-    PCT=$(cat "$PCT_CACHE_KEY")
+    CACHE_CONTENT=$(cat "$PCT_CACHE_KEY")
+    CACHE_SESSION=$(echo "$CACHE_CONTENT" | cut -d: -f1)
+    CACHE_PCT=$(echo "$CACHE_CONTENT" | cut -d: -f2)
+    # Only use cache if session ID matches
+    if [ "$CACHE_SESSION" = "$SESSION_ID" ] && [ -n "$SESSION_ID" ]; then
+      PCT=$CACHE_PCT
+    else
+      PCT=0
+    fi
   else
     PCT=0
   fi
