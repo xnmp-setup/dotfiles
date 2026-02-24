@@ -39,6 +39,14 @@ if [ ! -f "$CACHE_KEY" ] || [ $(($(date +%s) - $(stat -f %m "$CACHE_KEY" 2>/dev/
 fi
 BRANCH=$(tr -d '\n' < "$CACHE_KEY")
 
+# Get git root directory name
+GIT_ROOT=$(git -C "$DIR" rev-parse --show-toplevel 2>/dev/null)
+if [ -n "$GIT_ROOT" ]; then
+  DISPLAY_DIR="${GIT_ROOT##*/}"
+else
+  DISPLAY_DIR="${DIR##*/}"
+fi
+
 # Progress bar (ASCII safe)
 if [ "$PCT" -ge 90 ]; then BAR_COLOR="$RED"
 elif [ "$PCT" -ge 70 ]; then BAR_COLOR="$YELLOW"
@@ -49,7 +57,7 @@ FILLED=$((PCT * BAR_WIDTH / 100))
 EMPTY=$((BAR_WIDTH - FILLED))
 BAR=$(printf "%${FILLED}s" | tr ' ' '#')$(printf "%${EMPTY}s" | tr ' ' '-')
 
-OUT="${CYAN}${DIR##*/}${RESET}"
+OUT="${CYAN}${DISPLAY_DIR}${RESET}"
 [ -n "$BRANCH" ] && OUT="${OUT} ${DIM}on${RESET} ${GREEN}${BRANCH}${RESET}"
 OUT="${OUT} ${BAR_COLOR}[${BAR}]${RESET} ${PCT}%"
 
