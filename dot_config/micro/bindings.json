@@ -3,8 +3,6 @@
     "CtrlUnderscore": "lua:comment.comment",
     "Ctrl-/": "lua:comment.comment",
     "Ctrl-k": "DeleteLine",
-    
-
     "Ctrl-d": "SpawnMultiCursor",
     "CtrlLeft": "WordLeft",
     "CtrlRight": "WordRight",
@@ -24,4 +22,5 @@
     "Ctrl-p": "CommandMode",
     "Ctrl-u": "DeleteLine",
     "Ctrl-w": "DeleteWordLeft",
+    "Ctrl-c": "CopyLine|Copy"
 }
