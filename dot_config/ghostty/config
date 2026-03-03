@@ -56,6 +56,8 @@ keybind = ctrl+shift+t=undo
 keybind = ctrl+backspace=text:\x17
 keybind = shift+home=text:\x1b[1;2H
 keybind = shift+end=text:\x1b[1;2F
+keybind = page_up=scroll_page_up
+keybind = page_down=scroll_page_down
 keybind = ctrl+n=new_window
 keybind = ctrl+c=copy_to_clipboard
 
