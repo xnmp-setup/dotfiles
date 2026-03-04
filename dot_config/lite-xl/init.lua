@@ -40,59 +40,59 @@ end
 -- VSCode-style keybindings (overwrite defaults)
 keymap.add({
   -- File operations
-  ["ctrl+shift+p"]    = "core:find-command",
-  ["ctrl+p"]          = "core:find-file",
-  ["ctrl+shift+n"]    = "core:new-window",
-  ["ctrl+n"]          = "core:new-doc",
-  ["ctrl+t"]          = "core:new-doc",
-  ["ctrl+shift+s"]    = "doc:save-as",
-  ["ctrl+s"]          = "doc:save",
-  ["ctrl+w"]          = "root:close",
-  ["ctrl+shift+w"]    = "core:quit",
-  ["ctrl+q"]          = "core:quit",
+  ["ctrl+shift+p"]     = "core:find-command",
+  ["ctrl+p"]           = "core:find-file",
+  ["ctrl+shift+n"]     = "core:new-window",
+  ["ctrl+n"]           = "core:new-doc",
+  ["ctrl+t"]           = "core:new-doc",
+  ["ctrl+shift+s"]     = "doc:save-as",
+  ["ctrl+s"]           = "doc:save",
+  ["ctrl+w"]           = "root:close",
+  ["ctrl+shift+w"]     = "core:quit",
+  ["ctrl+q"]           = "core:quit",
 
   -- Navigation
-  ["ctrl+g"]          = "doc:go-to-line",
-  ["ctrl+shift+e"]    = "treeview:toggle",
-  ["ctrl+b"]          = "treeview:toggle",
-  ["ctrl+`"]          = "core:open-log",
-  ["ctrl+tab"]        = "root:switch-to-next-tab",
-  ["ctrl+shift+tab"]  = "root:switch-to-previous-tab",
-  ["ctrl+pageup"]     = "root:switch-to-previous-tab",
-  ["ctrl+pagedown"]   = "root:switch-to-next-tab",
-  ["alt+1"]           = "root:switch-to-tab-1",
-  ["alt+2"]           = "root:switch-to-tab-2",
-  ["alt+3"]           = "root:switch-to-tab-3",
-  ["alt+4"]           = "root:switch-to-tab-4",
-  ["alt+5"]           = "root:switch-to-tab-5",
+  ["ctrl+g"]           = "doc:go-to-line",
+  ["ctrl+shift+e"]     = "treeview:toggle",
+  ["ctrl+b"]           = "treeview:toggle",
+  ["ctrl+`"]           = "core:open-log",
+  ["ctrl+tab"]         = "root:switch-to-next-tab",
+  ["ctrl+shift+tab"]   = "root:switch-to-previous-tab",
+  ["ctrl+pageup"]      = "root:switch-to-previous-tab",
+  ["ctrl+pagedown"]    = "root:switch-to-next-tab",
+  ["alt+1"]            = "root:switch-to-tab-1",
+  ["alt+2"]            = "root:switch-to-tab-2",
+  ["alt+3"]            = "root:switch-to-tab-3",
+  ["alt+4"]            = "root:switch-to-tab-4",
+  ["alt+5"]            = "root:switch-to-tab-5",
 
   -- Editing
-  ["ctrl+shift+k"]    = "doc:delete-lines",
-  ["ctrl+shift+d"]    = "doc:duplicate-lines",
-  ["alt+up"]          = "doc:move-lines-up",
-  ["alt+down"]        = "doc:move-lines-down",
-  ["ctrl+/"]          = "doc:toggle-line-comments",
-  ["ctrl+shift+a"]    = "doc:toggle-block-comments",
-  ["ctrl+d"]          = "doc:select-word",
-  ["ctrl+l"]          = "doc:select-lines",
+  ["ctrl+shift+k"]     = "doc:delete-lines",
+  ["ctrl+shift+d"]     = "doc:duplicate-lines",
+  ["alt+up"]           = "doc:move-lines-up",
+  ["alt+down"]         = "doc:move-lines-down",
+  ["ctrl+/"]           = "doc:toggle-line-comments",
+  ["ctrl+shift+a"]     = "doc:toggle-block-comments",
+  ["ctrl+d"]           = "doc:select-word",
+  ["ctrl+l"]           = "doc:select-lines",
   ["ctrl+shift+enter"] = "doc:newline-above",
-  ["ctrl+enter"]      = "doc:newline-below",
-  ["ctrl+]"]          = "doc:indent",
-  ["ctrl+["]          = "doc:unindent",
+  ["ctrl+enter"]       = "doc:newline-below",
+  ["ctrl+]"]           = "doc:indent",
+  ["ctrl+["]           = "doc:unindent",
 
   -- Search & replace
-  ["ctrl+h"]          = "find-replace:open",
-  ["ctrl+shift+h"]    = "find-replace:open",
-  ["ctrl+f"]          = "find-replace:open-find",
-  ["ctrl+shift+f"]    = "project-search:find",
+  ["ctrl+h"]           = "find-replace:open",
+  ["ctrl+shift+h"]     = "find-replace:open",
+  ["ctrl+f"]           = "find-replace:find",
+  ["ctrl+shift+f"]     = "project-search:find",
 
   -- Multi-cursor / selection
-  ["ctrl+shift+l"]    = "doc:select-word",
+  ["ctrl+shift+l"]     = "doc:select-word",
 
   -- View
-  ["ctrl+="]          = "scale:increase",
-  ["ctrl+-"]          = "scale:decrease",
-  ["ctrl+0"]          = "scale:reset",
+  ["ctrl+="]           = "scale:increase",
+  ["ctrl+-"]           = "scale:decrease",
+  ["ctrl+0"]           = "scale:reset",
 }, true)
 
 ------------------------------ Plugins ----------------------------------------
@@ -106,9 +106,11 @@ local DocView = require "core.docview"
 function DocView:get_gutter_width()
   return style.padding.x, style.padding.x
 end
+
 function DocView:draw_line_gutter()
   return self:get_line_height()
 end
+
 local original_close = command.map["root:close"].perform
 command.map["root:close"].perform = function(...)
   original_close(...)
