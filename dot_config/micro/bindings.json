@@ -22,5 +22,7 @@
     "Ctrl-p": "CommandMode",
     "Ctrl-u": "DeleteLine",
     "Ctrl-w": "DeleteWordLeft",
-    "Ctrl-c": "CopyLine|Copy"
+    "Ctrl-c": "CopyLine|Copy",
+    "PageUp": "CursorPageUp",
+    "PageDown": "CursorPageDown"
 }
