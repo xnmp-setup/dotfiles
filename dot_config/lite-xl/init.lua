@@ -14,7 +14,7 @@ core.reload_module("colors.rapture")
 
 ------------------------------ Fonts -----------------------------------------
 
-style.code_font = renderer.font.load(DATADIR .. "/fonts/JetBrainsMono-Regular.ttf", 16 * SCALE)
+style.code_font = renderer.font.load(DATADIR .. "/fonts/JetBrainsMono-Regular.ttf", 18 * SCALE)
 
 ------------------------------ Hide UI ---------------------------------------
 
@@ -98,6 +98,24 @@ keymap.add({
 ------------------------------ Plugins ----------------------------------------
 
 -- config.plugins.detectindent = false
+
+------------------------ Hide tab bar for single tab --------------------------
+
+local Node = require "core.node"
+local original_draw_tabs = Node.draw_tabs
+function Node:draw_tabs()
+  if #self.views == 1 then return end
+  original_draw_tabs(self)
+end
+
+local original_get_tab_rect = Node.get_tab_rect
+function Node:get_tab_rect(...)
+  local x, y, w, h = original_get_tab_rect(self, ...)
+  if #self.views == 1 then
+    h = 0
+  end
+  return x, y, w, h
+end
 
 ---------------------------- Miscellaneous ------------------------------------
 

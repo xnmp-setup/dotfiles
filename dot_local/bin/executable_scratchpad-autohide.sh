@@ -20,6 +20,15 @@ hide_if_visible() {
     addr=$(cat "$addr_file")
     [[ -z "$addr" ]] && return
 
+    # Check if the window still exists
+    local exists
+    exists=$(hyprctl clients -j 2>/dev/null | jq -e --arg a "$addr" 'any(.[]; .address == $a)' 2>/dev/null)
+    if [[ "$exists" != "true" ]]; then
+        rm -f "$addr_file"
+        hyprctl --quiet keyword decoration:dim_inactive false
+        return
+    fi
+
     local ws
     ws=$(hyprctl clients -j 2>/dev/null | jq -r --arg a "$addr" \
         '(.[] | select(.address == $a) | .workspace.name) // empty')
@@ -30,6 +39,21 @@ hide_if_visible() {
 }
 
 socat - "UNIX-CONNECT:${SOCKET}" | while IFS= read -r line; do
+    # Handle window close: clean up addr file and turn off dim
+    if [[ "$line" == "closewindow>>"* ]]; then
+        closed_addr="0x${line#closewindow>>}"
+        for name in "${NAMES[@]}"; do
+            addr_file="/tmp/scratchpad-${name}.addr"
+            [[ -f "$addr_file" ]] || continue
+            saved=$(cat "$addr_file")
+            if [[ "$saved" == "$closed_addr" ]]; then
+                rm -f "$addr_file"
+                hyprctl --quiet keyword decoration:dim_inactive false
+            fi
+        done
+        continue
+    fi
+
     [[ "$line" != "activewindow>>"* ]] && continue
 
     # Get the active window's address
