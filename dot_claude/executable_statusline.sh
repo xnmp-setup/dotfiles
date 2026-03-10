@@ -48,8 +48,8 @@ else
 fi
 
 # Progress bar (ASCII safe)
-if [ "$PCT" -ge 90 ]; then BAR_COLOR="$RED"
-elif [ "$PCT" -ge 70 ]; then BAR_COLOR="$YELLOW"
+if [ "$PCT" -ge 75 ]; then BAR_COLOR="$RED"
+elif [ "$PCT" -ge 50 ]; then BAR_COLOR="$YELLOW"
 else BAR_COLOR="$GREEN"; fi
 
 BAR_WIDTH=15

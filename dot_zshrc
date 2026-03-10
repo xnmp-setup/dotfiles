@@ -155,7 +155,7 @@ else
 fi
 
 export PAGER="$BAT"
-alias cat="$BAT --plain --tabs 0 --number --style=grid"
+alias cat="$BAT --plain --tabs 0 --style=grid"
 
 
 # Interactive search through file contents

@@ -10,6 +10,20 @@
 # Example:
 #   scratchpad-autohide.sh lite-xl ghostty-drop ytmusic chrome-drop
 
+# Re-exec detached if not already backgrounded
+if [[ -z "$_AUTOHIDE_DETACHED" ]]; then
+    _AUTOHIDE_DETACHED=1 exec setsid "$0" "$@" </dev/null &>/dev/null &
+    exit 0
+fi
+
+PIDFILE="/tmp/scratchpad-autohide.pid"
+if [[ -f "$PIDFILE" ]] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+    kill "$(cat "$PIDFILE")" 2>/dev/null
+    sleep 0.1
+fi
+echo $$ > "$PIDFILE"
+trap 'rm -f "$PIDFILE"' EXIT
+
 NAMES=("$@")
 SOCKET="${XDG_RUNTIME_DIR}/hypr/${HYPRLAND_INSTANCE_SIGNATURE}/.socket2.sock"
 
@@ -20,6 +34,15 @@ hide_if_visible() {
     addr=$(cat "$addr_file")
     [[ -z "$addr" ]] && return
 
+    # Check if the window still exists
+    local exists
+    exists=$(hyprctl clients -j 2>/dev/null | jq -e --arg a "$addr" 'any(.[]; .address == $a)' 2>/dev/null)
+    if [[ "$exists" != "true" ]]; then
+        rm -f "$addr_file"
+        hyprctl --quiet keyword decoration:dim_inactive false
+        return
+    fi
+
     local ws
     ws=$(hyprctl clients -j 2>/dev/null | jq -r --arg a "$addr" \
         '(.[] | select(.address == $a) | .workspace.name) // empty')
@@ -29,18 +52,36 @@ hide_if_visible() {
     fi
 }
 
-socat - "UNIX-CONNECT:${SOCKET}" | while IFS= read -r line; do
-    [[ "$line" != "activewindow>>"* ]] && continue
+while true; do
+    while IFS= read -r line; do
+        # Handle window close: clean up addr file and turn off dim
+        if [[ "$line" == "closewindow>>"* ]]; then
+            closed_addr="0x${line#closewindow>>}"
+            for name in "${NAMES[@]}"; do
+                addr_file="/tmp/scratchpad-${name}.addr"
+                [[ -f "$addr_file" ]] || continue
+                saved=$(cat "$addr_file")
+                if [[ "$saved" == "$closed_addr" ]]; then
+                    rm -f "$addr_file"
+                    hyprctl --quiet keyword decoration:dim_inactive false
+                fi
+            done
+            continue
+        fi
 
-    # Get the active window's address
-    active_addr=$(hyprctl activewindow -j 2>/dev/null | jq -r '.address // empty')
+        [[ "$line" != "activewindow>>"* ]] && continue
 
-    for name in "${NAMES[@]}"; do
-        addr_file="/tmp/scratchpad-${name}.addr"
-        [[ -f "$addr_file" ]] || continue
-        saved=$(cat "$addr_file")
-        # If the active window IS this scratchpad, skip hiding it
-        [[ "$active_addr" == "$saved" ]] && continue
-        hide_if_visible "$name"
-    done
+        # Get the active window's address
+        active_addr=$(hyprctl activewindow -j 2>/dev/null | jq -r '.address // empty')
+
+        for name in "${NAMES[@]}"; do
+            addr_file="/tmp/scratchpad-${name}.addr"
+            [[ -f "$addr_file" ]] || continue
+            saved=$(cat "$addr_file")
+            # If the active window IS this scratchpad, skip hiding it
+            [[ "$active_addr" == "$saved" ]] && continue
+            hide_if_visible "$name"
+        done
+    done < <(socat -u "UNIX-CONNECT:${SOCKET}" STDOUT)
+    sleep 1
 done
