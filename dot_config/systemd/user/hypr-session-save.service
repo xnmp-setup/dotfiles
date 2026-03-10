@@ -1,0 +1,12 @@
+[Unit]
+Description=Save Hyprland session on shutdown/logout
+PartOf=graphical-session.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/true
+ExecStop=%h/.local/bin/hypr-session-save.sh
+
+[Install]
+WantedBy=graphical-session.target
