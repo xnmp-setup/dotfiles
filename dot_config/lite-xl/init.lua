@@ -14,7 +14,12 @@ core.reload_module("colors.rapture")
 
 ------------------------------ Fonts -----------------------------------------
 
-style.code_font = renderer.font.load(DATADIR .. "/fonts/JetBrainsMono-Regular.ttf", 18 * SCALE)
+local font_opts = { antialiasing = "grayscale", hinting = "full" }
+style.font = renderer.font.load(DATADIR .. "/fonts/FiraSans-Regular.ttf", 15 * SCALE, font_opts)
+style.big_font = style.font:copy(46 * SCALE)
+style.icon_font = renderer.font.load(DATADIR .. "/fonts/icons.ttf", 16 * SCALE, font_opts)
+style.icon_big_font = style.icon_font:copy(23 * SCALE)
+style.code_font = renderer.font.load(DATADIR .. "/fonts/JetBrainsMono-Regular.ttf", 18 * SCALE, font_opts)
 
 ------------------------------ Hide UI ---------------------------------------
 
