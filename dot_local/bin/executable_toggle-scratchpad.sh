@@ -16,7 +16,7 @@
 #
 # Examples:
 #   toggle-scratchpad.sh lite-xl 1400 900 --class com.lite_xl.LiteXL lite-xl
-#   toggle-scratchpad.sh ghostty-drop 1600 1000 920 1440 ghostty --title=ghostty-drop
+#   toggle-scratchpad.sh ghostty-drop 1600 1000 --class com.mitchellh.ghostty 920 1440 ghostty
 #   toggle-scratchpad.sh chrome-drop 1800 1100 --class google-chrome --singleton google-chrome-stable --new-window
 
 NAME="$1"; W="$2"; H="$3"; shift 3
@@ -109,6 +109,11 @@ if [[ "$SINGLETON" == true ]]; then
     show_window "$addr"
 else
     dim_on
+    # Snapshot existing windows when matching by class (for apps with dynamic titles)
+    if [[ "$MATCH" != "$NAME" ]]; then
+        before=$(hyprctl clients -j 2>/dev/null | jq -c --arg c "$MATCH" \
+            '[.[] | select(.class == $c) | .address]')
+    fi
     if [[ -n "$TARGET_X" ]]; then
         hyprctl dispatch exec "[float;size ${W} ${H}] ${CMD}"
     else
@@ -118,11 +123,26 @@ else
     (
         for _ in {1..20}; do
             sleep 0.15
-            addr=$(hyprctl clients -j 2>/dev/null | jq -r --arg n "$MATCH" \
-                'first(.[] | select(.class == $n or .title == $n)) | .address // empty')
+            if [[ -n "$before" ]]; then
+                addr=$(hyprctl clients -j 2>/dev/null | jq -r --arg c "$MATCH" --argjson before "$before" \
+                    'first(.[] | select(.class == $c and (.address as $a | $before | index($a) | not))) | .address // empty')
+            else
+                addr=$(hyprctl clients -j 2>/dev/null | jq -r --arg n "$MATCH" \
+                    'first(.[] | select(.class == $n or .title == $n)) | .address // empty')
+            fi
             if [[ -n "$addr" ]]; then
                 save_addr "$addr"
-                [[ -n "$TARGET_X" ]] && hyprctl dispatch movewindowpixel "exact ${TARGET_X} ${TARGET_Y},address:${addr}"
+                # Ensure float/size/position (dispatch exec rules may not apply with single-instance apps)
+                if [[ -n "$before" ]]; then
+                    floating=$(hyprctl clients -j 2>/dev/null | jq -r --arg a "$addr" '.[] | select(.address == $a) | .floating')
+                    [[ "$floating" == "false" ]] && hyprctl --quiet dispatch togglefloating "address:$addr"
+                    hyprctl --quiet dispatch resizewindowpixel "exact ${W} ${H},address:${addr}"
+                fi
+                if [[ -n "$TARGET_X" ]]; then
+                    hyprctl dispatch movewindowpixel "exact ${TARGET_X} ${TARGET_Y},address:${addr}"
+                else
+                    hyprctl dispatch centerwindow
+                fi
                 break
             fi
         done
