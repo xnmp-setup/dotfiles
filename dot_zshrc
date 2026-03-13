@@ -185,7 +185,16 @@ fz() {
 fzf-file-widget() {
   local sel quoted
 
-  sel=$({ eval "$FZF_DEFAULT_COMMAND"; zoxide query -l 2>/dev/null } | awk '!seen[$0]++' | fz --multi) || { zle reset-prompt; return }
+  sel=$({ eval "$FZF_DEFAULT_COMMAND"; fd --type d --hidden --follow --exclude .git; zoxide query -l 2>/dev/null } | awk '!seen[$0]++' | fz --multi) || { zle reset-prompt; return }
+
+  # Single selection that's a directory → cd into it
+  if [[ $(echo "$sel" | wc -l) -eq 1 ]] && [[ -d "$sel" ]]; then
+    builtin cd -- "$sel"
+    zle -M "cd → $PWD"
+    zle reset-prompt
+    zle accept-line
+    return
+  fi
 
   quoted=()
   for f in ${(f)sel}; do
