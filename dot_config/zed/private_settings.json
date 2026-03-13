@@ -7,13 +7,14 @@
 // custom settings, run `zed: open default settings` from the
 // command palette (cmd-shift-p / ctrl-shift-p)
 {
+  "icon_theme": "Zed (Default)",
   "when_closing_with_no_tabs": "close_window",
   "ui_font_size": 16,
   "buffer_font_size": 15,
   "theme": {
-    "mode": "system",
+    "mode": "dark",
     "light": "One Light",
-    "dark": "One Dark",
+    "dark": "Horizon Dark"
   },
   "status_bar": {
     "experimental.show": false,
@@ -30,6 +31,7 @@
     "code_actions": false,
   },
   "title_bar": {
+    "show": "never",
     "show_branch_icon": false,
     "show_branch_name": false,
     "show_project_items": false,
