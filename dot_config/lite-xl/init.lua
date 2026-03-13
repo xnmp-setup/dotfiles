@@ -10,7 +10,7 @@ local command = require "core.command"
 
 ------------------------------ Themes ----------------------------------------
 
-core.reload_module("colors.rapture")
+core.reload_module("colors.cosmic-dusk")
 
 ------------------------------ Fonts -----------------------------------------
 
