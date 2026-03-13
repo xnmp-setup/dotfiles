@@ -113,6 +113,7 @@ source /usr/share/nvm/init-nvm.sh
 # bun
 export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
+export PATH="$HOME/go/bin:$PATH"
 export PATH=$PATH:/opt/homebrew/bin
 
 # >>> CBA zshrc >>>
@@ -140,13 +141,8 @@ alias cc-dsp='docker sandbox run claude . --dangerously-skip-permissions'
 [ -f ~/.zellig_rc.sh ] && source ~/.zellig_rc.sh
 alias m="micro"
 # Claude Code Sandbox Alias
-alias cc-box='docker run -it --rm \
-  -e IS_SANDBOX=1 \
-  -v "$(pwd):/home/claudeuser/app" \
-  -v "$HOME/.claude:/home/claudeuser/.claude" \
-  -v "$HOME/.claude.json:/home/claudeuser/.claude.json" \
-  -w /home/claudeuser/app \
-  my-claude-code'
+alias cc-box='~/Repos/claude-docker-base/run_cc-box.sh'
+alias cc-vagrant='~/Repos/claude-docker-base/run_cc-vagrant.sh'
 
 if command -v batcat &>/dev/null; then
   BAT=batcat
@@ -536,3 +532,11 @@ cd-tree() {
   fi
 }
 
+# OpenClaw Completion
+source "/home/chong/.openclaw/completions/openclaw.zsh"
+alias pbcopy='xsel --clipboard --input'
+alias pbpaste='xsel --clipboard --output'
+alias x='tauri-explorer'
+
+# Launch Zed detached from terminal
+zed() { command zed "$@" &>/dev/null & disown }
