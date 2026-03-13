@@ -185,7 +185,7 @@ fz() {
 fzf-file-widget() {
   local sel quoted
 
-  sel=$(eval "$FZF_DEFAULT_COMMAND" | fz --multi) || { zle reset-prompt; return }
+  sel=$({ eval "$FZF_DEFAULT_COMMAND"; zoxide query -l 2>/dev/null } | awk '!seen[$0]++' | fz --multi) || { zle reset-prompt; return }
 
   quoted=()
   for f in ${(f)sel}; do
