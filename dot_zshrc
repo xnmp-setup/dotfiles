@@ -546,6 +546,7 @@ source "/home/chong/.openclaw/completions/openclaw.zsh"
 alias pbcopy='xsel --clipboard --input'
 alias pbpaste='xsel --clipboard --output'
 alias x='tauri-explorer'
+set-theme() { bash ~/.local/share/chezmoi/scripts/set-theme.sh "$@"; }
 
 # Launch Zed detached from terminal
 zed() { command zed "$@" &>/dev/null & disown }
