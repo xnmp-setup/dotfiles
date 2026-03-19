@@ -8,13 +8,15 @@ local dropdownTerminal = require("dropdown_terminal")
 
 -- ---------- App cycling like your F-keys ----------
 hs.hotkey.bind({}, "F9", dropdownTerminal.toggle)
+hs.hotkey.bind({}, "F7", function() windowCycling.cycleOrRun("Google Chrome", "Google Chrome") end)
 hs.hotkey.bind({}, "F6", function() windowCycling.cycleOrRun("Google Chrome", "Google Chrome") end)
 hs.hotkey.bind({}, "F5", function() windowCycling.cycleOrRun("Arc", "Arc") end)
 hs.hotkey.bind({}, "F4", function() windowCycling.cycleOrRun("Obsidian", "Obsidian") end)
 hs.hotkey.bind({}, "F3", function() windowCycling.cycleOrRun("Code", "Visual Studio Code") end)
 
 hs.hotkey.bind({}, "F8", function() windowCycling.cycleOrRun("Marta", "Marta") end)
-hs.hotkey.bind({ "alt" }, "N", function() windowCycling.cycleOrRun("Lite XL", "Lite XL", "top") end)
+hs.hotkey.bind({}, "F10", function() windowCycling.cycleOrRun("Lite XL", "Lite XL", "hide") end)
+hs.hotkey.bind({ "alt" }, "n", function() windowCycling.cycleOrRun("Lite XL", "Lite XL", "hide") end)
 
 -- Chained hotkey: Alt+M then E for Marta
 -- helpers.bindSequence({"alt"}, {"M", "E"}, 0.5, function()
@@ -22,15 +24,15 @@ hs.hotkey.bind({ "alt" }, "N", function() windowCycling.cycleOrRun("Lite XL", "L
 -- end)
 
 
--- ---------- Window movement hotkeys ----------
--- hs.hotkey.bind({"cmd","ctrl"}, "Left", helpers.moveWindowLeft)
--- hs.hotkey.bind({"cmd", "ctrl"}, "Right", helpers.moveWindowRight)
+---------- Window movement hotkeys ----------
+hs.hotkey.bind({ "cmd", "ctrl" }, "Left", helpers.moveWindowLeft)
+hs.hotkey.bind({ "cmd", "ctrl" }, "Right", helpers.moveWindowRight)
 
--- ---------- Window resize hotkeys ----------
--- hs.hotkey.bind({"cmd", "ctrl"}, "-", helpers.shrinkWindow)
--- hs.hotkey.bind({"cmd", "ctrl"}, "=", helpers.growWindow)
+---------- Window resize hotkeys ----------
+hs.hotkey.bind({ "cmd", "ctrl" }, "-", helpers.shrinkWindow)
+hs.hotkey.bind({ "cmd", "ctrl" }, "=", helpers.growWindow)
 
--- hs.hotkey.bind({"cmd", "ctrl"}, "Up", helpers.toggleTopCenterMaximize)
+hs.hotkey.bind({ "cmd", "ctrl" }, "Up", helpers.toggleTopCenterMaximize)
 
 -- Store previous frames for unmaximize
 local unmaximizeSavedFrames = {}
@@ -76,13 +78,22 @@ local function toggleMaximize()
 end
 
 -- "Win+Home": maximize/restore toggle
--- hs.hotkey.bind({ "cmd", "ctrl" }, "Home", toggleMaximize)
--- hs.hotkey.bind({ "cmd", "ctrl" }, "O", toggleMaximize)
+hs.hotkey.bind({ "cmd", "ctrl" }, "Home", toggleMaximize)
+hs.hotkey.bind({ "cmd", "ctrl" }, "O", toggleMaximize)
 
 -- ---------- Desktop switching ----------
 
--- hs.hotkey.bind({ "cmd" }, "`", helpers.toggleDesktop)
+hs.hotkey.bind({ "cmd" }, "`", helpers.toggleDesktop)
 
 -- ---------- App quit ----------
 hs.hotkey.bind({ "alt" }, "F4", helpers.quitOrCloseApp)
 hs.hotkey.bind({ "cmd" }, "escape", helpers.quitOrCloseApp)
+
+-- ---------- Screenshot ----------
+-- Shift+Cmd+S: open the built-in Screenshot app (macOS)
+hs.hotkey.bind({ "shift", "cmd" }, "S", function()
+  local ok = hs.application.launchOrFocus("Screenshot")
+  if not ok then
+    hs.application.launchOrFocusByBundleID("com.apple.screenshot")
+  end
+end)
