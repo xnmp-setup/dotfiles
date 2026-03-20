@@ -23,8 +23,9 @@ if echo "$DESC" | grep -qiE '##\s*Screenshots'; then
 fi
 
 echo "Blocked: issue '$ISSUE_ID' has no screenshot specification." >&2
+echo "Any issue that results in a change to UI behaviour needs screenshots verifying the change." >&2
 echo "Add a '## Screenshots' section to the issue description with either:" >&2
-echo "  - List of required screenshots (e.g. '- sidebar collapsed state')" >&2
-echo "  - 'None required' with a reason" >&2
+echo "  - List of screenshots that verify the UI change (e.g. '- sidebar in collapsed state')" >&2
+echo "  - 'None required' with a reason (e.g. backend-only, no UI impact)" >&2
 echo "Screenshots must be saved to: screenshots/$ISSUE_ID/" >&2
 exit 2

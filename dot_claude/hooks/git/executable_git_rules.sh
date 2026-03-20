@@ -32,6 +32,7 @@ if echo "$CMD" | grep -qE 'git\s+merge\b'; then
     echo "Blocked: merges must use --no-ff to create a merge commit." >&2
     exit 2
   fi
+
 fi
 
 # Rule 4: Require descriptive merge commit message

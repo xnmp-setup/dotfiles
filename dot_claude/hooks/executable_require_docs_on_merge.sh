@@ -8,10 +8,12 @@ CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
 # Only trigger on git merge
 echo "$CMD" | grep -qE 'git\s+merge\b' || exit 0
 
-# Extract branch being merged
-MERGED=$(echo "$CMD" | sed -nE 's/.*git\s+merge\s+[^ ]*\s+([^ ]+).*/\1/p')
-[ -z "$MERGED" ] && MERGED=$(echo "$CMD" | grep -oE '[^ ]+$')
-[ -z "$MERGED" ] && exit 0
+# Extract branch: first arg after 'git merge' must not be a flag
+MERGED=$(echo "$CMD" | sed -nE 's/.*git\s+merge\s+([^ ]+).*/\1/p')
+if [ -z "$MERGED" ] || echo "$MERGED" | grep -qE '^-'; then
+  echo "Blocked: use 'git merge <branch> [flags]' — branch name must come first." >&2
+  exit 2
+fi
 
 # Only enforce on branches that should have docs
 case "$MERGED" in

@@ -9,8 +9,13 @@ CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
 # Only trigger on git merge
 echo "$CMD" | grep -qE 'git\s+merge\b' || exit 0
 
-# Extract the branch being merged (last non-flag argument before any --)
-MERGED=$(echo "$CMD" | sed -nE 's/.*git\s+merge\s+.*\s([^ -][^ ]*)\s*$/\1/p')
+PROJECT_ROOT=$(echo "$INPUT" | jq -r '.cwd // empty')
+[ -z "$PROJECT_ROOT" ] && exit 0
+
+# Extract the merged branch from the merge commit message (set by git)
+# Format: "Merge branch 'feat/foo'" or custom message
+# More robust: get the second parent of HEAD (the merged branch) and resolve its name
+MERGED=$(git -C "$PROJECT_ROOT" name-rev --name-only HEAD^2 2>/dev/null | sed 's|~.*||; s|remotes/origin/||')
 [ -z "$MERGED" ] && exit 0
 
 # Skip if not a real beads issue

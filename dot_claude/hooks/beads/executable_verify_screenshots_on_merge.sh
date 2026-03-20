@@ -12,10 +12,12 @@ echo "$CMD" | grep -qE 'git\s+merge\b' || exit 0
 PROJECT_ROOT=$(echo "$INPUT" | jq -r '.cwd // empty')
 [ -z "$PROJECT_ROOT" ] && exit 0
 
-# Extract branch being merged
-MERGED=$(echo "$CMD" | sed -nE 's/.*git\s+merge\s+[^ ]*\s+([^ ]+).*/\1/p')
-[ -z "$MERGED" ] && MERGED=$(echo "$CMD" | grep -oE '[^ ]+$')
-[ -z "$MERGED" ] && exit 0
+# Extract branch: first arg after 'git merge' must not be a flag
+MERGED=$(echo "$CMD" | sed -nE 's/.*git\s+merge\s+([^ ]+).*/\1/p')
+if [ -z "$MERGED" ] || echo "$MERGED" | grep -qE '^-'; then
+  echo "Blocked: use 'git merge <branch> [flags]' — branch name must come first." >&2
+  exit 2
+fi
 
 # Branch name = beads issue ID
 DESC=$(bd show "$MERGED" --json 2>/dev/null | jq -r '.[0].description // empty' 2>/dev/null)
