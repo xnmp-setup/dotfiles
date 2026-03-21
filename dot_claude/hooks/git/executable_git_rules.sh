@@ -27,7 +27,7 @@ if echo "$CMD" | grep -qE 'git\s+add\b'; then
 fi
 
 # Rule 2: Require merge commits (--no-ff)
-if echo "$CMD" | grep -qE 'git\s+merge\b'; then
+if echo "$CMD" | grep -qE 'git\s+merge\s'; then
   if ! echo "$CMD" | grep -qF -- '--no-ff'; then
     echo "Blocked: merges must use --no-ff to create a merge commit." >&2
     exit 2
@@ -36,7 +36,7 @@ if echo "$CMD" | grep -qE 'git\s+merge\b'; then
 fi
 
 # Rule 4: Require descriptive merge commit message
-if echo "$CMD" | grep -qE 'git\s+merge\b'; then
+if echo "$CMD" | grep -qE 'git\s+merge\s'; then
   if ! echo "$CMD" | grep -qE '\-m\s'; then
     echo "Blocked: merge must include a descriptive commit message via -m." >&2
     echo "Summarise what was achieved, not just 'Merge branch X'." >&2

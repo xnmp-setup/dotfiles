@@ -16,6 +16,13 @@ case "$TARGET" in
   main|dev) exit 0 ;;
 esac
 
+# Skip if the same command creates the issue with a matching ID and sets it in_progress
+# (handles chained commands like: bd create ... --id "feat/foo" && bd update feat/foo --status in_progress && git checkout -b feat/foo)
+if echo "$CMD" | grep -qE "bd\s+create\b.*--id\s+[\"']?${TARGET}[\"']?" && \
+   echo "$CMD" | grep -qE "bd\s+update\s+[\"']?${TARGET}[\"']?\s+--status\s+in_progress"; then
+  exit 0
+fi
+
 # Check issue via JSON
 JSON=$(bd show "$TARGET" --json 2>/dev/null) || JSON=""
 STATUS=$(echo "$JSON" | jq -r '.[0].status // empty' 2>/dev/null)

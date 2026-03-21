@@ -7,7 +7,7 @@ INPUT=$(cat)
 CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
 
 # Only trigger on git merge
-echo "$CMD" | grep -qE 'git\s+merge\b' || exit 0
+echo "$CMD" | grep -qE 'git\s+merge\s' || exit 0
 
 PROJECT_ROOT=$(echo "$INPUT" | jq -r '.cwd // empty')
 [ -z "$PROJECT_ROOT" ] && exit 0

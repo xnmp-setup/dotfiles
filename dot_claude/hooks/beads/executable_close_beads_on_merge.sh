@@ -7,7 +7,7 @@ INPUT=$(cat)
 CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
 
 # Only trigger on git merge
-echo "$CMD" | grep -qE 'git\s+merge\b' || exit 0
+echo "$CMD" | grep -qE 'git\s+merge\s' || exit 0
 
 PROJECT_ROOT=$(echo "$INPUT" | jq -r '.cwd // empty')
 [ -z "$PROJECT_ROOT" ] && exit 0
@@ -33,8 +33,13 @@ fi
 # Already closed
 [ "$STATUS" = "closed" ] && exit 0
 
-# Close with the merge commit message as the reason
-MERGE_MSG=$(git log -1 --format=%s 2>/dev/null)
-bd close "$MERGED" --reason "${MERGE_MSG:-Merged to $(git branch --show-current 2>/dev/null)}" 2>/dev/null
+# Close with a summary of all branch commit messages as the reason
+TARGET_BRANCH=$(git -C "$PROJECT_ROOT" branch --show-current 2>/dev/null)
+MERGE_BASE=$(git -C "$PROJECT_ROOT" merge-base HEAD^1 HEAD^2 2>/dev/null)
+if [ -n "$MERGE_BASE" ]; then
+  BRANCH_MSGS=$(git -C "$PROJECT_ROOT" log --format="- %s" "$MERGE_BASE"..HEAD^2 2>/dev/null)
+fi
+CLOSE_REASON="${BRANCH_MSGS:-Merged to ${TARGET_BRANCH:-dev}}"
+bd close "$MERGED" --reason "$CLOSE_REASON" 2>/dev/null
 echo "Auto-closed Beads issue '$MERGED'." >&2
 exit 0
