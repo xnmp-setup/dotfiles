@@ -35,9 +35,11 @@ RUST_COUNT=$(echo "$ALL_CHANGES" | grep -cE 'src-tauri/src/.*\.rs$' || true)
 SRC_TOTAL=$((SRC_COUNT + RUST_COUNT))
 [ "$SRC_TOTAL" -eq 0 ] && exit 0
 
-# Only enforce on the very first commit on this branch
-COMMITS_AHEAD=$(git rev-list --count dev..HEAD 2>/dev/null || echo "0")
-[ "$COMMITS_AHEAD" -gt 0 ] && exit 0
+# Only enforce on the first commit that includes source changes.
+# If prior commits on this branch already touched source files, the test
+# requirement was already enforced on that earlier commit — skip now.
+PRIOR_SRC=$(git diff --name-only dev...HEAD 2>/dev/null | grep -cE '(src/(lib|routes)/.*\.(ts|svelte)$|src-tauri/src/.*\.rs$)' || true)
+[ "$PRIOR_SRC" -gt 0 ] && exit 0
 
 # Non-blocking reminder: consider unit tests
 if [ "$UNIT_COUNT" -eq 0 ]; then
