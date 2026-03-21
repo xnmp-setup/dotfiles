@@ -7,6 +7,11 @@
           {
             "type": "command",
             "command": "~/.claude/hooks/git/block_force_push_delete.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/agent-browser/require_screenshot_read.sh",
+            "timeout": 10000
           }
         ]
       }

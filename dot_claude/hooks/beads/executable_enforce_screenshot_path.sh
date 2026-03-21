@@ -31,7 +31,12 @@ fi
 
 # Check path starts with expected directory
 case "$SAVE_PATH" in
-  screenshots/$BRANCH/*) exit 0 ;;
+  screenshots/$BRANCH/*)
+    # Auto-create the directory if it doesn't exist
+    SAVE_DIR=$(dirname "$PROJECT_ROOT/$SAVE_PATH")
+    [ ! -d "$SAVE_DIR" ] && mkdir -p "$SAVE_DIR"
+    exit 0
+    ;;
   *)
     echo "Blocked: screenshot path '$SAVE_PATH' is not in the expected directory." >&2
     echo "Save to: ${EXPECTED}<descriptive-name>.png" >&2
