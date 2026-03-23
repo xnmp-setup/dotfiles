@@ -1,11 +1,52 @@
 {
-  "enabledPlugins": {
-    "rust-analyzer-lsp@claude-plugins-official": true,
-    "ralph-loop@claude-plugins-official": true
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/git/block_force_push_delete.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/agent-browser/require_screenshot_read.sh",
+            "timeout": 10000
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/chezmoi_auto_add.sh"
+          }
+        ]
+      }
+    ]
   },
-  "skipDangerousModePermissionPrompt": true,
   "statusLine": {
     "type": "command",
-    "command": "~/.claude/statusline.sh"
-  }
+    "command": "~/.claude/scripts/statusline.sh"
+  },
+  "enabledPlugins": {
+    "rust-analyzer-lsp@claude-plugins-official": true,
+    "ralph-loop@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true,
+    "pyright-lsp@claude-plugins-official": true,
+    "svelte-lsp@local": true
+  },
+  "extraKnownMarketplaces": {
+    "local": {
+      "source": {
+        "source": "directory",
+        "path": "/home/chong/.claude/plugins/local"
+      }
+    }
+  },
+  "skipDangerousModePermissionPrompt": true,
+  "respectGitignore": false
 }

@@ -29,7 +29,7 @@ else
 fi
 # ---------------------------------------------------------------------------
 
-CYAN='\033[36m'; GREEN='\033[32m'; YELLOW='\033[33m'; RED='\033[31m'; DIM='\033[2m'; RESET='\033[0m'
+BOLD='\033[1m'; REV='\033[7m'; CYAN='\033[36m'; GREEN='\033[32m'; YELLOW='\033[33m'; RED='\033[31m'; DIM='\033[2m'; RESET='\033[0m'
 
 # Git branch (cached)
 CACHE_DIR="$DIR"
@@ -57,8 +57,8 @@ FILLED=$((PCT * BAR_WIDTH / 100))
 EMPTY=$((BAR_WIDTH - FILLED))
 BAR=$(printf "%${FILLED}s" | tr ' ' '#')$(printf "%${EMPTY}s" | tr ' ' '-')
 
-OUT="${CYAN}${DISPLAY_DIR}${RESET}"
-[ -n "$BRANCH" ] && OUT="${OUT} ${DIM}on${RESET} ${GREEN}${BRANCH}${RESET}"
+OUT="${BOLD}${REV}${CYAN} ${DIR##*/} ${RESET}"
+[ -n "$BRANCH" ] && OUT="${OUT} ${GREEN}${BRANCH}${RESET}"
 OUT="${OUT} ${BAR_COLOR}[${BAR}]${RESET} ${PCT}%"
 
 echo -e "$OUT"

@@ -14,9 +14,17 @@
 - Favor explicit types, clear naming, and minimal side effects.
 - Avoid unnecessary abstractions, frameworks, or indirection.
 
+## Testing
+- Unit tests must test behavior and contracts, not implementation details. Assert on outputs and observable side effects, not on how state is structured internally.
+- Avoid tautological tests that just restate the implementation. 
+- E2E tests must assert on actual feature outcomes, not just that a component rendered. Verify the user-visible result, not the intermediate state.
+- Consider adding unit tests whenever new business logic is introduced. 
+- Ensure that edge cases are covered - eg input is malformed, null, extremely large
+
 ## Workflow & Debugging
 - Do not change behavior without understanding the cause.
 - If the root cause of a bug is unclear, add targeted logging or instrumentation before modifying logic.
 - Make incremental, verifiable changes; prefer small diffs.
 - When unsure, ask clarifying questions rather than guessing.
+- Fix root causes, not symptoms. Avoid band-aid fixes like stopPropagation to mask duplicate handlers, setTimeout to paper over race conditions, or flags to suppress unwanted side effects. If a fix feels like a workaround, step back and address the underlying design issue.
 

@@ -1,0 +1,44 @@
+// Zed keymap — ported from VS Code keybindings
+[
+  {
+    "context": "Workspace",
+    "bindings": {
+      "alt-m j": "workspace::ToggleBottomDock",
+      "alt-m b": "workspace::ToggleLeftDock",
+      "alt-m r": "workspace::ToggleRightDock",
+      "alt-m t": "terminal_panel::Toggle",
+      "alt-m e": "project_panel::ToggleFocus",
+      "alt-m g": "git_panel::ToggleFocus",
+      "alt-m m": "editor::ToggleMinimap",
+      "ctrl-t": "workspace::NewFile",
+      "ctrl-alt-g": "git_graph::Open",
+      "ctrl-shift-o": "projects::OpenRecent",
+      "ctrl-,": "zed::OpenSettingsFile",
+      "ctrl-.": "zed::OpenKeymap",
+      "ctrl-r": "project_symbols::Toggle",
+      "alt-h": "workspace::ActivatePaneLeft",
+      "alt-l": "workspace::ActivatePaneRight",
+      "alt-k": "workspace::ActivatePaneUp",
+      "alt-j": "workspace::ActivatePaneDown"
+    }
+  },
+  {
+    "context": "Editor",
+    "bindings": {
+      "alt-\\": "editor::ToggleFold",
+      "ctrl-e": "editor::SelectLargerSyntaxNode",
+      "ctrl-left": "editor::MoveToPreviousSubwordStart",
+      "ctrl-right": "editor::MoveToNextSubwordEnd",
+      "ctrl-shift-left": "editor::SelectToPreviousSubwordStart",
+      "ctrl-shift-right": "editor::SelectToNextSubwordEnd"
+    }
+  },
+  {
+    "context": "Terminal",
+    "bindings": {
+      "ctrl-shift-t": "workspace::NewTerminal",
+      "ctrl-c": "terminal::Copy",
+      "ctrl-v": "terminal::Paste"
+    }
+  }
+]

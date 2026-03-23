@@ -106,6 +106,7 @@ source /usr/share/nvm/init-nvm.sh
 
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+[[ ! -f ~/.config/p10k-themes/current.zsh ]] || source ~/.config/p10k-themes/current.zsh
 
 # bun completions
 [ -s "/home/chong/.bun/_bun" ] && source "/home/chong/.bun/_bun"
@@ -113,7 +114,9 @@ source /usr/share/nvm/init-nvm.sh
 # bun
 export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
+export PATH="$HOME/go/bin:$PATH"
 export PATH=$PATH:/opt/homebrew/bin
+export CLAUDE_CODE_ENABLE_LSP=1
 
 # >>> CBA zshrc >>>
 [ -f ~/.cba_zshrc.sh ] && source ~/.cba_zshrc.sh
@@ -140,13 +143,8 @@ alias cc-dsp='docker sandbox run claude . --dangerously-skip-permissions'
 [ -f ~/.zellig_rc.sh ] && source ~/.zellig_rc.sh
 alias m="micro"
 # Claude Code Sandbox Alias
-alias cc-box='docker run -it --rm \
-  -e IS_SANDBOX=1 \
-  -v "$(pwd):/home/claudeuser/app" \
-  -v "$HOME/.claude:/home/claudeuser/.claude" \
-  -v "$HOME/.claude.json:/home/claudeuser/.claude.json" \
-  -w /home/claudeuser/app \
-  my-claude-code'
+alias cc-box='~/Repos/claude-docker-base/run_cc-box.sh'
+alias cc-vagrant='~/Repos/claude-docker-base/run_cc-vagrant.sh'
 
 if command -v batcat &>/dev/null; then
   BAT=batcat
@@ -189,7 +187,16 @@ fz() {
 fzf-file-widget() {
   local sel quoted
 
-  sel=$(eval "$FZF_DEFAULT_COMMAND" | fz --multi) || { zle reset-prompt; return }
+  sel=$({ eval "$FZF_DEFAULT_COMMAND"; fd --type d --hidden --follow --exclude .git; zoxide query -l 2>/dev/null } | awk '!seen[$0]++' | fz --multi) || { zle reset-prompt; return }
+
+  # Single selection that's a directory → cd into it
+  if [[ $(echo "$sel" | wc -l) -eq 1 ]] && [[ -d "$sel" ]]; then
+    builtin cd -- "$sel"
+    zle -M "cd → $PWD"
+    zle reset-prompt
+    zle accept-line
+    return
+  fi
 
   quoted=()
   for f in ${(f)sel}; do
@@ -536,3 +543,16 @@ cd-tree() {
   fi
 }
 
+# OpenClaw Completion
+source "/home/chong/.openclaw/completions/openclaw.zsh"
+alias pbcopy='xsel --clipboard --input'
+alias pbpaste='xsel --clipboard --output'
+alias x='tauri-explorer'
+set-theme() {
+  bash ~/.local/share/chezmoi/scripts/set-theme.sh "$@"
+  # Re-source p10k theme so prompt updates immediately
+  [[ -f ~/.config/p10k-themes/current.zsh ]] && source ~/.config/p10k-themes/current.zsh && p10k reload 2>/dev/null
+}
+
+# Launch Zed detached from terminal
+zed() { command zed "$@" &>/dev/null & disown }

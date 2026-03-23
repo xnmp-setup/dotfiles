@@ -27,6 +27,21 @@ if [[ "$floating" == "false" ]]; then
     hyprctl --batch "\
         keyword decoration:dim_inactive true;\
         keyword decoration:dim_strength 0.2"
+
+    # Background watcher: re-tile when the window loses focus
+    (
+        socat -u "UNIX-CONNECT:$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock" - \
+        | while IFS='>>' read -r event data; do
+            [[ "$event" != "activewindowv2" ]] && continue
+            # Focus moved to a different window — re-tile and restore dim
+            if [[ "0x$data" != "$addr" ]]; then
+                hyprctl dispatch settiled "address:${addr}"
+                hyprctl reload
+                break
+            fi
+        done
+    ) &
+    disown
 else
     # Was floating, now tiled — reload config to cleanly restore dim settings
     hyprctl reload
