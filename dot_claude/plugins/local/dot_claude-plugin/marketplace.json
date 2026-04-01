@@ -1,0 +1,41 @@
+{
+  "name": "local",
+  "description": "Local custom plugins",
+  "owner": {
+    "name": "chong",
+    "email": "local@local"
+  },
+  "plugins": [
+    {
+      "name": "svelte-lsp",
+      "description": "Svelte language server for code intelligence",
+      "version": "1.0.0",
+      "author": {
+        "name": "chong"
+      },
+      "source": "./svelte-lsp",
+      "category": "development",
+      "strict": false,
+      "lspServers": {
+        "svelte": {
+          "command": "svelteserver",
+          "args": ["--stdio"],
+          "extensionToLanguage": {
+            ".svelte": "svelte"
+          }
+        }
+      }
+    },
+    {
+      "name": "gh-issues",
+      "description": "GitHub Issues workflow enforcement hooks and session instructions",
+      "version": "1.0.0",
+      "author": {
+        "name": "chong"
+      },
+      "source": "./gh-issues",
+      "category": "workflow",
+      "strict": false
+    }
+  ]
+}

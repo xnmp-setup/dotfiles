@@ -1,0 +1,6 @@
+{
+  "name": "gh-issues",
+  "version": "1.0.0",
+  "description": "GitHub Issues integration — hooks for branch/merge workflow enforcement and session instructions",
+  "hooks": "./hooks/hooks.json"
+}
