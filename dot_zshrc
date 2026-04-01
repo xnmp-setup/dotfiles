@@ -316,8 +316,8 @@ function zj() {
 eval "$(zoxide init zsh)"
 
 # --- Editor Settings ---
-export EDITOR='lite-xl'
-export VISUAL='lite-xl'
+export EDITOR='micro'
+export VISUAL='micro'
 
 # --- Init Tools ---
 # source <(fzf --zsh)
@@ -548,6 +548,7 @@ source "/home/chong/.openclaw/completions/openclaw.zsh"
 alias pbcopy='xsel --clipboard --input'
 alias pbpaste='xsel --clipboard --output'
 alias x='tauri-explorer'
+alias gg='keifu'
 set-theme() {
   bash ~/.local/share/chezmoi/scripts/set-theme.sh "$@"
   # Re-source p10k theme so prompt updates immediately
