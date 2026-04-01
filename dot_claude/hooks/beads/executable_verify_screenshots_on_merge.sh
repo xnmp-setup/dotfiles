@@ -19,8 +19,12 @@ if [ -z "$MERGED" ] || echo "$MERGED" | grep -qE '^-'; then
   exit 2
 fi
 
-# Branch name = beads issue ID
-DESC=$(bd show "$MERGED" --json 2>/dev/null | jq -r '.[0].description // empty' 2>/dev/null)
+# Resolve branch name to beads issue ID
+source "$(dirname "$0")/helpers/resolve_issue.sh"
+ISSUE_ID=$(resolve_beads_issue "$MERGED")
+[ -z "$ISSUE_ID" ] && exit 0
+
+DESC=$(bd show "$ISSUE_ID" --json 2>/dev/null | jq -r '.[0].description // empty' 2>/dev/null)
 [ -z "$DESC" ] && exit 0
 
 # No screenshot section = skip
@@ -35,7 +39,7 @@ fi
 REQUIRED=$(echo "$DESC" | sed -n '/##\s*[Ss]creenshots/,/^##/p' | grep -cE '^\s*-\s' || true)
 [ "$REQUIRED" -eq 0 ] && exit 0
 
-# Check for actual screenshot files
+# Check for actual screenshot files — use branch name for directory (not issue ID)
 SCREENSHOT_DIR="$PROJECT_ROOT/screenshots/$MERGED"
 if [ ! -d "$SCREENSHOT_DIR" ]; then
   echo "Blocked: no screenshots found for '$MERGED'." >&2

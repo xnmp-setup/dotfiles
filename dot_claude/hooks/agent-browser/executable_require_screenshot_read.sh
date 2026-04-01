@@ -7,15 +7,42 @@
 INPUT=$(cat)
 CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
 
-# Only trigger on git commit
-echo "$CMD" | grep -qE 'git\s+commit' || exit 0
+# Only trigger on git commit (check parsed sub-commands, not raw text)
+if ! command -v shfmt &>/dev/null; then
+  export PATH="$HOME/.local/bin:$PATH"
+  source ~/.config/envman/PATH.env 2>/dev/null
+fi
+
+if command -v shfmt &>/dev/null; then
+  CMDS=$(echo "$CMD" | shfmt --to-json 2>/dev/null \
+    | jq -r '[.. | objects | select(.Type == "CallExpr") |
+        [.Args[] | [.. | objects | select(.Type == "Lit") | .Value] | join("")] | join(" ")
+      ] | .[]' 2>/dev/null)
+fi
+[ -z "$CMDS" ] && CMDS="$CMD"
+
+# Check if any sub-command is a git commit
+echo "$CMDS" | grep -qE '^git commit\b' || exit 0
 
 TRANSCRIPT=$(echo "$INPUT" | jq -r '.transcript_path // empty')
 [ -z "$TRANSCRIPT" ] || [ ! -f "$TRANSCRIPT" ] && exit 0
 
 # Get staged screenshot files
 STAGED=$(git diff --cached --name-only 2>/dev/null | grep -E 'screenshots/.*\.(png|jpg|webp)$')
-[ -z "$STAGED" ] && exit 0
+
+# Also detect screenshots being added in a compound command (git add ... && git commit ...)
+# These won't show in --cached yet since add hasn't executed
+ADD_SHOTS=""
+while IFS= read -r subcmd; do
+  if echo "$subcmd" | grep -qE '^git add\b'; then
+    # Extract file paths (non-flag args after "git add")
+    PATHS=$(echo "$subcmd" | tr ' ' '\n' | grep -vE '^(git|add|-|$)' | grep -E 'screenshots/.*\.(png|jpg|webp)$')
+    [ -n "$PATHS" ] && ADD_SHOTS=$(printf "%s\n%s" "$ADD_SHOTS" "$PATHS")
+  fi
+done <<< "$CMDS"
+
+ALL_SHOTS=$(printf "%s\n%s" "$STAGED" "$ADD_SHOTS" | sort -u | grep -v '^$')
+[ -z "$ALL_SHOTS" ] && exit 0
 
 # Extract all file paths passed to Read tool calls in this session
 READ_FILES=$(jq -r '
@@ -32,7 +59,7 @@ while IFS= read -r SHOT; do
   if ! echo "$READ_FILES" | grep -qF "$SHOT"; then
     MISSING="${MISSING}  ${SHOT}\n"
   fi
-done <<< "$STAGED"
+done <<< "$ALL_SHOTS"
 
 if [ -n "$MISSING" ]; then
   echo "Blocked: unverified screenshot(s) staged for commit. Read each to confirm it shows the feature." >&2

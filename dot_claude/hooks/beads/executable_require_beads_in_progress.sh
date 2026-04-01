@@ -10,9 +10,6 @@
 INPUT=$(cat)
 CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
 
-# Only trigger on new branch creation (anywhere in the command)
-echo "$CMD" | grep -qE 'git\s+(checkout\s+-b|switch\s+(-c|--create))' || exit 0
-
 # Check PATH for shfmt
 if ! command -v shfmt &>/dev/null; then
   export PATH="$HOME/.local/bin:$PATH"
@@ -34,13 +31,14 @@ fi
 # Fallback if shfmt unavailable or parsing failed
 [ -z "$CMDS" ] && CMDS="$CMD"
 
-# Extract branch name from the git checkout -b sub-command
+# Extract branch name from parsed sub-commands (not raw command text)
 TARGET=""
 while IFS= read -r subcmd; do
-  MATCH=$(echo "$subcmd" | sed -nE 's/.*(checkout -b|switch (-c|--create)) ([^ ]+).*/\3/p')
+  MATCH=$(echo "$subcmd" | sed -nE 's/^git\s+(checkout -b|switch (-c|--create)) ([^ ]+).*/\3/p')
   [ -n "$MATCH" ] && TARGET="$MATCH"
 done <<< "$CMDS"
 
+# No git checkout -b found in any actual sub-command — nothing to check
 [ -z "$TARGET" ] && exit 0
 
 # Skip protected branches
@@ -66,18 +64,20 @@ if [ "$HAS_CREATE" -eq 1 ] && [ "$HAS_IN_PROGRESS" -eq 1 ]; then
 fi
 
 # Otherwise check the issue exists and is in_progress
-JSON=$(bd show "$TARGET" --json 2>/dev/null) || JSON=""
-STATUS=$(echo "$JSON" | jq -r '.[0].status // empty' 2>/dev/null)
+source "$(dirname "$0")/helpers/resolve_issue.sh"
+ISSUE_ID=$(resolve_beads_issue "$TARGET")
 
-if [ -z "$STATUS" ]; then
+if [ -z "$ISSUE_ID" ]; then
   echo "Blocked: no Beads issue found for branch '$TARGET'. Create one first:" >&2
   echo "  bd create \"Description\" --id \"$TARGET\"" >&2
   exit 2
 fi
 
+STATUS=$(bd show "$ISSUE_ID" --json 2>/dev/null | jq -r '.[0].status // empty' 2>/dev/null)
+
 if [ "$STATUS" != "in_progress" ]; then
-  echo "Blocked: issue '$TARGET' is '$STATUS', not in_progress. Run:" >&2
-  echo "  bd update $TARGET --status in_progress" >&2
+  echo "Blocked: issue '$ISSUE_ID' is '$STATUS', not in_progress. Run:" >&2
+  echo "  bd update $ISSUE_ID --status in_progress" >&2
   exit 2
 fi
 
