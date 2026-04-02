@@ -176,24 +176,20 @@ fi
 
 # --- Zed ---
 config="$HOME/.config/zed/settings.json"
-if [[ -f "$config" ]] && command -v jq &>/dev/null; then
+if [[ -f "$config" ]]; then
   # Determine light/dark from slug
   zed_mode="dark"
   [[ "$slug" =~ light ]] && zed_mode="light"
 
-  tmp=$(mktemp)
-  if jq --arg t "$title" --arg m "$zed_mode" \
-    '.theme.mode = $m | .theme.light = $t | .theme.dark = $t' \
-    "$config" > "$tmp" 2>/dev/null; then
-    mv "$tmp" "$config"
+  if grep -q '"theme"' "$config"; then
+    sed -i '/\"theme\": {/,/}/ s|"mode": "[^"]*"|"mode": "'"$zed_mode"'"|' "$config"
+    sed -i '/\"theme\": {/,/}/ s|"light": "[^"]*"|"light": "'"$title"'"|' "$config"
+    sed -i '/\"theme\": {/,/}/ s|"dark": "[^"]*"|"dark": "'"$title"'"|' "$config"
     echo "  ✓ Zed → $title ($zed_mode)"
     ((changed++))
   else
-    rm -f "$tmp"
-    skipped+=("Zed (jq failed to update settings.json)")
+    skipped+=("Zed (no theme key in settings.json)")
   fi
-elif [[ -f "$config" ]]; then
-  skipped+=("Zed (jq not installed)")
 else
   skipped+=("Zed (no config at $config)")
 fi
