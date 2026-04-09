@@ -71,7 +71,8 @@ ZSH_THEME="powerlevel10k/powerlevel10k"
 plugins=(git zsh-autosuggestions zsh-claude-code-shell zsh-history-substring-search)
 
 source $ZSH/oh-my-zsh.sh
-source /usr/share/nvm/init-nvm.sh
+[[ -f /usr/share/nvm/init-nvm.sh ]] && source /usr/share/nvm/init-nvm.sh
+
 #secrets
 [[ -f ~/.secrets ]] && source ~/.secrets
 
@@ -286,25 +287,41 @@ bindkey '^Y' _fzf_copy_move
 
 
 zse() {
-    local checksum_before=$(md5sum ~/.zshrc | cut -d' ' -f1)
-    micro +9999999 ~/.zshrc
-    local checksum_after=$(md5sum ~/.zshrc | cut -d' ' -f1)
+    local chez_file="${HOME}/.local/share/chezmoi/dot_zshrc"
+    local target_file="${HOME}/.zshrc"
+
+    local checksum_before
+    checksum_before=$(md5sum "$chez_file" 2>/dev/null | cut -d' ' -f1)
+
+    micro +9999999 "$chez_file"
+
+    local checksum_after
+    checksum_after=$(md5sum "$chez_file" 2>/dev/null | cut -d' ' -f1)
 
     if [[ "$checksum_before" == "$checksum_after" ]]; then
-        echo "ℹ️  No changes made to .zshrc."
+        echo "ℹ️  No changes made to dot_zshrc."
         return
     fi
 
-    if zsh -n ~/.zshrc; then
-        # if command -v chezmoi &> /dev/null; then
-        #     chezmoi apply ~/.zshrc
-        # fi
-        source ~/.zshrc
-        echo "🚀 Updated and sourced .zshrc."
+    if zsh -n "$chez_file"; then
+        if command -v chezmoi >/dev/null 2>&1; then
+            chezmoi apply "$target_file" || {
+                echo "❌ chezmoi apply failed."
+                return 1
+            }
+        else
+            echo "❌ chezmoi is not installed."
+            return 1
+        fi
+
+        source "$target_file"
+        echo "🚀 Updated, applied, and sourced .zshrc."
     else
-        echo "❌ Syntax error detected in .zshrc! Not sourcing."
+        echo "❌ Syntax error detected in dot_zshrc! Not applying or sourcing."
+        return 1
     fi
 }
+
 alias zss="source ~/.zshrc && echo '✅ sourced .zshrc.'"
 alias zsr="exec $SHELL -l"
 
@@ -544,7 +561,7 @@ cd-tree() {
 }
 
 # OpenClaw Completion
-source "/home/chong/.openclaw/completions/openclaw.zsh"
+[[ -f /home/chong/.openclaw/completions/openclaw.zsh ]] && source /home/chong/.openclaw/completions/openclaw.zsh
 alias pbcopy='xsel --clipboard --input'
 alias pbpaste='xsel --clipboard --output'
 alias x='tauri-explorer'
@@ -556,4 +573,17 @@ set-theme() {
 }
 
 # Launch Zed detached from terminal
-zed() { command zed "$@" &>/dev/null & disown }
+# [[ "$(whence -w zed 2>/dev/null)" == zed:\ none ]] && zed() { command zed "$@" &>/dev/null & disown; }
+
+if (( ! $+functions[o] )) && ! alias o >/dev/null 2>&1; then
+  function o {
+    if command -v open >/dev/null 2>&1; then
+      command open "$@"
+    elif command -v xdg-open >/dev/null 2>&1; then
+      command xdg-open "$@"
+    else
+      echo "Neither open nor xdg-open is available." >&2
+      return 1
+    fi
+  }
+fi
