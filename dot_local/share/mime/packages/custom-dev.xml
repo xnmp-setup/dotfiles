@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+
+  <!-- TypeScript (higher priority than Qt Linguist .ts and video/mp2t) -->
+  <mime-type type="text/x-typescript">
+    <comment>TypeScript source</comment>
+    <sub-class-of type="text/javascript"/>
+    <glob pattern="*.ts" weight="80"/>
+    <glob pattern="*.tsx" weight="80"/>
+    <glob pattern="*.mts" weight="80"/>
+    <glob pattern="*.cts" weight="80"/>
+  </mime-type>
+
+  <!-- Svelte -->
+  <mime-type type="text/x-svelte">
+    <comment>Svelte component</comment>
+    <glob pattern="*.svelte" weight="80"/>
+  </mime-type>
+
+  <!-- Rust -->
+  <mime-type type="text/x-rust">
+    <comment>Rust source</comment>
+    <glob pattern="*.rs" weight="80"/>
+  </mime-type>
+
+</mime-info>

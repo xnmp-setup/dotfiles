@@ -28,7 +28,11 @@ keybind = ctrl+v=paste_from_clipboard
 keybind = shift+insert=paste_from_clipboard
 keybind = performable:ctrl+c=copy_to_clipboard
 keybind = ctrl+shift+p=toggle_command_palette
+keybind = ctrl+shift+left=unbind
+keybind = ctrl+shift+right=unbind
 keybind = alt+backspace=text:\x1b\x7f
+keybind = ctrl+enter=text:\x1b[13;5u
+keybind = shift+enter=text:\x1b[13;2u
 
 # Super (Win key) + key  -> send Alt+key (encoded as ESC + key)
 keybind = super+l=esc:l
@@ -40,6 +44,7 @@ keybind = super+'=esc:'
 keybind = alt+delete=text:\x1bd
 keybind = ctrl+delete=text:\x1bd
 keybind = ctrl+,=open_config
+# shift+enter and ctrl+enter use CSI u sequences (see above)
 keybind = ctrl+shift+k=text:\x0b
 
 # pane navigation

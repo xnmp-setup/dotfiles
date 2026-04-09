@@ -1,4 +1,5 @@
 {
+  "respectGitignore": false,
   "hooks": {
     "PreToolUse": [
       {
@@ -7,11 +8,6 @@
           {
             "type": "command",
             "command": "~/.claude/hooks/git/block_force_push_delete.sh"
-          },
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/agent-browser/require_screenshot_read.sh",
-            "timeout": 10000
           }
         ]
       }
@@ -34,10 +30,11 @@
   },
   "enabledPlugins": {
     "rust-analyzer-lsp@claude-plugins-official": true,
-    "ralph-loop@claude-plugins-official": true,
+    "ralph-loop@claude-plugins-official": false,
     "typescript-lsp@claude-plugins-official": true,
     "pyright-lsp@claude-plugins-official": true,
-    "svelte-lsp@local": true
+    "svelte-lsp@local": true,
+    "oh-my-claudecode@omc": false
   },
   "extraKnownMarketplaces": {
     "local": {
@@ -45,8 +42,13 @@
         "source": "directory",
         "path": "/home/chong/.claude/plugins/local"
       }
+    },
+    "omc": {
+      "source": {
+        "source": "git",
+        "url": "https://github.com/Yeachan-Heo/oh-my-claudecode.git"
+      }
     }
   },
-  "skipDangerousModePermissionPrompt": true,
-  "respectGitignore": false
+  "skipDangerousModePermissionPrompt": true
 }

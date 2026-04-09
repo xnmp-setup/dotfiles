@@ -18,15 +18,18 @@ PROJECT_ROOT=$(echo "$INPUT" | jq -r '.cwd // empty')
 MERGED=$(git -C "$PROJECT_ROOT" name-rev --name-only HEAD^2 2>/dev/null | sed 's|~.*||; s|remotes/origin/||')
 [ -z "$MERGED" ] && exit 0
 
-# Skip if not a real beads issue
-JSON=$(bd show "$MERGED" --json 2>/dev/null)
-if [ $? -ne 0 ] || [ -z "$JSON" ]; then
+# Resolve branch name to beads issue ID
+source "$(dirname "$0")/helpers/resolve_issue.sh"
+ISSUE_ID=$(resolve_beads_issue "$MERGED")
+if [ -z "$ISSUE_ID" ]; then
   echo "Warning: no Beads issue found for merged branch '$MERGED'. Consider creating one." >&2
   exit 0
 fi
+
+JSON=$(bd show "$ISSUE_ID" --json 2>/dev/null)
 STATUS=$(echo "$JSON" | jq -r '.[0].status // empty' 2>/dev/null)
 if [ -z "$STATUS" ]; then
-  echo "Warning: could not read status for Beads issue '$MERGED'." >&2
+  echo "Warning: could not read status for Beads issue '$ISSUE_ID'." >&2
   exit 0
 fi
 
@@ -40,6 +43,6 @@ if [ -n "$MERGE_BASE" ]; then
   BRANCH_MSGS=$(git -C "$PROJECT_ROOT" log --format="- %s" "$MERGE_BASE"..HEAD^2 2>/dev/null)
 fi
 CLOSE_REASON="${BRANCH_MSGS:-Merged to ${TARGET_BRANCH:-dev}}"
-bd close "$MERGED" --reason "$CLOSE_REASON" 2>/dev/null
-echo "Auto-closed Beads issue '$MERGED'." >&2
+bd close "$ISSUE_ID" --reason "$CLOSE_REASON" 2>/dev/null
+echo "Auto-closed Beads issue '$ISSUE_ID' (branch '$MERGED')." >&2
 exit 0
