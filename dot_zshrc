@@ -491,12 +491,21 @@ setopt append_history
 
 # Kill process on a specific port
 killon() {
-  if [ -z "$1" ]; then
-    echo "Please provide a port number (e.g., killon 1420)"
-  else
-    echo "Killing process on port $1..."
-    lsof -ti :$1 | xargs kill -9
+  if [ "$#" -eq 0 ]; then
+    echo "Please provide one or more port numbers (e.g., killon 1420 5173 8000)"
+    return 1
   fi
+
+  for port in "$@"; do
+    pids=$(lsof -ti :"$port")
+
+    if [ -z "$pids" ]; then
+      echo "Nothing running on port $port"
+    else
+      echo "Stopping process(es) on port $port..."
+      echo "$pids" | xargs kill
+    fi
+  done
 }
 
 fzf-cd() {
