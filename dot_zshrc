@@ -118,6 +118,9 @@ export PATH="$BUN_INSTALL/bin:$PATH"
 export PATH="$HOME/go/bin:$PATH"
 export PATH=$PATH:/opt/homebrew/bin
 export CLAUDE_CODE_ENABLE_LSP=1
+export PATH="$HOME/.npm-global/bin:$PATH"
+export PATH="$HOME/.cargo/bin:$PATH"
+
 
 # >>> CBA zshrc >>>
 [ -f ~/.cba_zshrc.sh ] && source ~/.cba_zshrc.sh
