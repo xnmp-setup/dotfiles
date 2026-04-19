@@ -14,7 +14,7 @@ hs.hotkey.bind({}, "F6", function() windowCycling.cycleOrRun("Google Chrome", "G
 hs.hotkey.bind({}, "F4", function() windowCycling.cycleOrRun("Obsidian", "Obsidian") end)
 hs.hotkey.bind({}, "F3", function() windowCycling.cycleOrRun("Code", "Visual Studio Code") end)
 
-hs.hotkey.bind({}, "F8", function() windowCycling.cycleOrRun("tauri-explorer", "tauri-explorer") end)
+hs.hotkey.bind({}, "F8", function() windowCycling.cycleOrRun("tauri-explorer", "tauri-explorer", "hide", false) end)
 hs.hotkey.bind({}, "F10", function() windowCycling.cycleOrRun("Lite XL", "Lite XL", "hide") end)
 hs.hotkey.bind({ "alt" }, "n", function() windowCycling.cycleOrRun("Lite XL", "Lite XL", "hide") end)
 

@@ -6,18 +6,17 @@ local autoHide = require("auto_hide")
 local lastMinimized = {}
 
 -- Like your AHK CycleOrRun(exe): if 1 window and active -> minimize, else focus; if many -> cycle
-function windowCycling.cycleOrRun(appName, launchName, hideBehaviour)
+function windowCycling.cycleOrRun(appName, launchName, hideBehaviour, hideOnLoseFocus)
   launchName = launchName or appName
   hideBehaviour = hideBehaviour or "minimize"
+  if hideOnLoseFocus == nil then hideOnLoseFocus = (hideBehaviour == "hide") end
 
   local app = hs.application.get(appName)
 
   -- if app not running, launch it
   if not app then
     hs.application.launchOrFocus(launchName)
-    -- Enable auto-hide if hideBehaviour is "hide"
-    if hideBehaviour == "hide" then
-      -- Wait for app to launch and then enable auto-hide
+    if hideOnLoseFocus then
       hs.timer.doAfter(0.5, function()
         autoHide.enable(appName)
       end)
@@ -29,8 +28,7 @@ function windowCycling.cycleOrRun(appName, launchName, hideBehaviour)
   if app:isHidden() then
     app:unhide()
     app:activate()
-    -- Enable auto-hide if hideBehaviour is "hide"
-    if hideBehaviour == "hide" then
+    if hideOnLoseFocus then
       autoHide.enable(appName)
     end
     return
@@ -119,8 +117,7 @@ function windowCycling.cycleOrRun(appName, launchName, hideBehaviour)
 
       winToRestore:unminimize()
       winToRestore:focus()
-      -- Enable auto-hide if hideBehaviour is "hide"
-      if hideBehaviour == "hide" then
+      if hideOnLoseFocus then
         autoHide.enable(appName)
       end
       return
@@ -128,8 +125,7 @@ function windowCycling.cycleOrRun(appName, launchName, hideBehaviour)
 
     -- No minimized windows found, just activate the app
     app:activate()
-    -- Enable auto-hide if hideBehaviour is "hide"
-    if hideBehaviour == "hide" then
+    if hideOnLoseFocus then
       autoHide.enable(appName)
     end
     return
@@ -143,15 +139,13 @@ function windowCycling.cycleOrRun(appName, launchName, hideBehaviour)
       lastMinimized[appName] = wins[1]:id()  -- Track last minimized
       if hideBehaviour == "hide" then
         app:hide()
-        -- Disable auto-hide when manually hiding
         autoHide.disable(appName)
       else
         wins[1]:minimize()
       end
     else
       wins[1]:focus()
-      -- Enable auto-hide if hideBehaviour is "hide"
-      if hideBehaviour == "hide" then
+      if hideOnLoseFocus then
         autoHide.enable(appName)
       end
     end
@@ -170,8 +164,7 @@ function windowCycling.cycleOrRun(appName, launchName, hideBehaviour)
   end
 
   wins[idx]:focus()
-  -- Enable auto-hide if hideBehaviour is "hide"
-  if hideBehaviour == "hide" then
+  if hideOnLoseFocus then
     autoHide.enable(appName)
   end
 end
