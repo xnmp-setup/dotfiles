@@ -1,2 +1,3 @@
 After making changes to Hammerspoon files, run `cp dot_hammerspoon/*.lua ~/.hammerspoon/` to copy changes to the hammerspoon folder. 
 Please note the CWD when doing this (omit the `dot_hammerspoon` if you're already in that folder obviously)
+Then run hs -c "hs.reload()" to reload
