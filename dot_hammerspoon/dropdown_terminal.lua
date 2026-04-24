@@ -4,6 +4,7 @@ local autoHide = require("auto_hide")
 
 local APP_NAME = "Ghostty"
 local terminalWindow = nil
+local initialFrameSet = false
 
 -- Get dropdown terminal frame (smaller top-center position)
 local function getDropdownFrame()
@@ -28,6 +29,7 @@ function dropdownTerminal.toggle()
 
   -- Launch if not running
   if not app then
+    initialFrameSet = false
     hs.application.launchOrFocus(APP_NAME)
     -- Wait for app to launch and then position it
     hs.timer.doAfter(0.5, function()
@@ -47,6 +49,7 @@ function dropdownTerminal.toggle()
   end
   if #wins == 0 then
     -- No windows, create one and wait for it
+    initialFrameSet = false
     app:activate()
     hs.timer.doAfter(0.3, function()
       hs.eventtap.keyStroke({"cmd"}, "n")
@@ -88,8 +91,11 @@ function dropdownTerminal.toggle()
       terminalWindow:unminimize()
     end
 
-    -- Position at dropdown location (do this after unhiding)
-    terminalWindow:setFrame(getDropdownFrame())
+    -- Position at dropdown location only on first show
+    if not initialFrameSet then
+      terminalWindow:setFrame(getDropdownFrame())
+      initialFrameSet = true
+    end
 
     -- Focus
     terminalWindow:focus()
