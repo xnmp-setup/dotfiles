@@ -10,16 +10,11 @@ local command = require "core.command"
 
 ------------------------------ Themes ----------------------------------------
 
-core.reload_module("colors.cosmic-dusk")
+core.reload_module("colors.desert")
 
 ------------------------------ Fonts -----------------------------------------
 
-local font_opts = { antialiasing = "grayscale", hinting = "full" }
-style.font = renderer.font.load(DATADIR .. "/fonts/FiraSans-Regular.ttf", 15 * SCALE, font_opts)
-style.big_font = style.font:copy(46 * SCALE)
-style.icon_font = renderer.font.load(DATADIR .. "/fonts/icons.ttf", 16 * SCALE, font_opts)
-style.icon_big_font = style.icon_font:copy(23 * SCALE)
-style.code_font = renderer.font.load(DATADIR .. "/fonts/JetBrainsMono-Regular.ttf", 18 * SCALE, font_opts)
+style.code_font = renderer.font.load(DATADIR .. "/fonts/JetBrainsMono-Regular.ttf", 18 * SCALE)
 
 ------------------------------ Hide UI ---------------------------------------
 
@@ -40,13 +35,40 @@ function StatusView:update()
   self.size.y = 0
 end
 
+--------------------------- Custom commands ----------------------------------
+
+local DocView = require "core.docview"
+
+command.add(function()
+  return core.active_view:is(DocView) and core.active_view.doc:has_selection()
+end, {
+  ["doc:cursors-to-line-ends"] = function()
+    local doc = core.active_view.doc
+    local seen = {}
+    local lines = {}
+    for _, l1, c1, l2, c2 in doc:get_selections(true, true) do
+      local end_line = (c2 == 1 and l2 > l1) and l2 - 1 or l2
+      for line = l1, end_line do
+        if not seen[line] then
+          seen[line] = true
+          lines[#lines + 1] = line
+        end
+      end
+    end
+    doc:set_selection(lines[1], #doc.lines[lines[1]])
+    for i = 2, #lines do
+      doc:add_selection(lines[i], #doc.lines[lines[i]])
+    end
+  end,
+})
+
 --------------------------- Key bindings -------------------------------------
 
 -- VSCode-style keybindings (overwrite defaults)
 keymap.add({
   -- File operations
   ["ctrl+shift+p"]     = "core:find-command",
-  ["ctrl+p"]           = "core:find-file",
+  -- ctrl+p handled by plugins/recent_files.lua
   ["ctrl+shift+n"]     = "core:new-window",
   ["ctrl+n"]           = "core:new-doc",
   ["ctrl+t"]           = "core:new-doc",
@@ -63,8 +85,6 @@ keymap.add({
   ["ctrl+`"]           = "core:open-log",
   ["ctrl+tab"]         = "root:switch-to-next-tab",
   ["ctrl+shift+tab"]   = "root:switch-to-previous-tab",
-  ["ctrl+pageup"]      = "root:switch-to-previous-tab",
-  ["ctrl+pagedown"]    = "root:switch-to-next-tab",
   ["alt+1"]            = "root:switch-to-tab-1",
   ["alt+2"]            = "root:switch-to-tab-2",
   ["alt+3"]            = "root:switch-to-tab-3",
@@ -78,8 +98,7 @@ keymap.add({
   ["alt+down"]         = "doc:move-lines-down",
   ["ctrl+/"]           = "doc:toggle-line-comments",
   ["ctrl+shift+a"]     = "doc:toggle-block-comments",
-  ["ctrl+d"]           = "doc:select-word",
-  ["ctrl+l"]           = "doc:select-lines",
+  ["ctrl+l"]           = "doc:cursors-to-line-ends",
   ["ctrl+shift+enter"] = "doc:newline-above",
   ["ctrl+enter"]       = "doc:newline-below",
   ["ctrl+]"]           = "doc:indent",
@@ -99,6 +118,12 @@ keymap.add({
   ["ctrl+-"]           = "scale:decrease",
   ["ctrl+0"]           = "scale:reset",
 }, true)
+
+-- Use add_direct to bypass macOS ctrl→cmd auto-conversion
+keymap.add_direct {
+  ["ctrl+pageup"]  = { "root:switch-to-previous-tab" },
+  ["ctrl+pagedown"] = { "root:switch-to-next-tab" },
+}
 
 ------------------------------ Plugins ----------------------------------------
 
@@ -122,10 +147,15 @@ function Node:get_tab_rect(...)
   return x, y, w, h
 end
 
+------------------------ Skip unsaved-changes nag -----------------------------
+
+function core.confirm_close_docs(docs, close_fn, ...)
+  close_fn(...)
+end
+
 ---------------------------- Miscellaneous ------------------------------------
 
 -- Hide line numbers
-local DocView = require "core.docview"
 function DocView:get_gutter_width()
   return style.padding.x, style.padding.x
 end
