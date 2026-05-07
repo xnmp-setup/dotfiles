@@ -183,7 +183,18 @@ end
 -- Logger for debugging
 local log = hs.logger.new('helpers', 'debug')
 
+-- Check if a window is tiled: flush to an edge and spans full screen height
+local function isTiledWindow(win)
+  if not win then return false end
+  local f = win:frame()
+  local sf = win:screen():frame()
+  local flushSide = helpers.getFlushSide(win)
+  local fullHeight = math.abs(f.h - sf.h) <= TOLERANCE and math.abs(f.y - sf.y) <= TOLERANCE
+  return flushSide ~= nil and fullHeight
+end
+
 -- Find complement window on the opposite side
+-- A complement must be: on the same screen, flush to the opposite edge, and full-height (tiled)
 function helpers.findComplementWindow(win)
   if not win then
     log.d("findComplementWindow: no window passed")
@@ -191,14 +202,19 @@ function helpers.findComplementWindow(win)
   end
 
   local screen = win:screen()
-  local side = helpers.getWindowSide(win)
-  local oppositeSide = (side == "left") and "right" or "left"
+  local flushSide = helpers.getFlushSide(win)
 
-  log.df("findComplementWindow: main window '%s' on %s side, looking for window on %s",
-    win:application():name(), side, oppositeSide)
+  if not flushSide then
+    log.d("findComplementWindow: main window not flush, no complement possible")
+    return nil
+  end
+
+  local oppositeSide = (flushSide == "left") and "right" or "left"
+
+  log.df("findComplementWindow: main window '%s' flush %s, looking for tiled window flush %s",
+    win:application():name(), flushSide, oppositeSide)
 
   local windows = hs.window.visibleWindows()
-  log.df("findComplementWindow: found %d visible windows", #windows)
 
   for _, w in ipairs(windows) do
     local wApp = w:application()
@@ -210,16 +226,22 @@ function helpers.findComplementWindow(win)
     elseif not wScreen or wScreen:id() ~= screen:id() then
       log.df("  - skipping '%s' (different screen)", wAppName)
     else
-      local wSide = helpers.getWindowSide(w)
-      log.df("  - checking '%s': side=%s", wAppName, wSide)
-      if wSide == oppositeSide then
-        log.df("  -> FOUND complement: '%s'", wAppName)
-        return w
+      local wFlush = helpers.getFlushSide(w)
+      if wFlush == oppositeSide and isTiledWindow(w) then
+        local sameApp = wApp and win:application() and wApp:pid() == win:application():pid()
+        local sf = screen:frame()
+        local combinedWidth = win:frame().w + w:frame().w
+        local fillsScreen = math.abs(combinedWidth - sf.w) <= TOLERANCE
+        log.df("  - checking '%s': flushSide=%s, sameApp=%s, combined=%.0f/%.0f, fills=%s",
+          wAppName, wFlush or "nil", tostring(sameApp), combinedWidth, sf.w, tostring(fillsScreen))
+        if fillsScreen and not sameApp then
+          log.df("  -> FOUND complement: '%s'", wAppName)
+          return w
+        end
       end
     end
   end
 
-  -- log.d("findComplementWindow: no complement found")
   return nil
 end
 
