@@ -129,6 +129,16 @@ keymap.add_direct {
 
 -- config.plugins.detectindent = false
 
+-- Patch emptyview to handle unbound commands without crashing
+local EmptyView = require "core.emptyview"
+local original_emptyview_draw = EmptyView.draw
+function EmptyView:draw()
+  local ok, err = pcall(original_emptyview_draw, self)
+  if not ok then
+    self:draw_background(style.background)
+  end
+end
+
 ------------------------ Hide tab bar for single tab --------------------------
 
 local Node = require "core.node"
@@ -154,15 +164,6 @@ function core.confirm_close_docs(docs, close_fn, ...)
 end
 
 ---------------------------- Miscellaneous ------------------------------------
-
--- Hide line numbers
-function DocView:get_gutter_width()
-  return style.padding.x, style.padding.x
-end
-
-function DocView:draw_line_gutter()
-  return self:get_line_height()
-end
 
 local original_close = command.map["root:close"].perform
 command.map["root:close"].perform = function(...)
