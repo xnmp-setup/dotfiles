@@ -40,7 +40,7 @@ ZSH_THEME="powerlevel10k/powerlevel10k"
 # DISABLE_LS_COLORS="true"
 
 # Uncomment the following line to disable auto-setting terminal title.
-# DISABLE_AUTO_TITLE="true"
+DISABLE_AUTO_TITLE="true"
 
 # Uncomment the following line to enable command auto-correction.
 # ENABLE_CORRECTION="true"
@@ -127,8 +127,12 @@ export PATH="$HOME/.cargo/bin:$PATH"
 # <<< CBA zshrc <<<
 
 export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
-[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+nvm() {
+  unfunction nvm
+  [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+  [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+  nvm "$@"
+}
 alias ai="NODE_NO_WARNINGS=1 ai"
     
 # --- Modern Tool Aliases ---
@@ -576,7 +580,7 @@ cd-tree() {
 [[ -f /home/chong/.openclaw/completions/openclaw.zsh ]] && source /home/chong/.openclaw/completions/openclaw.zsh
 alias pbcopy='xsel --clipboard --input'
 alias pbpaste='xsel --clipboard --output'
-alias x='tauri-explorer'
+alias x='tauri-explorer &>/dev/null & disown'
 alias gg='keifu'
 set-theme() {
   bash ~/.local/share/chezmoi/scripts/set-theme.sh "$@"
@@ -599,3 +603,5 @@ if (( ! $+functions[o] )) && ! alias o >/dev/null 2>&1; then
     fi
   }
 fi
+
+alias setpass='read -s "?Password: " PASSWORD; echo; export PASSWORD'
