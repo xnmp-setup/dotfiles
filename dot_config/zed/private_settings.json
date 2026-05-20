@@ -7,38 +7,66 @@
 // custom settings, run `zed: open default settings` from the
 // command palette (cmd-shift-p / ctrl-shift-p)
 {
-  "icon_theme": "Zed (Default)",
-  "when_closing_with_no_tabs": "close_window",
+  "outline_panel": {
+    "dock": "left"
+  },
+  "collaboration_panel": {
+    "dock": "left"
+  },
+  "git_panel": {
+    "dock": "left"
+  },
+  "project_panel": {
+    "dock": "left",
+    "hide_gitignore": true
+  },
+  "show_edit_predictions": true,
+  "remove_trailing_whitespace_on_save": false,
+  "soft_wrap": "none",
+  "tab_size": 4,
+  "tabs": {
+    "show_close_button": "hidden"
+  },
+  "autosave": "off",
+  "auto_update": false,
+  "multi_cursor_modifier": "cmd_or_ctrl",
+  "gutter": {
+    "line_numbers": true,
+    "folds": true
+  },
+  "cursor_blink": true,
+  "terminal": {
+    "font_family": "Hack Nerd Font"
+  },
+  "agent": {
+    "dock": "right",
+    "model_parameters": [],
+    "default_model": {
+      "provider": "openai",
+      "model": "anthropic/claude-3.7-sonnet"
+    },
+    "version": "2"
+  },
+  "vim_mode": false,
+  "base_keymap": "VSCode",
   "ui_font_size": 16,
-  "buffer_font_size": 15,
+  "buffer_font_size": 14.0,
   "theme": {
-    "mode": "dark",
-    "light": "One Light",
-    "dark": "Horizon Dark"
+    "mode": "system",
+    "light": "Atelier Lakeside Light",
+    "dark": "One Dark"
   },
-  "status_bar": {
-    "experimental.show": false,
-  },
-  "tab_bar": {
-    "show_nav_history_buttons": false,
-    "show_tab_bar_buttons": false,
-  },
-  "toolbar": {
-    "breadcrumbs": false,
-    "quick_actions": false,
-    "selections_menu": false,
-    "agent_review": false,
-    "code_actions": false,
-  },
-  "title_bar": {
-    "show": "never",
-    "show_branch_icon": false,
-    "show_branch_name": false,
-    "show_project_items": false,
-    "show_onboarding_banner": false,
-    "show_user_picture": false,
-    "show_user_menu": false,
-    "show_sign_in": false,
-    "show_menus": false,
-  },
+  "language_models": {
+    "openai": {
+      "version": "1",
+      "api_url": "https://openrouter.ai/api/v1",
+      "available_models": [
+        {
+          "display_name": "Claude 3.7 Sonnet",
+          "name": "anthropic/claude-3.7-sonnet",
+          "max_tokens": 131072
+        }
+      ]
+    }
+  }
 }

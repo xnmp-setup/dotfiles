@@ -4,6 +4,63 @@
             "complex_modifications": {
                 "rules": [
                     {
+                        "description": "Zed: option+m => option+m (bypass IME for alt-m chord)",
+                        "manipulators": [
+                            {
+                                "conditions": [
+                                    {
+                                        "bundle_identifiers": ["^dev\\.zed\\.Zed$"],
+                                        "type": "frontmost_application_if"
+                                    }
+                                ],
+                                "from": {
+                                    "key_code": "m",
+                                    "modifiers": {
+                                        "mandatory": ["option"],
+                                        "optional": ["any"]
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "key_code": "m",
+                                        "modifiers": ["left_option"]
+                                    }
+                                ],
+                                "type": "basic"
+                            }
+                        ]
+                    },
+                    {
+                        "description": "Marta only: ⌥T -> ⌘⌥O (terminal toggle)",
+                        "enabled": false,
+                        "manipulators": [
+                            {
+                                "conditions": [
+                                    {
+                                        "bundle_identifiers": [
+                                            "^org\\.yanex\\.marta$"
+                                        ],
+                                        "type": "frontmost_application_if"
+                                    }
+                                ],
+                                "from": {
+                                    "key_code": "t",
+                                    "modifiers": {
+                                        "mandatory": ["option"],
+                                        "optional": ["any"]
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "key_code": "o",
+                                        "modifiers": ["command", "option"]
+                                    }
+                                ],
+                                "type": "basic"
+                            }
+                        ]
+                    },
+                    {
                         "description": "ctrl+end/home => alt+end/home (terminals)",
                         "manipulators": [
                             {
@@ -286,7 +343,7 @@
                         ]
                     },
                     {
-                        "description": "ctrl+[/[]] => cmd+[/[]]",
+                        "description": "ctrl+[/[]-=] => cmd+[/[]-=]",
                         "manipulators": [
                             {
                                 "from": {
@@ -335,11 +392,37 @@
                                     }
                                 ],
                                 "type": "basic"
+                            },
+                            {
+                                "from": {
+                                    "key_code": "hyphen",
+                                    "modifiers": { "mandatory": ["control"] }
+                                },
+                                "to": [
+                                    {
+                                        "key_code": "hyphen",
+                                        "modifiers": ["command"]
+                                    }
+                                ],
+                                "type": "basic"
+                            },
+                            {
+                                "from": {
+                                    "key_code": "equal_sign",
+                                    "modifiers": { "mandatory": ["control"] }
+                                },
+                                "to": [
+                                    {
+                                        "key_code": "equal_sign",
+                                        "modifiers": ["command"]
+                                    }
+                                ],
+                                "type": "basic"
                             }
                         ]
                     },
                     {
-                        "description": "ctrl+[letter] => cmd+[letter] (exclude terminals)",
+                        "description": "ctrl+[letter] => cmd+[letter] (exclude terminals and vscode)",
                         "manipulators": [
                             {
                                 "conditions": [

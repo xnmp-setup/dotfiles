@@ -1,44 +1,164 @@
-// Zed keymap — ported from VS Code keybindings
+// Zed keymap
+//
+// For information on binding keys, see the Zed
+// documentation: https://zed.dev/docs/key-bindings
+//
+// To see the default key bindings run `zed: open default keymap`
+// from the command palette.
 [
-  {
-    "context": "Workspace",
-    "bindings": {
-      "alt-m j": "workspace::ToggleBottomDock",
-      "alt-m b": "workspace::ToggleLeftDock",
-      "alt-m r": "workspace::ToggleRightDock",
-      "alt-m t": "terminal_panel::Toggle",
-      "alt-m e": "project_panel::ToggleFocus",
-      "alt-m g": "git_panel::ToggleFocus",
-      "alt-m m": "editor::ToggleMinimap",
-      "ctrl-t": "workspace::NewFile",
-      "ctrl-alt-g": "git_graph::Open",
-      "ctrl-shift-o": "projects::OpenRecent",
-      "ctrl-,": "zed::OpenSettingsFile",
-      "ctrl-.": "zed::OpenKeymap",
-      "ctrl-r": "project_symbols::Toggle",
-      "alt-h": "workspace::ActivatePaneLeft",
-      "alt-l": "workspace::ActivatePaneRight",
-      "alt-k": "workspace::ActivatePaneUp",
-      "alt-j": "workspace::ActivatePaneDown"
+    // ── Workspace (fires when nothing more specific is focused) ─────────────
+    {
+        "context": "Workspace",
+        "bindings": {
+            // alt+m panel chords
+            "alt-m b": "workspace::ToggleLeftDock",
+            "alt-m e": "project_panel::ToggleFocus",
+            "alt-m g": "git_panel::ToggleFocus",
+            "alt-m j": "workspace::ToggleBottomDock",
+            "alt-m r": "workspace::ToggleRightDock",
+            "alt-m t": "workspace::ToggleBottomDock",
+            // "alt-m m": "editor::ToggleMinimap",
+
+            // pane navigation — mirrors VS Code cmd+l/'/p/;
+            "cmd-l": "workspace::ActivatePaneLeft",
+            "cmd-'": "workspace::ActivatePaneRight",
+            "cmd-p": "workspace::ActivatePaneUp",
+            "cmd-;": "workspace::ActivatePaneDown",
+
+            // tab cycling (ctrl+pageup/down — VS Code nextEditor/previousEditor)
+            "ctrl-pageup": "pane::ActivatePrevItem",
+            "ctrl-pagedown": "pane::ActivateNextItem",
+
+            // file ops
+            "ctrl-n": "workspace::NewFile",
+            "ctrl-t": "workspace::NewFile",
+            "ctrl-s": "workspace::Save",
+            "ctrl-w": ["pane::CloseActiveItem", { "close_pinned": false }],
+            "ctrl-shift-t": "pane::ReopenClosedItem",
+            "ctrl-shift-n": "workspace::NewWindow",
+
+            // search
+            "ctrl-p": "file_finder::Toggle",
+            "ctrl-shift-p": "command_palette::Toggle",
+            "ctrl-f": "buffer_search::Deploy",
+            "ctrl-shift-f": "pane::DeploySearch",
+            "ctrl-shift-h": ["pane::DeploySearch", { "replace_enabled": true }],
+
+            // settings
+            "ctrl-,": "zed::OpenSettings",
+            "ctrl-.": "zed::OpenKeymapFile",
+
+            // git
+            "ctrl-alt-g": "git_panel::ToggleFocus",
+
+            // misc
+            "alt-o": "workspace::ToggleZoom"
+        }
+    },
+
+    // ── Editor (fires when an editor buffer is focused) ─────────────────────
+    {
+        "context": "Editor",
+        "bindings": {
+            // alt+m panel chords — duplicated here because Karabiner bypasses
+            // macOS IME for option+m in Zed, making them work in editor context
+            "alt-m b": "workspace::ToggleLeftDock",
+            "alt-m e": "project_panel::ToggleFocus",
+            "alt-m g": "git_panel::ToggleFocus",
+            "alt-m j": "workspace::ToggleBottomDock",
+            "alt-m r": "workspace::ToggleRightDock",
+            "alt-m t": "workspace::ToggleBottomDock",
+
+            // buffer top/bottom — cmd+home/end (macOS style) and ctrl+home/end (Linux style)
+            "cmd-home": "editor::MoveToBeginning",
+            "cmd-end": "editor::MoveToEnd",
+            "cmd-shift-home": "editor::SelectToBeginning",
+            "cmd-shift-end": "editor::SelectToEnd",
+            "ctrl-home": "editor::MoveToBeginning",
+            "ctrl-end": "editor::MoveToEnd",
+            "ctrl-shift-home": "editor::SelectToBeginning",
+            "ctrl-shift-end": "editor::SelectToEnd",
+
+            // subword navigation — overrides Zed's default word (non-subword) movement
+            // and also overrides ctrl-shift-right/left which Zed maps to SelectLargerSyntaxNode
+            "alt-right": "editor::MoveToNextSubwordEnd",
+            "alt-left": "editor::MoveToPreviousSubwordStart",
+            "alt-shift-right": "editor::SelectToNextSubwordEnd",
+            "alt-shift-left": "editor::SelectToPreviousSubwordStart",
+            "ctrl-right": "editor::MoveToNextSubwordEnd",
+            "ctrl-left": "editor::MoveToPreviousSubwordStart",
+            "ctrl-shift-right": "editor::SelectToNextSubwordEnd",
+            "ctrl-shift-left": "editor::SelectToPreviousSubwordStart",
+
+            // word deletion — overrides Zed's default delete-to-line-start/end
+            "cmd-backspace": ["editor::DeleteToPreviousWordStart", { "ignore_newlines": false, "ignore_brackets": false }],
+            "cmd-delete": ["editor::DeleteToNextWordEnd", { "ignore_newlines": false, "ignore_brackets": false }],
+            "ctrl-backspace": ["editor::DeleteToPreviousWordStart", { "ignore_newlines": false, "ignore_brackets": false }],
+            "ctrl-delete": ["editor::DeleteToNextWordEnd", { "ignore_newlines": false, "ignore_brackets": false }],
+
+            // Linux-style ctrl shortcuts (Zed is excluded from Karabiner ctrl→cmd remap)
+            "ctrl-a": "editor::SelectAll",
+            "ctrl-c": "editor::Copy",
+            "ctrl-v": "editor::Paste",
+            "ctrl-x": "editor::Cut",
+            "ctrl-z": "editor::Undo",
+            "ctrl-y": "editor::Redo",
+            "ctrl-s": "workspace::Save",
+            "ctrl-w": ["pane::CloseActiveItem", { "close_pinned": false }],
+            "ctrl-n": "workspace::NewFile",
+            "ctrl-t": "workspace::NewFile",
+            "ctrl-d": ["editor::SelectNext", { "replace_newest": false }],
+            "ctrl-f": "buffer_search::Deploy",
+            "ctrl-h": "buffer_search::DeployReplace",
+            "ctrl-/": ["editor::ToggleComments", { "advance_downwards": false }],
+            "ctrl-p": "file_finder::Toggle",
+            "ctrl-shift-p": "command_palette::Toggle",
+            "ctrl-shift-f": "pane::DeploySearch",
+            "ctrl-shift-h": ["pane::DeploySearch", { "replace_enabled": true }],
+            "ctrl-shift-k": "editor::DeleteLine",
+            "ctrl-shift-l": "editor::SelectAllMatches",
+            "ctrl-shift-t": "pane::ReopenClosedItem",
+            "ctrl-shift-n": "workspace::NewWindow",
+
+            // tab cycling — overrides Zed's editor::LineUp/Down
+            "ctrl-pageup": "pane::ActivatePrevItem",
+            "ctrl-pagedown": "pane::ActivateNextItem",
+
+            // pane navigation — overrides editor::SelectLine (cmd-l), ToggleSelectedDiffHunks (cmd-'),
+            // file_finder::Toggle (cmd-p), ToggleLineNumbers (cmd-;)
+            "cmd-l": "workspace::ActivatePaneLeft",
+            "cmd-'": "workspace::ActivatePaneRight",
+            "cmd-p": "workspace::ActivatePaneUp",
+            "cmd-;": "workspace::ActivatePaneDown",
+
+            // expand selection — overrides buffer_search::UseSelectionForFind (cmd-e)
+            // and editor::MoveToEndOfLine (ctrl-e)
+            "cmd-e": "editor::SelectLargerSyntaxNode",
+            "ctrl-e": "editor::SelectLargerSyntaxNode",
+
+            // fold toggle — overrides editor::ShowEditPrediction (alt-\)
+            "alt-\\": "editor::ToggleFold",
+
+            // maximize editor
+            "alt-o": "workspace::ToggleZoom",
+
+            // inline AI assist — overrides editor::KillRingCut (ctrl-k)
+            "ctrl-k": "assistant::InlineAssist",
+
+            // navigate back / go to definition
+            "alt-ctrl-left": "pane::GoBack",
+            "alt-ctrl-right": "editor::GoToDefinition"
+        }
+    },
+
+    // ── Terminal ────────────────────────────────────────────────────────────
+    {
+        "context": "Terminal",
+        "bindings": {
+            "ctrl-shift-t": "workspace::NewTerminal",
+            "ctrl-shift-w": "pane::CloseActiveItem",
+            "ctrl-pageup": "pane::ActivatePrevItem",
+            "ctrl-pagedown": "pane::ActivateNextItem"
+        }
     }
-  },
-  {
-    "context": "Editor",
-    "bindings": {
-      "alt-\\": "editor::ToggleFold",
-      "ctrl-e": "editor::SelectLargerSyntaxNode",
-      "ctrl-left": "editor::MoveToPreviousSubwordStart",
-      "ctrl-right": "editor::MoveToNextSubwordEnd",
-      "ctrl-shift-left": "editor::SelectToPreviousSubwordStart",
-      "ctrl-shift-right": "editor::SelectToNextSubwordEnd"
-    }
-  },
-  {
-    "context": "Terminal",
-    "bindings": {
-      "ctrl-shift-t": "workspace::NewTerminal",
-      "ctrl-c": "terminal::Copy",
-      "ctrl-v": "terminal::Paste"
-    }
-  }
 ]
