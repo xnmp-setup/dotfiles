@@ -10,17 +10,16 @@ macos-window-buttons = hidden
 split-divider-color = #FFBF00
 font-thicken = true
 font-thicken-strength = 80
-theme = Rapture
+theme = Desert
 mouse-scroll-multiplier = 1
 
 window-padding-x = 10
 # window-padding-y = 10
 
-keybind = global:F10=toggle_quick_terminal
+# keybind = global:F10=toggle_quick_terminal
 keybind = ctrl+shift+,=reload_config
 keybind = ctrl+shift+c=write_screen_file:paste
 
-keybind = ctrl+t=new_tab
 keybind = ctrl+w=close_surface
 keybind = ctrl+page_up=previous_tab
 keybind = ctrl+page_down=next_tab
@@ -66,5 +65,7 @@ keybind = shift+page_down=scroll_page_down
 keybind = ctrl+n=new_window
 # keybind = ctrl+c=copy_to_clipboard
 
-font-size = 13
+font-size = 14
 
+# Normal/full zsh tab
+keybind = ctrl+t=new_tab

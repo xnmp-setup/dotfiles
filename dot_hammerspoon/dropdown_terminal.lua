@@ -5,6 +5,7 @@ local autoHide = require("auto_hide")
 local APP_NAME = "Ghostty"
 local terminalWindow = nil
 local initialFrameSet = false
+local autoHideEnabled = false
 
 -- Get dropdown terminal frame (smaller top-center position)
 local function getDropdownFrame()
@@ -75,7 +76,7 @@ function dropdownTerminal.toggle()
   if isVisible and isFocused then
     -- Hide the terminal
     app:hide()
-    autoHide.disable(APP_NAME)
+    if autoHideEnabled then autoHide.disable(APP_NAME) end
   else
     -- Show the terminal
     -- Move to current space if not already there
@@ -101,8 +102,12 @@ function dropdownTerminal.toggle()
     terminalWindow:focus()
 
     -- Enable auto-hide on focus loss
-    autoHide.enable(APP_NAME)
+    if autoHideEnabled then autoHide.enable(APP_NAME) end
   end
+end
+
+function dropdownTerminal.setAutoHide(enabled)
+  autoHideEnabled = enabled
 end
 
 return dropdownTerminal
