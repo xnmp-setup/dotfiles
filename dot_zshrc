@@ -337,7 +337,11 @@ function zj() {
     zellij attach $(zellij list-sessions | fzf) || zellij
 }
 
-eval "$(zoxide init zsh)"
+_zoxide_cache="${XDG_CACHE_HOME:-$HOME/.cache}/zoxide-init.zsh"
+if [[ ! -f "$_zoxide_cache" || "$(command -v zoxide)" -nt "$_zoxide_cache" ]]; then
+  zoxide init zsh >| "$_zoxide_cache"
+fi
+source "$_zoxide_cache"
 
 # --- Editor Settings ---
 export EDITOR='micro'
@@ -486,7 +490,11 @@ alias copy=pbcopy
 
 [[ -f "$HOME/.local/bin/env" ]] && . "$HOME/.local/bin/env"
 [[ -x "$HOME/.atuin/bin/atuin" ]] && export PATH="$HOME/.atuin/bin:$PATH"
-eval "$(atuin init zsh --disable-up-arrow)"
+_atuin_cache="${XDG_CACHE_HOME:-$HOME/.cache}/atuin-init.zsh"
+if [[ ! -f "$_atuin_cache" || "$HOME/.atuin/bin/atuin" -nt "$_atuin_cache" ]]; then
+  "$HOME/.atuin/bin/atuin" init zsh --disable-up-arrow >| "$_atuin_cache"
+fi
+source "$_atuin_cache"
 
 # Disable sharing history between sessions
 unsetopt share_history
