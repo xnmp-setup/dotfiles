@@ -5,127 +5,152 @@ if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]
   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
 fi
 
+# --- History ---
+HISTFILE="$HOME/.zsh_history"
+HISTSIZE=50000
+SAVEHIST=10000
+setopt extended_history
+setopt hist_expire_dups_first
+setopt hist_ignore_dups
+setopt hist_ignore_space
+setopt hist_verify
+unsetopt share_history
+unsetopt inc_append_history
+unsetopt inc_append_history_time
+setopt append_history
 
-# If you come from bash you might have to change your $PATH.
-# export PATH=$HOME/bin:$HOME/.local/bin:/usr/local/bin:$PATH
+# --- Directory navigation ---
+setopt auto_cd
+setopt auto_pushd
+setopt pushd_ignore_dups
+setopt pushdminus
+alias -g ...='../..'
+alias -g ....='../../..'
+alias -g .....='../../../..'
+alias -g ......='../../../../..'
+alias -- -='cd -'
+alias 1='cd -1'
+alias 2='cd -2'
+alias 3='cd -3'
+alias 4='cd -4'
+alias 5='cd -5'
+alias 6='cd -6'
+alias 7='cd -7'
+alias 8='cd -8'
+alias 9='cd -9'
+alias md='mkdir -p'
+alias rd=rmdir
 
-# Path to your Oh My Zsh installation.
-export ZSH="$HOME/.oh-my-zsh"
+# --- Shell options ---
+setopt multios
+setopt long_list_jobs
+setopt interactivecomments
 
-# Set name of the theme to load --- if set to "random", it will
-# load a random theme each time Oh My Zsh is loaded, in which case,
-# to know which specific one was loaded, run: echo $RANDOM_THEME
-# See https://github.com/ohmyzsh/ohmyzsh/wiki/Themes
-ZSH_THEME="powerlevel10k/powerlevel10k"
+# --- Colours ---
+autoload -U colors && colors
+setopt prompt_subst
+if command -v dircolors >/dev/null; then
+  eval "$(dircolors -b)"
+elif command -v gdircolors >/dev/null; then
+  eval "$(gdircolors -b)"
+fi
 
-# Uncomment the following line to use case-sensitive completion.
-# CASE_SENSITIVE="true"
-
-# Uncomment the following line to use hyphen-insensitive completion.
-# Case-sensitive completion must be off. _ and - will be interchangeable.
-# HYPHEN_INSENSITIVE="true"
-
-# Uncomment one of the following lines to change the auto-update behavior
-# zstyle ':omz:update' mode disabled  # disable automatic updates
-# zstyle ':omz:update' mode auto      # update automatically without asking
-# zstyle ':omz:update' mode reminder  # just remind me to update when it's time
-
-# Uncomment the following line to change how often to auto-update (in days).
-# zstyle ':omz:update' frequency 13
-
-# Uncomment the following line if pasting URLs and other text is messed up.
-# DISABLE_MAGIC_FUNCTIONS="true"
-
-# Uncomment the following line to disable colors in ls.
-# DISABLE_LS_COLORS="true"
-
-# Uncomment the following line to disable auto-setting terminal title.
-DISABLE_AUTO_TITLE="true"
-
-# Uncomment the following line to enable command auto-correction.
-# ENABLE_CORRECTION="true"
-
-# Uncomment the following line to display red dots whilst waiting for completion.
-# You can also set it to another string to have that shown instead of the default red dots.
-# e.g. COMPLETION_WAITING_DOTS="%F{yellow}waiting...%f"
-# Caution: this setting can cause issues with multiline prompts in zsh < 5.7.1 (see #5765)
-# COMPLETION_WAITING_DOTS="true"
-
-# Uncomment the following line if you want to disable marking untracked files
-# under VCS as dirty. This makes repository status check for large repositories
-# much, much faster.
-# DISABLE_UNTRACKED_FILES_DIRTY="true"
-
-# Uncomment the following line if you want to change the command execution time
-# stamp shown in the history command output.
-# You can set one of the optional three formats:
-# "mm/dd/yyyy"|"dd.mm.yyyy"|"yyyy-mm-dd"
-# or set a custom format using the strftime function format specifications,
-# see 'man strftime' for details.
-# HIST_STAMPS="mm/dd/yyyy"
-
-# Which plugins would you like to load?
-# Standard plugins can be found in $ZSH/plugins/
-# Custom plugins may be added to $ZSH_CUSTOM/plugins/
-# Add wisely, as too many plugins slow down shell startup.
-plugins=(git zsh-autosuggestions zsh-claude-code-shell zsh-history-substring-search)
-
-source $ZSH/oh-my-zsh.sh
-[[ -f /usr/share/nvm/init-nvm.sh ]] && source /usr/share/nvm/init-nvm.sh
-
-#secrets
-[[ -f ~/.secrets ]] && source ~/.secrets
-
-# User configuration
-
-# export MANPATH="/usr/local/man:$MANPATH"
-
-# You may need to manually set your language environment
-# export LANG=en_US.UTF-8
-
-# Preferred editor for local and remote sessions
-# if [[ -n $SSH_CONNECTION ]]; then
-#   export EDITOR='vim'
-# else
-#   export EDITOR='nvim'
-# fi
-
-# Compilation flags
-# export ARCHFLAGS="-arch $(uname -m)"
-
-# Set personal aliases, overriding those provided by Oh My Zsh libs,
-# plugins, and themes. Aliases can be placed here, though Oh My Zsh
-# users are encouraged to define aliases within a top-level file in
-# the $ZSH_CUSTOM folder, with .zsh extension. Examples:
-# - $ZSH_CUSTOM/aliases.zsh
-# - $ZSH_CUSTOM/macos.zsh
-# For a full list of active aliases, run `alias`.
-#
-# Example aliases
-# alias zshconfig="mate ~/.zshrc"
-# alias ohmyzsh="mate ~/.oh-my-zsh"
-
-# To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
-[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
-[[ ! -f ~/.config/p10k-themes/current.zsh ]] || source ~/.config/p10k-themes/current.zsh
-
-# bun completions
-[ -s "/home/chong/.bun/_bun" ] && source "/home/chong/.bun/_bun"
-
-# bun
+# --- PATH ---
 export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
 export PATH="$HOME/go/bin:$PATH"
-export PATH=$PATH:/opt/homebrew/bin
-export CLAUDE_CODE_ENABLE_LSP=1
+export PATH="$PATH:/opt/homebrew/bin"
 export PATH="$HOME/.npm-global/bin:$PATH"
 export PATH="$HOME/.cargo/bin:$PATH"
+export CLAUDE_CODE_ENABLE_LSP=1
+[[ -x "$HOME/.atuin/bin/atuin" ]] && export PATH="$HOME/.atuin/bin:$PATH"
 
+# --- fpath (must be before compinit) ---
+fpath=(
+  /opt/homebrew/share/zsh/site-functions
+  ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions
+  ~/.oh-my-zsh/custom/plugins/zsh-history-substring-search
+  ~/.oh-my-zsh/custom/plugins/zsh-claude-code-shell
+  ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting
+  $fpath
+)
 
-# >>> CBA zshrc >>>
+# --- Completion ---
+zmodload -i zsh/complist
+WORDCHARS=''
+unsetopt menu_complete
+setopt auto_menu
+setopt complete_in_word
+setopt always_to_end
+zstyle ':completion:*:*:*:*:*' menu select
+zstyle ':completion:*' matcher-list 'm:{[:lower:][:upper:]}={[:upper:][:lower:]}' 'r:|=*' 'l:|=* r:|=*'
+zstyle ':completion:*' special-dirs true
+zstyle ':completion:*' list-colors "${(s.:.)LS_COLORS}"
+zstyle ':completion:*:*:kill:*:processes' list-colors '=(#b) #([0-9]#) ([0-9a-z-]#)*=01;34=0=01'
+zstyle ':completion:*:*:*:*:processes' command "ps -u $USER -o pid,user,comm -w -w"
+zstyle ':completion:*' use-cache yes
+zstyle ':completion:*' cache-path "${XDG_CACHE_HOME:-$HOME/.cache}/zcompcache"
+
+autoload -Uz compinit
+_zcompdump="${XDG_CACHE_HOME:-$HOME/.cache}/zcompdump"
+if [[ -n "$_zcompdump"(#qN.mh+24) ]]; then
+  compinit -d "$_zcompdump"
+else
+  compinit -C -d "$_zcompdump"
+fi
+unset _zcompdump
+
+autoload -U +X bashcompinit && bashcompinit
+
+# --- Key bindings ---
+bindkey -e
+if (( ${+terminfo[smkx]} )) && (( ${+terminfo[rmkx]} )); then
+  function zle-line-init()   { echoti smkx }
+  function zle-line-finish() { echoti rmkx }
+  zle -N zle-line-init
+  zle -N zle-line-finish
+fi
+[[ -n "${terminfo[kpp]}"   ]] && bindkey "${terminfo[kpp]}"   up-line-or-history
+[[ -n "${terminfo[knp]}"   ]] && bindkey "${terminfo[knp]}"   down-line-or-history
+[[ -n "${terminfo[khome]}" ]] && bindkey "${terminfo[khome]}" beginning-of-line
+[[ -n "${terminfo[kend]}"  ]] && bindkey "${terminfo[kend]}"  end-of-line
+[[ -n "${terminfo[kcbt]}"  ]] && bindkey "${terminfo[kcbt]}"  reverse-menu-complete
+[[ -n "${terminfo[kdch1]}" ]] && bindkey "${terminfo[kdch1]}" delete-char
+bindkey '^?' backward-delete-char
+bindkey '^[[3;5~' kill-word
+bindkey '^[[1;5C' forward-word
+bindkey '^[[1;5D' backward-word
+bindkey '^r' history-incremental-search-backward
+bindkey ' ' magic-space
+bindkey '^[[H' beginning-of-line
+bindkey '^[[F' end-of-line
+autoload -U edit-command-line
+zle -N edit-command-line
+bindkey '\C-x\C-e' edit-command-line
+bindkey '^[m' copy-prev-shell-word
+
+# --- ZLE magic ---
+autoload -Uz bracketed-paste-magic; zle -N bracketed-paste bracketed-paste-magic
+autoload -Uz url-quote-magic; zle -N self-insert url-quote-magic
+
+# --- Plugins ---
+source ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
+source ~/.oh-my-zsh/custom/plugins/zsh-history-substring-search/zsh-history-substring-search.zsh
+source ~/.oh-my-zsh/custom/plugins/zsh-claude-code-shell/zsh-claude-code-shell.plugin.zsh
+source ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+
+# --- Theme ---
+source ~/.oh-my-zsh/custom/themes/powerlevel10k/powerlevel10k.zsh-theme
+[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+[[ ! -f ~/.config/p10k-themes/current.zsh ]] || source ~/.config/p10k-themes/current.zsh
+
+# --- Secrets ---
+[[ -f ~/.secrets ]] && source ~/.secrets
+
+# --- CBA ---
 [ -f ~/.cba_zshrc.sh ] && source ~/.cba_zshrc.sh
-# <<< CBA zshrc <<<
 
+# --- NVM (lazy) ---
 export NVM_DIR="$HOME/.nvm"
 nvm() {
   unfunction nvm
@@ -133,38 +158,55 @@ nvm() {
   [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
   nvm "$@"
 }
+
+# --- Aliases ---
 alias ai="NODE_NO_WARNINGS=1 ai"
-    
-# --- Modern Tool Aliases ---
+alias g='git'
+alias grep='grep --color=auto --exclude-dir={.bzr,CVS,.git,.hg,.svn}'
 alias ls="eza --icons --group-directories-first"
 alias ll="eza -l --icons --git --group-directories-first"
-command -v fdfind >/dev/null && alias fd=fdfind || alias fdfind=fd
-
 alias du="dust"
 alias tv='tidy-viewer'
 alias cc="claude"
 alias cc-dsp='docker sandbox run claude . --dangerously-skip-permissions'
-
-# alias micro="micro +9999999"
-# alias nano="micro +9999999"
-# alias zell="zellij"
-[ -f ~/.zellig_rc.sh ] && source ~/.zellig_rc.sh
 alias m="micro"
-# Claude Code Sandbox Alias
 alias cc-box='~/Repos/claude-docker-base/run_cc-box.sh'
 alias cc-vagrant='~/Repos/claude-docker-base/run_cc-vagrant.sh'
+alias copy=pbcopy
+alias pbcopy='xsel --clipboard --input'
+alias pbpaste='xsel --clipboard --output'
+alias x='tauri-explorer &>/dev/null & disown'
+alias gg='keifu'
+alias zss="source ~/.zshrc && echo '✅ sourced .zshrc.'"
+alias zsr="exec $SHELL -l"
+alias setpass='read -s "?Password: " PASSWORD; echo; export PASSWORD'
+
+command -v fdfind >/dev/null && alias fd=fdfind || alias fdfind=fd
+
+[ -f ~/.zellig_rc.sh ] && source ~/.zellig_rc.sh
 
 if command -v batcat &>/dev/null; then
   BAT=batcat
 else
   BAT=bat
 fi
-
 export PAGER="$BAT"
 alias cat="$BAT --plain --tabs 0 --style=grid"
 
+# bun completions
+[ -s "/home/chong/.bun/_bun" ] && source "/home/chong/.bun/_bun"
 
-# Interactive search through file contents
+# --- Editor ---
+export EDITOR='micro'
+export VISUAL='micro'
+
+# --- FZF ---
+if command -v fd >/dev/null; then
+  export FZF_DEFAULT_COMMAND="fd --type f --hidden --follow --exclude .git"
+else
+  export FZF_DEFAULT_COMMAND="fdfind --type f --hidden --follow --exclude .git"
+fi
+
 fzr() {
   rg --column --line-number --no-heading --color=always --smart-case -- "${*:-}" |
     fzf --ansi \
@@ -172,16 +214,6 @@ fzr() {
         --preview 'sh -c "$BAT --color=always {1} --highlight-line {2}"' \
         --preview-window 'up,60%,border-bottom,+{2}+3/3,~3'
 }
-
-
-
-if command -v fd >/dev/null; then
-  	#export FZF_DEFAULT_COMMAND='fd --strip-cwd-prefix --hidden --follow --exclude .git'
-  	export FZF_DEFAULT_COMMAND="fd --type f --hidden --follow --exclude .git"
-else
-  	#export FZF_DEFAULT_COMMAND='fdfind --strip-cwd-prefix --hidden --follow --exclude .git'
-  	export FZF_DEFAULT_COMMAND="fdfind --type f --hidden --follow --exclude .git"
-fi
 
 fz() {
   if command -v batcat &>/dev/null; then
@@ -191,13 +223,11 @@ fz() {
   fi
 }
 
-# ctrl+p widget
 fzf-file-widget() {
   local sel quoted
 
   sel=$({ eval "$FZF_DEFAULT_COMMAND"; fd --type d --hidden --follow --exclude .git; zoxide query -l 2>/dev/null } | awk '!seen[$0]++' | fz --multi) || { zle reset-prompt; return }
 
-  # Single selection that's a directory → cd into it
   if [[ $(echo "$sel" | wc -l) -eq 1 ]] && [[ -d "$sel" ]]; then
     builtin cd -- "$sel"
     zle -M "cd → $PWD"
@@ -218,302 +248,138 @@ zle -N fzf-file-widget
 bindkey '^P' fzf-file-widget
 
 fzr-widget() {
-  local line file lineno out
+  local line file lineno
 
   line=$(fzr) || { zle reset-prompt; return }
 
   file=${line%%:*}
   lineno=${line#*:}; lineno=${lineno%%:*}
 
-  # doesn't work
-  #out="${file}:${lineno}"
-  #LBUFFER+="${(q)out} "
-
-  cmd=(micro +$lineno "$file")
   LBUFFER+="micro +${lineno} ${(q)file} "
-  
   zle reset-prompt
 }
-
 zle -N fzr-widget
 KEYTIMEOUT=10
-bindkey '^[[102;6u' fzr-widget   # your Ctrl+Shift+F
+bindkey '^[[102;6u' fzr-widget
 
-# move widget
 function _fzf_copy_move() {
-	local cmd="cp -v"
+  local cmd="cp -v"
 
-	if [[ "$LBUFFER" == *m ]]; then
-	  cmd="mv -v"
-	  LBUFFER="${LBUFFER%m}"
-	fi
+  if [[ "$LBUFFER" == *m ]]; then
+    cmd="mv -v"
+    LBUFFER="${LBUFFER%m}"
+  fi
 
-	  # (optional) flush any pending input before launching full-screen UI
-	zle -I
+  zle -I
 
-	local sources
-	sources=$(
-	  eval "$FZF_DEFAULT_COMMAND" 2>/dev/null | \
-	    fzf --multi --height=40% --border --prompt="Select file(s) to ${cmd%% *}: " \
-	        --header="TAB to multi-select, ENTER to confirm" \
-	        --preview='[[ -d {} ]] && eza --tree --level=2 --color=always {} || bat --color=always --style=numbers --line-range=:100 {} 2>/dev/null || cat {}'
-	)
+  local sources
+  sources=$(
+    eval "$FZF_DEFAULT_COMMAND" 2>/dev/null | \
+      fzf --multi --height=40% --border --prompt="Select file(s) to ${cmd%% *}: " \
+          --header="TAB to multi-select, ENTER to confirm" \
+          --preview='[[ -d {} ]] && eza --tree --level=2 --color=always {} || bat --color=always --style=numbers --line-range=:100 {} 2>/dev/null || cat {}'
+  )
 
-	[[ -z "$sources" ]] && { zle reset-prompt; return; }
-    
-    # Select destination using zoxide + fzf for frecency-ranked dirs
-    local dest
-    dest=$(
-        {
-            # Start with zoxide top dirs
-            zoxide query -l 2>/dev/null | head -30
-            # Add current dir subdirs
-            fd -t d --max-depth 3 . 2>/dev/null
-            # Add home subdirs
-            fd -t d --max-depth 2 . ~ 2>/dev/null
-        } | awk '!seen[$0]++' | fzf --height=40% --border --prompt="Destination: " \
-            --header="Select destination folder" \
-            --preview='eza --tree --level=2 --color=always {}'
-    )
-    
-    [[ -z "$dest" ]] && { zle reset-prompt; return; }
-    
-    # Build and execute command
-    local file_array=("${(@f)sources}")
-    echo
-    for src in "${file_array[@]}"; do
-        echo "${cmd} ${(q)src} → ${(q)dest}"
-        eval "$cmd ${(q)src} ${(q)dest}"
-    done
-    
-    zle reset-prompt
+  [[ -z "$sources" ]] && { zle reset-prompt; return; }
+
+  local dest
+  dest=$(
+    {
+      zoxide query -l 2>/dev/null | head -30
+      fd -t d --max-depth 3 . 2>/dev/null
+      fd -t d --max-depth 2 . ~ 2>/dev/null
+    } | awk '!seen[$0]++' | fzf --height=40% --border --prompt="Destination: " \
+        --header="Select destination folder" \
+        --preview='eza --tree --level=2 --color=always {}'
+  )
+
+  [[ -z "$dest" ]] && { zle reset-prompt; return; }
+
+  local file_array=("${(@f)sources}")
+  echo
+  for src in "${file_array[@]}"; do
+    echo "${cmd} ${(q)src} → ${(q)dest}"
+    eval "$cmd ${(q)src} ${(q)dest}"
+  done
+
+  zle reset-prompt
 }
-
 zle -N _fzf_copy_move
 bindkey '^Y' _fzf_copy_move
 
-
 zse() {
-    local chez_file="${HOME}/.local/share/chezmoi/dot_zshrc"
-    local target_file="${HOME}/.zshrc"
+  local chez_file="${HOME}/.local/share/chezmoi/dot_zshrc"
+  local target_file="${HOME}/.zshrc"
 
-    local checksum_before
-    checksum_before=$(md5sum "$chez_file" 2>/dev/null | cut -d' ' -f1)
+  local checksum_before
+  checksum_before=$(md5sum "$chez_file" 2>/dev/null | cut -d' ' -f1)
 
-    micro +9999999 "$chez_file"
+  micro +9999999 "$chez_file"
 
-    local checksum_after
-    checksum_after=$(md5sum "$chez_file" 2>/dev/null | cut -d' ' -f1)
+  local checksum_after
+  checksum_after=$(md5sum "$chez_file" 2>/dev/null | cut -d' ' -f1)
 
-    if [[ "$checksum_before" == "$checksum_after" ]]; then
-        echo "ℹ️  No changes made to dot_zshrc."
-        return
-    fi
+  if [[ "$checksum_before" == "$checksum_after" ]]; then
+    echo "ℹ️  No changes made to dot_zshrc."
+    return
+  fi
 
-    if zsh -n "$chez_file"; then
-        if command -v chezmoi >/dev/null 2>&1; then
-            chezmoi apply "$target_file" || {
-                echo "❌ chezmoi apply failed."
-                return 1
-            }
-        else
-            echo "❌ chezmoi is not installed."
-            return 1
-        fi
-
-        source "$target_file"
-        echo "🚀 Updated, applied, and sourced .zshrc."
-    else
-        echo "❌ Syntax error detected in dot_zshrc! Not applying or sourcing."
+  if zsh -n "$chez_file"; then
+    if command -v chezmoi >/dev/null 2>&1; then
+      chezmoi apply "$target_file" || {
+        echo "❌ chezmoi apply failed."
         return 1
+      }
+    else
+      echo "❌ chezmoi is not installed."
+      return 1
     fi
+    source "$target_file"
+    echo "🚀 Updated, applied, and sourced .zshrc."
+  else
+    echo "❌ Syntax error detected in dot_zshrc! Not applying or sourcing."
+    return 1
+  fi
 }
-
-alias zss="source ~/.zshrc && echo '✅ sourced .zshrc.'"
-alias zsr="exec $SHELL -l"
 
 function zj() {
-    # Lists sessions and lets you pick one to attach, or starts a new one
-    zellij attach $(zellij list-sessions | fzf) || zellij
+  zellij attach $(zellij list-sessions | fzf) || zellij
 }
 
+# --- zoxide ---
 _zoxide_cache="${XDG_CACHE_HOME:-$HOME/.cache}/zoxide-init.zsh"
 if [[ ! -f "$_zoxide_cache" || "$(command -v zoxide)" -nt "$_zoxide_cache" ]]; then
   zoxide init zsh >| "$_zoxide_cache"
 fi
 source "$_zoxide_cache"
 
-# --- Editor Settings ---
-export EDITOR='micro'
-export VISUAL='micro'
-
-# --- Init Tools ---
-# source <(fzf --zsh)
-
-source ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
-export PATH="$PATH:/snap/bin"
-
-bindkey '^[[H' beginning-of-line
-bindkey '^[[F' end-of-line
-
-# --- Yazi Wrapper ---
-# This makes it so when you quit yazi, your shell stays in the directory you were in.
-function yz() {
-	local tmp="$(mktemp -t "yazi-cwd.XXXXXX")"
-	yazi "$@" --cwd-file="$tmp"
-	if cwd="$(command cat -- "$tmp")" && [ -n "$cwd" ] && [ "$cwd" != "$PWD" ]; then
-		builtin cd -- "$cwd"
-	fi
-	rm -f -- "$tmp"
+fzf-cd() {
+  local dir
+  zle -I
+  dir=$(zoxide query -l | fzf --height=40% --border --prompt="cd > ") || return
+  builtin cd -- "$dir" || return
+  BUFFER=""
+  zle -M "cd → $PWD"
+  zle accept-line
 }
+zle -N fzf-cd
+bindkey '^O' fzf-cd
 
-chz() {
-	if [[ "$1" == "link" && -n "$2" ]]; then
-		local target_file=$(realpath "$2")
-        local filename=$(basename "$target_file")
-
-        # Determine local name
-        local clean_name
-        [[ "$filename" == .* ]] && clean_name="$filename" || clean_name=".$filename"
-
-        local link_dir="$HOME/.config/ext-links"
-        mkdir -p "$link_dir"
-        local link_path="$link_dir/$clean_name"
-
-        # Create the symlink locally
-        echo "🔗 Linking $target_file to $link_path..."
-        ln -sf "$target_file" "$link_path"
-
-        # IMPORTANT: Add with --follow to track CONTENT, not the link
-        command chezmoi add --follow "$link_path"
-        echo "✅ Content tracked! Use 'chz addp' to push."
-	elif [[ "$1" == "addp" ]]; then
-        shift # Remove 'addp'
-
-        if [[ $# -gt 0 ]]; then
-            # Arguments exist: track the file first
-            echo "📦 Tracking new files..."
-            command chezmoi add --follow "$@"
-            local msg="feat: update $filename ($*)"
-        else
-            # No arguments: just sync existing changes
-            echo "🚀 No files specified. Syncing existing changes..."
-            local msg="chore: bulk sync dotfiles $(date +'%Y-%m-%d %H:%M')"
-        fi
-
-        # Git sequence
-        command chezmoi git add .
-        command chezmoi git commit -- -m "$msg"
-        command chezmoi git push
-
-        echo "✅ Changes committed and pushed!"
-    elif [[ "$1" == "add" && -n "$2" ]]; then
-        shift
-    	echo "NB: to add, commit and push, use \"cz addp\" with a p."
-    	chezmoi add "$@"
-    	chezmoi git add .
-    elif [[ "$1" == "git" ]]; then
-        # This allows you to run 'chz git remote set-url ...' or any git command
-        shift
-        command chezmoi git -- "$@"
-    elif [[ "$1" == "cd" ]]; then
-    	builtin cd ~/.local/share/chezmoi
-    elif [[ "$1" == "commit-main" ]]; then
-    	local CHEZMOI_BRANCH="$(chezmoi git --  branch --show-current)"
-    	chezmoi re-add || return 1 # must re-add before checking out, otherwise will include all the changes made by the current branch
-    	chezmoi git -- checkout main || {
-    		echo "Checkout to main failed (likely uncommitted changes)."
-    	    return 1
-    	}
-    	chezmoi git -- add -u || return 1
-    	chezmoi git -- commit -m"updated existing files" || true
-    	chezmoi git -- checkout $CHEZMOI_BRANCH || return 1
-    	chezmoi git -- rebase main || return 1
-    else
-        # Pass all other commands (status, apply, edit, etc.) through to chezmoi
-        case "$1" in
-            commit|push)
-                # Route these specifically to 'chezmoi git'
-                command chezmoi git -- "$@"
-                ;;
-            *)
-                # All other commands go to standard 'chezmoi'
-                command chezmoi "$@"
-                ;;
-        esac
-    fi
-}
-
-
-ve() {
-  local root main_root rel dir venv
-
-  # must be inside a git repo
-  root=$(git rev-parse --show-toplevel 2>/dev/null) || {
-    echo "Not in a git repo"
-    return 1
-  }
-
-  # primary/main worktree path (first entry)
-  main_root=$(git worktree list --porcelain 2>/dev/null | awk '/^worktree / {print $2; exit}')
-  [[ -z "$main_root" ]] && main_root="$root"
-
-  # compute path relative to current worktree root
-  rel="${PWD#$root}"
-  rel="${rel#/}"  # trim leading slash if present
-
-  # start searching from the same subdir inside main worktree
-  dir="$main_root"
-  [[ -n "$rel" ]] && dir="$main_root/$rel"
-
-  # walk upwards until we hit main_root, looking for .venv
-  while :; do
-    venv="$dir/.venv"
-    if [[ -f "$venv/bin/activate" ]]; then
-      source "$venv/bin/activate"
-      return 0
-    fi
-
-    # stop when we've reached the main root
-    [[ "$dir" == "$main_root" ]] && break
-
-    # go up one directory
-    dir="${dir:h}"
-  done
-
-  echo "No .venv found under $main_root (starting from $main_root/${rel})"
-  return 1
-}
-
-
-alias copy=pbcopy
-
+# --- atuin ---
 [[ -f "$HOME/.local/bin/env" ]] && . "$HOME/.local/bin/env"
-[[ -x "$HOME/.atuin/bin/atuin" ]] && export PATH="$HOME/.atuin/bin:$PATH"
 _atuin_cache="${XDG_CACHE_HOME:-$HOME/.cache}/atuin-init.zsh"
 if [[ ! -f "$_atuin_cache" || "$HOME/.atuin/bin/atuin" -nt "$_atuin_cache" ]]; then
   "$HOME/.atuin/bin/atuin" init zsh --disable-up-arrow >| "$_atuin_cache"
 fi
 source "$_atuin_cache"
 
-# Disable sharing history between sessions
-unsetopt share_history
-unsetopt inc_append_history
-unsetopt inc_append_history_time
-
-# Ensure history is only appended when the session exits
-setopt append_history
-
-# Kill process on a specific port
 killon() {
   if [ "$#" -eq 0 ]; then
     echo "Please provide one or more port numbers (e.g., killon 1420 5173 8000)"
     return 1
   fi
-
   for port in "$@"; do
     pids=$(lsof -ti :"$port")
-
     if [ -z "$pids" ]; then
       echo "Nothing running on port $port"
     else
@@ -523,22 +389,6 @@ killon() {
   done
 }
 
-fzf-cd() {
-  local dir
-  zle -I
-
-  dir=$(zoxide query -l | fzf --height=40% --border --prompt="cd > ") || return
-
-  builtin cd -- "$dir" || return
-
-  BUFFER=""          # don't run anything
-  zle -M "cd → $PWD"
-  zle accept-line    # forces a new prompt render
-}
-zle -N fzf-cd
-bindkey '^O' fzf-cd
-
-# Navigate to equivalent directory in next git worktree (alphabetically)
 cd-tree() {
   local current_root rel_path worktrees next_tree
 
@@ -547,7 +397,6 @@ cd-tree() {
     return 1
   }
 
-  # Get all worktree paths, sorted alphabetically
   worktrees=($(git worktree list --porcelain | awk '/^worktree / {print $2}' | sort))
 
   if (( ${#worktrees[@]} <= 1 )); then
@@ -555,7 +404,6 @@ cd-tree() {
     return 0
   fi
 
-  # Find current worktree index and compute next (with wrap-around)
   local idx=0
   for i in {1..${#worktrees[@]}}; do
     if [[ "${worktrees[$i]}" == "$current_root" ]]; then
@@ -567,7 +415,6 @@ cd-tree() {
   local next_idx=$(( (idx % ${#worktrees[@]}) + 1 ))
   next_tree="${worktrees[$next_idx]}"
 
-  # Compute relative path from current worktree root
   rel_path="${PWD#$current_root}"
   rel_path="${rel_path#/}"
 
@@ -578,26 +425,116 @@ cd-tree() {
     builtin cd -- "$target"
     echo "→ $target"
   else
-    # Directory doesn't exist in target worktree, go to root
     builtin cd -- "$next_tree"
     echo "→ $next_tree (subdir '$rel_path' not found)"
   fi
 }
 
-# OpenClaw Completion
-[[ -f /home/chong/.openclaw/completions/openclaw.zsh ]] && source /home/chong/.openclaw/completions/openclaw.zsh
-alias pbcopy='xsel --clipboard --input'
-alias pbpaste='xsel --clipboard --output'
-alias x='tauri-explorer &>/dev/null & disown'
-alias gg='keifu'
-set-theme() {
-  bash ~/.local/share/chezmoi/scripts/set-theme.sh "$@"
-  # Re-source p10k theme so prompt updates immediately
-  [[ -f ~/.config/p10k-themes/current.zsh ]] && source ~/.config/p10k-themes/current.zsh && p10k reload 2>/dev/null
+# --- Yazi ---
+function yz() {
+  local tmp="$(mktemp -t "yazi-cwd.XXXXXX")"
+  yazi "$@" --cwd-file="$tmp"
+  if cwd="$(command cat -- "$tmp")" && [ -n "$cwd" ] && [ "$cwd" != "$PWD" ]; then
+    builtin cd -- "$cwd"
+  fi
+  rm -f -- "$tmp"
 }
 
-# Launch Zed detached from terminal
-# [[ "$(whence -w zed 2>/dev/null)" == zed:\ none ]] && zed() { command zed "$@" &>/dev/null & disown; }
+chz() {
+  if [[ "$1" == "link" && -n "$2" ]]; then
+    local target_file=$(realpath "$2")
+    local filename=$(basename "$target_file")
+    local clean_name
+    [[ "$filename" == .* ]] && clean_name="$filename" || clean_name=".$filename"
+    local link_dir="$HOME/.config/ext-links"
+    mkdir -p "$link_dir"
+    local link_path="$link_dir/$clean_name"
+    echo "🔗 Linking $target_file to $link_path..."
+    ln -sf "$target_file" "$link_path"
+    command chezmoi add --follow "$link_path"
+    echo "✅ Content tracked! Use 'chz addp' to push."
+  elif [[ "$1" == "addp" ]]; then
+    shift
+    if [[ $# -gt 0 ]]; then
+      echo "📦 Tracking new files..."
+      command chezmoi add --follow "$@"
+      local msg="feat: update $filename ($*)"
+    else
+      echo "🚀 No files specified. Syncing existing changes..."
+      local msg="chore: bulk sync dotfiles $(date +'%Y-%m-%d %H:%M')"
+    fi
+    command chezmoi git add .
+    command chezmoi git commit -- -m "$msg"
+    command chezmoi git push
+    echo "✅ Changes committed and pushed!"
+  elif [[ "$1" == "add" && -n "$2" ]]; then
+    shift
+    echo "NB: to add, commit and push, use \"cz addp\" with a p."
+    chezmoi add "$@"
+    chezmoi git add .
+  elif [[ "$1" == "git" ]]; then
+    shift
+    command chezmoi git -- "$@"
+  elif [[ "$1" == "cd" ]]; then
+    builtin cd ~/.local/share/chezmoi
+  elif [[ "$1" == "commit-main" ]]; then
+    local CHEZMOI_BRANCH="$(chezmoi git -- branch --show-current)"
+    chezmoi re-add || return 1
+    chezmoi git -- checkout main || {
+      echo "Checkout to main failed (likely uncommitted changes)."
+      return 1
+    }
+    chezmoi git -- add -u || return 1
+    chezmoi git -- commit -m "updated existing files" || true
+    chezmoi git -- checkout $CHEZMOI_BRANCH || return 1
+    chezmoi git -- rebase main || return 1
+  else
+    case "$1" in
+      commit|push)
+        command chezmoi git -- "$@"
+        ;;
+      *)
+        command chezmoi "$@"
+        ;;
+    esac
+  fi
+}
+
+ve() {
+  local root main_root rel dir venv
+
+  root=$(git rev-parse --show-toplevel 2>/dev/null) || {
+    echo "Not in a git repo"
+    return 1
+  }
+
+  main_root=$(git worktree list --porcelain 2>/dev/null | awk '/^worktree / {print $2; exit}')
+  [[ -z "$main_root" ]] && main_root="$root"
+
+  rel="${PWD#$root}"
+  rel="${rel#/}"
+
+  dir="$main_root"
+  [[ -n "$rel" ]] && dir="$main_root/$rel"
+
+  while :; do
+    venv="$dir/.venv"
+    if [[ -f "$venv/bin/activate" ]]; then
+      source "$venv/bin/activate"
+      return 0
+    fi
+    [[ "$dir" == "$main_root" ]] && break
+    dir="${dir:h}"
+  done
+
+  echo "No .venv found under $main_root (starting from $main_root/${rel})"
+  return 1
+}
+
+set-theme() {
+  bash ~/.local/share/chezmoi/scripts/set-theme.sh "$@"
+  [[ -f ~/.config/p10k-themes/current.zsh ]] && source ~/.config/p10k-themes/current.zsh && p10k reload 2>/dev/null
+}
 
 if (( ! $+functions[o] )) && ! alias o >/dev/null 2>&1; then
   function o {
@@ -612,4 +549,7 @@ if (( ! $+functions[o] )) && ! alias o >/dev/null 2>&1; then
   }
 fi
 
-alias setpass='read -s "?Password: " PASSWORD; echo; export PASSWORD'
+# OpenClaw Completion
+[[ -f /home/chong/.openclaw/completions/openclaw.zsh ]] && source /home/chong/.openclaw/completions/openclaw.zsh
+
+export PATH="$PATH:/snap/bin"
