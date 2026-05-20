@@ -7,66 +7,87 @@
 // custom settings, run `zed: open default settings` from the
 // command palette (cmd-shift-p / ctrl-shift-p)
 {
-  "outline_panel": {
-    "dock": "left"
-  },
-  "collaboration_panel": {
-    "dock": "left"
-  },
-  "git_panel": {
-    "dock": "left"
-  },
-  "project_panel": {
-    "dock": "left",
-    "hide_gitignore": true
-  },
-  "show_edit_predictions": true,
-  "remove_trailing_whitespace_on_save": false,
-  "soft_wrap": "none",
-  "tab_size": 4,
-  "tabs": {
-    "show_close_button": "hidden"
-  },
-  "autosave": "off",
-  "auto_update": false,
-  "multi_cursor_modifier": "cmd_or_ctrl",
-  "gutter": {
-    "line_numbers": true,
-    "folds": true
-  },
-  "cursor_blink": true,
-  "terminal": {
-    "font_family": "Hack Nerd Font"
-  },
-  "agent": {
-    "dock": "right",
-    "model_parameters": [],
-    "default_model": {
-      "provider": "openai",
-      "model": "anthropic/claude-3.7-sonnet"
+    "icon_theme": "Material Icon Theme",
+    "outline_panel": {
+        "dock": "left",
     },
-    "version": "2"
-  },
-  "vim_mode": false,
-  "base_keymap": "VSCode",
-  "ui_font_size": 16,
-  "buffer_font_size": 14.0,
-  "theme": {
-    "mode": "system",
-    "light": "Atelier Lakeside Light",
-    "dark": "One Dark"
-  },
-  "language_models": {
-    "openai": {
-      "version": "1",
-      "api_url": "https://openrouter.ai/api/v1",
-      "available_models": [
-        {
-          "display_name": "Claude 3.7 Sonnet",
-          "name": "anthropic/claude-3.7-sonnet",
-          "max_tokens": 131072
-        }
-      ]
-    }
-  }
+    "collaboration_panel": {
+        "dock": "left",
+    },
+    "format_on_save": "off",
+    "git_panel": {
+        "dock": "left",
+    },
+    "project_panel": {
+        "dock": "left",
+        "hide_gitignore": true,
+    },
+    "status_bar": {
+        "experimental.show": false,
+    },
+    "tab_bar": {
+        "show_nav_history_buttons": false,
+        "show_tab_bar_buttons": false,
+    },
+    "toolbar": {
+        "breadcrumbs": false,
+        "quick_actions": false,
+        "selections_menu": false,
+        "agent_review": false,
+        "code_actions": false,
+    },
+    "show_edit_predictions": true,
+    "remove_trailing_whitespace_on_save": false,
+    "soft_wrap": "none",
+    "tab_size": 4,
+    "tabs": {
+        "show_close_button": "hidden",
+        "file_icons": true,
+        "git_status": true,
+    },
+    "autosave": "off",
+    "auto_update": false,
+    "multi_cursor_modifier": "cmd_or_ctrl",
+    "gutter": {
+        "line_numbers": true,
+        "folds": false,
+        "runnables": false,
+        "breakpoints": false,
+    },
+    "cursor_blink": true,
+    "terminal": {
+        "font_family": "Hack Nerd Font",
+    },
+    "sticky_scroll": { "enabled": true },
+    "agent": {
+        "dock": "right",
+        "model_parameters": [],
+        "default_model": {
+            "provider": "openai",
+            "model": "anthropic/claude-3.7-sonnet",
+        },
+    },
+    "vim_mode": false,
+    "base_keymap": "VSCode",
+    "ui_font_size": 15,
+    "buffer_font_family": "Ubuntu Mono",
+    "buffer_font_weight": 450,
+    "buffer_font_size": 17.0,
+    "theme": {
+        "mode": "system",
+        "light": "Atelier Lakeside Light",
+        "dark": "Ayu Glass Mirage",
+    },
+    "language_models": {
+        "openai": {
+            "api_url": "https://openrouter.ai/api/v1",
+            "available_models": [
+                {
+                    "display_name": "Claude 3.7 Sonnet",
+                    "name": "anthropic/claude-3.7-sonnet",
+                    "max_tokens": 131072,
+                },
+            ],
+        },
+    },
 }

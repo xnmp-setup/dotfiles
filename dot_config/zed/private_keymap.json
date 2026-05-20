@@ -26,7 +26,7 @@
             "cmd-;": "workspace::ActivatePaneDown",
 
             // tab cycling (ctrl+pageup/down — VS Code nextEditor/previousEditor)
-            "ctrl-pageup": "pane::ActivatePrevItem",
+            "ctrl-pageup": "pane::ActivatePreviousItem",
             "ctrl-pagedown": "pane::ActivateNextItem",
 
             // file ops
@@ -48,8 +48,8 @@
             "ctrl-,": "zed::OpenSettings",
             "ctrl-.": "zed::OpenKeymapFile",
 
-            // git
-            "ctrl-alt-g": "git_panel::ToggleFocus",
+            // git graph
+            "ctrl-alt-g": "git_graph::Open",
 
             // misc
             "alt-o": "workspace::ToggleZoom"
@@ -121,7 +121,7 @@
             "ctrl-shift-n": "workspace::NewWindow",
 
             // tab cycling — overrides Zed's editor::LineUp/Down
-            "ctrl-pageup": "pane::ActivatePrevItem",
+            "ctrl-pageup": "pane::ActivatePreviousItem",
             "ctrl-pagedown": "pane::ActivateNextItem",
 
             // pane navigation — overrides editor::SelectLine (cmd-l), ToggleSelectedDiffHunks (cmd-'),
@@ -145,6 +145,9 @@
             // inline AI assist — overrides editor::KillRingCut (ctrl-k)
             "ctrl-k": "assistant::InlineAssist",
 
+            // git graph
+            "ctrl-alt-g": "git_graph::Open",
+
             // navigate back / go to definition
             "alt-ctrl-left": "pane::GoBack",
             "alt-ctrl-right": "editor::GoToDefinition"
@@ -157,7 +160,7 @@
         "bindings": {
             "ctrl-shift-t": "workspace::NewTerminal",
             "ctrl-shift-w": "pane::CloseActiveItem",
-            "ctrl-pageup": "pane::ActivatePrevItem",
+            "ctrl-pageup": "pane::ActivatePreviousItem",
             "ctrl-pagedown": "pane::ActivateNextItem"
         }
     }
