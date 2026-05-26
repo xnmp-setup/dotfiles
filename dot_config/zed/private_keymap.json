@@ -24,6 +24,7 @@
             "cmd-'": "workspace::ActivatePaneRight",
             "cmd-p": "workspace::ActivatePaneUp",
             "cmd-;": "workspace::ActivatePaneDown",
+            "ctrl-r": ["projects::OpenRecent", { "create_new_window": false }],
 
             // tab cycling (ctrl+pageup/down — VS Code nextEditor/previousEditor)
             "ctrl-pageup": "pane::ActivatePreviousItem",
@@ -158,6 +159,7 @@
     {
         "context": "Terminal",
         "bindings": {
+            "ctrl-r": ["projects::OpenRecent", { "create_new_window": false }],
             "ctrl-shift-t": "workspace::NewTerminal",
             "ctrl-shift-w": "pane::CloseActiveItem",
             "ctrl-pageup": "pane::ActivatePreviousItem",
