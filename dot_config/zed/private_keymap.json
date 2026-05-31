@@ -163,7 +163,27 @@
             "ctrl-shift-t": "workspace::NewTerminal",
             "ctrl-shift-w": "pane::CloseActiveItem",
             "ctrl-pageup": "pane::ActivatePreviousItem",
-            "ctrl-pagedown": "pane::ActivateNextItem"
+            "ctrl-pagedown": "pane::ActivateNextItem",
+            "ctrl-v": "terminal::Paste"
+        }
+    },
+    {
+        "context": "ProjectPanel",
+        "bindings": {
+            "ctrl-p": "file_finder::Toggle"
+        }
+    },
+    {
+        "context": "GitPanel > Editor",
+        "bindings": {
+            "enter": "git::Commit",
+            "shift-enter": "editor::Newline"
+        }
+    },
+    {
+        "context": "Terminal && selection",
+        "bindings": {
+            "ctrl-c": "terminal::Copy"
         }
     }
 ]
