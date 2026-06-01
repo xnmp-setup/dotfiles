@@ -12,7 +12,8 @@ hs.hotkey.bind({}, "F7", function() windowCycling.cycleOrRun("Google Chrome", "G
 hs.hotkey.bind({}, "F6", function() windowCycling.cycleOrRun("Google Chrome", "Google Chrome") end)
 -- hs.hotkey.bind({}, "F5", function() windowCycling.cycleOrRun("Arc", "Arc") end)
 hs.hotkey.bind({}, "F4", function() windowCycling.cycleOrRun("Obsidian", "Obsidian") end)
-hs.hotkey.bind({}, "F3", function() windowCycling.cycleOrRun("Code", "Visual Studio Code") end)
+hs.hotkey.bind({}, "F3", function() windowCycling.cycleOrRun("Zed", "Zed") end)
+--hs.hotkey.bind({}, "F3", function() windowCycling.cycleOrRun("Code", "Visual Studio Code") end)
 
 hs.hotkey.bind({}, "F8", function() windowCycling.cycleOrRun("tauri-explorer", "tauri-explorer", "hide", false) end)
 hs.hotkey.bind({}, "F10", function() windowCycling.cycleOrRun("Lite XL", "Lite XL", "hide") end)
