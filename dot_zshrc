@@ -120,7 +120,6 @@ bindkey '^?' backward-delete-char
 bindkey '^[[3;5~' kill-word
 bindkey '^[[1;5C' forward-word
 bindkey '^[[1;5D' backward-word
-bindkey '^r' history-incremental-search-backward
 bindkey ' ' magic-space
 bindkey '^[[H' beginning-of-line
 bindkey '^[[F' end-of-line
@@ -177,7 +176,25 @@ alias pbcopy='xsel --clipboard --input'
 alias pbpaste='xsel --clipboard --output'
 alias x='tauri-explorer &>/dev/null & disown'
 alias gg='keifu'
-alias zss="source ~/.zshrc && echo '✅ sourced .zshrc.'"
+zss() {
+  local diff
+  diff="$(chezmoi diff ~/.zshrc 2>/dev/null)"
+  if [[ -n "$diff" ]]; then
+    echo "chezmoi has unapplied changes to .zshrc"
+    printf "Apply before sourcing? [y]es / [n]o / [v]iew diff: "
+    read -r choice
+    case "$choice" in
+      v|V)
+        echo "$diff"
+        printf "Apply? [y/n]: "
+        read -r choice2
+        [[ "$choice2" == [yY] ]] && chezmoi apply ~/.zshrc
+        ;;
+      y|Y) chezmoi apply ~/.zshrc ;;
+    esac
+  fi
+  source ~/.zshrc && echo '✅ sourced .zshrc.'
+}
 alias zsr="exec $SHELL -l"
 alias setpass='read -s "?Password: " PASSWORD; echo; export PASSWORD'
 
@@ -367,11 +384,15 @@ bindkey '^O' fzf-cd
 
 # --- atuin ---
 [[ -f "$HOME/.local/bin/env" ]] && . "$HOME/.local/bin/env"
-_atuin_cache="${XDG_CACHE_HOME:-$HOME/.cache}/atuin-init.zsh"
-if [[ ! -f "$_atuin_cache" || "$HOME/.atuin/bin/atuin" -nt "$_atuin_cache" ]]; then
-  "$HOME/.atuin/bin/atuin" init zsh --disable-up-arrow >| "$_atuin_cache"
+_atuin_bin="$(command -v atuin)"
+if [[ -n "$_atuin_bin" ]]; then
+  _atuin_cache="${XDG_CACHE_HOME:-$HOME/.cache}/atuin-init.zsh"
+  if [[ ! -f "$_atuin_cache" || "$_atuin_bin" -nt "$_atuin_cache" ]]; then
+    "$_atuin_bin" init zsh --disable-up-arrow >| "$_atuin_cache"
+  fi
+  source "$_atuin_cache"
 fi
-source "$_atuin_cache"
+unset _atuin_bin _atuin_cache
 
 killon() {
   if [ "$#" -eq 0 ]; then
@@ -553,3 +574,4 @@ fi
 [[ -f /home/chong/.openclaw/completions/openclaw.zsh ]] && source /home/chong/.openclaw/completions/openclaw.zsh
 
 export PATH="$PATH:/snap/bin"
+
