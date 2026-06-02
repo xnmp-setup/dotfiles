@@ -303,21 +303,23 @@ function MarkdownView:new()
   self.scrollable_size = 0
 
   local size = style.code_font:get_size()
-  local font_path = style.code_font:get_path()
-  if type(font_path) == "table" then font_path = font_path[1] end
+  local home = os.getenv("HOME")
+  local inter = home .. "/Library/Fonts/Inter-"
+  local code_path = style.code_font:get_path()
+  if type(code_path) == "table" then code_path = code_path[1] end
 
   self.fonts = {
-    regular = renderer.font.load(font_path, size),
-    bold = renderer.font.load(font_path, size, { bold = true }),
-    italic = renderer.font.load(font_path, size, { italic = true }),
-    bold_italic = renderer.font.load(font_path, size, { bold = true, italic = true }),
-    strikethrough = renderer.font.load(font_path, size, { strikethrough = true }),
-    code = renderer.font.load(font_path, size),
+    regular = renderer.font.load(inter .. "Regular.otf", size),
+    bold = renderer.font.load(inter .. "Bold.otf", size),
+    italic = renderer.font.load(inter .. "Italic.otf", size),
+    bold_italic = renderer.font.load(inter .. "BoldItalic.otf", size),
+    strikethrough = renderer.font.load(inter .. "Regular.otf", size, { strikethrough = true }),
+    code = renderer.font.load(code_path, size * 0.9),
     h = {}
   }
   local h_scales = { 1.8, 1.5, 1.25, 1.1, 1.0, 0.9 }
   for i, s in ipairs(h_scales) do
-    self.fonts.h[i] = renderer.font.load(font_path, size * s, { bold = true })
+    self.fonts.h[i] = renderer.font.load(inter .. "Bold.otf", size * s)
   end
 end
 
@@ -432,15 +434,17 @@ function MarkdownView:draw()
       local font = self.fonts.h[level]
       y = y + padding_y
       local h_size = font:get_size()
-      local font_path = style.code_font:get_path()
-      if type(font_path) == "table" then font_path = font_path[1] end
+      local home = os.getenv("HOME")
+      local inter = home .. "/Library/Fonts/Inter-"
+      local code_path = style.code_font:get_path()
+      if type(code_path) == "table" then code_path = code_path[1] end
       local spans = parse_inline(block.text, {
         regular = font,
         bold = font,
-        italic = renderer.font.load(font_path, h_size, { bold = true, italic = true }),
-        bold_italic = renderer.font.load(font_path, h_size, { bold = true, italic = true }),
-        strikethrough = renderer.font.load(font_path, h_size, { strikethrough = true }),
-        code = renderer.font.load(font_path, h_size * 0.85),
+        italic = renderer.font.load(inter .. "BoldItalic.otf", h_size),
+        bold_italic = renderer.font.load(inter .. "BoldItalic.otf", h_size),
+        strikethrough = renderer.font.load(inter .. "Bold.otf", h_size, { strikethrough = true }),
+        code = renderer.font.load(code_path, h_size * 0.85),
       }, style.syntax["keyword"])
       y = self:draw_spans(spans, x, y, max_width)
       -- Underline for H1 and H2
