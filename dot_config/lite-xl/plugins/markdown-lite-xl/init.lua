@@ -354,14 +354,19 @@ end
 -- Draw inline spans with word-wrapping
 function MarkdownView:draw_spans(spans, x, y, max_width)
   local cx = x
-  local line_height = self.fonts.regular:get_height()
   local start_x = x
+
+  -- Use the tallest font in the spans for line height
+  local line_height = self.fonts.regular:get_height()
+  for _, span in ipairs(spans) do
+    local h = span.font:get_height()
+    if h > line_height then line_height = h end
+  end
 
   for _, span in ipairs(spans) do
     local font = span.font
     local color = span.color
     local words = {}
-    -- Split text into words for wrapping
     for word in span.text:gmatch("%S+") do
       table.insert(words, word)
     end
@@ -374,7 +379,6 @@ function MarkdownView:draw_spans(spans, x, y, max_width)
       local draw_text = space .. word
       local tw = font:get_width(draw_text)
 
-      -- Wrap if needed
       if cx + tw > start_x + max_width and cx > start_x then
         cx = start_x
         y = y + line_height
@@ -382,17 +386,14 @@ function MarkdownView:draw_spans(spans, x, y, max_width)
         tw = font:get_width(draw_text)
       end
 
-      -- Background for inline code
       if span.bg then
         local pad = 2 * SCALE
         renderer.draw_rect(cx, y, tw + pad * 2, line_height, span.bg)
         cx = cx + pad
       end
 
-      -- Draw text
       renderer.draw_text(font, draw_text, cx, y, color)
 
-      -- Underline for links
       if span.underline then
         local uh = math.max(1, SCALE)
         renderer.draw_rect(cx, y + font:get_height() - uh, tw, uh, color)
@@ -445,6 +446,7 @@ function MarkdownView:draw()
       -- Underline for H1 and H2
       if level <= 2 then
         local uh = math.max(1, SCALE)
+        y = y + padding_y * 0.3
         renderer.draw_rect(x, y, max_width, uh, style.divider)
         y = y + uh + padding_y * 0.5
       end
