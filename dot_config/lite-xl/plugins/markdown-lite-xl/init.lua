@@ -589,53 +589,68 @@ function MarkdownView:draw()
         end
       end
 
-      -- Helper: wrap text into lines that fit a given width
-      local function wrap_text(text, font, wrap_width)
-        local wrapped = {}
-        local words = {}
-        for word in text:gmatch("%S+") do
-          table.insert(words, word)
-        end
-        if #words == 0 then return { "" } end
-
-        local current_line = words[1]
-        for i = 2, #words do
-          local test = current_line .. " " .. words[i]
-          if font:get_width(test) <= wrap_width then
-            current_line = test
-          else
-            table.insert(wrapped, current_line)
-            current_line = words[i]
+      -- Measure height of a cell with inline formatting and wrapping
+      local function measure_cell_height(text, fonts_set, cell_width)
+        local spans = parse_inline(text, fonts_set, style.text)
+        local cx = 0
+        local lines_count = 1
+        for _, span in ipairs(spans) do
+          local words = {}
+          for word in span.text:gmatch("%S+") do
+            table.insert(words, word)
+          end
+          if #words == 0 and #span.text > 0 then
+            table.insert(words, span.text)
+          end
+          for _, word in ipairs(words) do
+            local space = (cx > 0) and " " or ""
+            local tw = span.font:get_width(space .. word)
+            if cx + tw > cell_width and cx > 0 then
+              cx = 0
+              lines_count = lines_count + 1
+            end
+            local actual = (cx > 0) and tw or span.font:get_width(word)
+            cx = cx + actual
           end
         end
-        table.insert(wrapped, current_line)
-        return wrapped
+        return lines_count * line_height + padding_y
       end
 
-      -- Calculate row heights with wrapping
+      -- Calculate row heights
       local row_heights = {}
-      local row_wrapped = {}
       for ri, row in ipairs(rows) do
         local is_header = (ri == 1)
-        local row_font = is_header and self.fonts.bold or self.fonts.regular
-        local max_lines = 1
-        row_wrapped[ri] = {}
+        local cell_fonts = {
+          regular = is_header and self.fonts.bold or self.fonts.regular,
+          bold = self.fonts.bold,
+          italic = self.fonts.italic,
+          bold_italic = self.fonts.bold_italic,
+          strikethrough = self.fonts.strikethrough,
+          code = self.fonts.code,
+        }
+        local max_h = line_height + padding_y
         for c = 1, num_cols do
           local cell_text = row[c] or ""
-          local wrap_width = col_widths[c] - cell_pad * 2
-          local lines = wrap_text(cell_text, row_font, wrap_width)
-          row_wrapped[ri][c] = lines
-          if #lines > max_lines then max_lines = #lines end
+          local inner_w = col_widths[c] - cell_pad * 2
+          local h = measure_cell_height(cell_text, cell_fonts, inner_w)
+          if h > max_h then max_h = h end
         end
-        row_heights[ri] = max_lines * line_height + padding_y
+        row_heights[ri] = max_h
       end
 
       -- Draw table
       for ri, row in ipairs(rows) do
         local cell_x = table_x
         local is_header = (ri == 1)
-        local row_font = is_header and self.fonts.bold or self.fonts.regular
         local cell_h = row_heights[ri]
+        local cell_fonts = {
+          regular = is_header and self.fonts.bold or self.fonts.regular,
+          bold = self.fonts.bold,
+          italic = self.fonts.italic,
+          bold_italic = self.fonts.bold_italic,
+          strikethrough = self.fonts.strikethrough,
+          code = self.fonts.code,
+        }
 
         -- Row background for header
         if is_header then
@@ -646,27 +661,20 @@ function MarkdownView:draw()
 
         for c = 1, num_cols do
           local cw = col_widths[c]
-          local wrapped_lines = row_wrapped[ri][c]
+          local cell_text = row[c] or ""
 
           -- Cell borders
           renderer.draw_rect(cell_x, y, border_w, cell_h, style.divider)
           renderer.draw_rect(cell_x, y, cw + border_w, border_w, style.divider)
 
-          -- Draw wrapped text lines
+          -- Draw cell content with inline formatting
+          local inner_w = cw - cell_pad * 2
+          local text_x = cell_x + border_w + cell_pad
           local text_y = y + padding_y * 0.5
-          for _, line_text in ipairs(wrapped_lines) do
-            local text_w = row_font:get_width(line_text)
-            local text_x = cell_x + border_w + cell_pad
-            local align = aligns[c] or "left"
-            local inner_w = cw - cell_pad * 2
-            if align == "center" then
-              text_x = cell_x + border_w + (cw - text_w) / 2
-            elseif align == "right" then
-              text_x = cell_x + border_w + cw - text_w - cell_pad
-            end
-            renderer.draw_text(row_font, line_text, text_x, text_y, style.text)
-            text_y = text_y + line_height
-          end
+          self:draw_spans(
+            parse_inline(cell_text, cell_fonts, style.text),
+            text_x, text_y, inner_w
+          )
 
           -- Right border of last column
           if c == num_cols then
