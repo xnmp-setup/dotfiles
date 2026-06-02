@@ -358,12 +358,13 @@ function MarkdownView:draw_spans(spans, x, y, max_width)
   local cx = x
   local start_x = x
 
-  -- Use the tallest font in the spans for line height
+  -- Use the tallest font in the spans for line height, with 1.3x spacing
   local line_height = self.fonts.regular:get_height()
   for _, span in ipairs(spans) do
     local h = span.font:get_height()
     if h > line_height then line_height = h end
   end
+  line_height = line_height * 1.3
 
   for _, span in ipairs(spans) do
     local font = span.font
@@ -426,13 +427,13 @@ function MarkdownView:draw()
 
     -- Empty line
     if block.type == "empty" then
-      y = y + line_height * 0.5
+      y = y + line_height * 0.7
 
     -- Heading
     elseif block.type == "heading" then
       local level = math.min(block.level, 6)
       local font = self.fonts.h[level]
-      y = y + padding_y
+      y = y + padding_y * 1.2
       local h_size = font:get_size()
       local home = os.getenv("HOME")
       local inter = home .. "/Library/Fonts/Inter-"
@@ -460,12 +461,12 @@ function MarkdownView:draw()
     elseif block.type == "paragraph" then
       local spans = parse_inline(block.text, self.fonts, style.text)
       y = self:draw_spans(spans, x, y, max_width)
-      y = y + line_height * 0.3
+      y = y + line_height * 0.5
 
     -- Code block
     elseif block.type == "code_block" then
       local code_font = self.fonts.code
-      local code_height = #block.lines * code_font:get_height() + padding_y
+      local code_height = #block.lines * code_font:get_height() * 1.3 + padding_y * 1.5
       local bg_x = x - padding_x * 0.5
       local bg_w = max_width + padding_x
       renderer.draw_rect(bg_x, y, bg_w, code_height, style.background2)
@@ -475,13 +476,13 @@ function MarkdownView:draw()
       renderer.draw_rect(bg_x + bg_w - bw, y, bw, code_height, style.divider)
       renderer.draw_rect(bg_x, y, bg_w, bw, style.divider)
       renderer.draw_rect(bg_x, y + code_height - bw, bg_w, bw, style.divider)
-      y = y + padding_y * 0.5
+      y = y + padding_y * 0.75
       local code_color = style.syntax and style.syntax["string"] or style.text
       for _, code_line in ipairs(block.lines) do
         renderer.draw_text(code_font, code_line, x + padding_x * 0.5, y, code_color)
-        y = y + code_font:get_height()
+        y = y + code_font:get_height() * 1.3
       end
-      y = y + padding_y * 0.5
+      y = y + padding_y * 0.75
 
     -- Horizontal rule
     elseif block.type == "hr" then
@@ -509,7 +510,7 @@ function MarkdownView:draw()
       y = self:draw_spans(bq_spans, x + indent, y, max_width - indent)
       local bar_color = style.syntax and style.syntax["string"] or style.accent
       renderer.draw_rect(x, bq_start_y, bar_w, y - bq_start_y, bar_color)
-      y = y + line_height * 0.3
+      y = y + line_height * 0.5
 
     -- Unordered list
     elseif block.type == "ul" then
@@ -590,6 +591,7 @@ function MarkdownView:draw()
       end
 
       -- Measure height of a cell with inline formatting and wrapping
+      local cell_line_height = line_height * 1.3
       local function measure_cell_height(text, fonts_set, cell_width)
         local spans = parse_inline(text, fonts_set, style.text)
         local cx = 0
@@ -613,7 +615,7 @@ function MarkdownView:draw()
             cx = cx + actual
           end
         end
-        return lines_count * line_height + padding_y
+        return lines_count * cell_line_height + padding_y
       end
 
       -- Calculate row heights
@@ -628,7 +630,7 @@ function MarkdownView:draw()
           strikethrough = self.fonts.strikethrough,
           code = self.fonts.code,
         }
-        local max_h = line_height + padding_y
+        local max_h = cell_line_height + padding_y
         for c = 1, num_cols do
           local cell_text = row[c] or ""
           local inner_w = col_widths[c] - cell_pad * 2
