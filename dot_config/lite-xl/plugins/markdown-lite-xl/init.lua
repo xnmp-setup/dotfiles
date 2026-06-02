@@ -545,8 +545,13 @@ function MarkdownView:draw()
         num_cols = math.max(num_cols, #row)
       end
 
-      -- Calculate column widths
+      local border_w = math.max(1, SCALE)
+      local cell_pad = padding_x * 0.75
+      local table_x = x
+
+      -- Calculate natural column widths
       local col_widths = {}
+      local total_natural = 0
       for c = 1, num_cols do
         col_widths[c] = 0
         for _, row in ipairs(rows) do
@@ -555,52 +560,116 @@ function MarkdownView:draw()
             col_widths[c] = math.max(col_widths[c], w)
           end
         end
-        col_widths[c] = col_widths[c] + padding_x * 2
+        col_widths[c] = col_widths[c] + cell_pad * 2
+        total_natural = total_natural + col_widths[c]
+      end
+
+      -- Constrain columns to available width:
+      -- Short columns keep natural width, wide columns share remaining space
+      local available = max_width - border_w * (num_cols + 1)
+      if total_natural > available then
+        local avg = available / num_cols
+        local small_total = 0
+        local large_cols = {}
+        for c = 1, num_cols do
+          if col_widths[c] <= avg then
+            small_total = small_total + col_widths[c]
+          else
+            table.insert(large_cols, c)
+          end
+        end
+        local remaining = available - small_total
+        local large_share = #large_cols > 0 and (remaining / #large_cols) or avg
+        for _, c in ipairs(large_cols) do
+          col_widths[c] = math.max(large_share, cell_pad * 4)
+        end
+      end
+
+      -- Helper: wrap text into lines that fit a given width
+      local function wrap_text(text, font, wrap_width)
+        local wrapped = {}
+        local words = {}
+        for word in text:gmatch("%S+") do
+          table.insert(words, word)
+        end
+        if #words == 0 then return { "" } end
+
+        local current_line = words[1]
+        for i = 2, #words do
+          local test = current_line .. " " .. words[i]
+          if font:get_width(test) <= wrap_width then
+            current_line = test
+          else
+            table.insert(wrapped, current_line)
+            current_line = words[i]
+          end
+        end
+        table.insert(wrapped, current_line)
+        return wrapped
+      end
+
+      -- Calculate row heights with wrapping
+      local row_heights = {}
+      local row_wrapped = {}
+      for ri, row in ipairs(rows) do
+        local is_header = (ri == 1)
+        local row_font = is_header and self.fonts.bold or self.fonts.regular
+        local max_lines = 1
+        row_wrapped[ri] = {}
+        for c = 1, num_cols do
+          local cell_text = row[c] or ""
+          local wrap_width = col_widths[c] - cell_pad * 2
+          local lines = wrap_text(cell_text, row_font, wrap_width)
+          row_wrapped[ri][c] = lines
+          if #lines > max_lines then max_lines = #lines end
+        end
+        row_heights[ri] = max_lines * line_height + padding_y
       end
 
       -- Draw table
-      local cell_h = line_height + padding_y
-      local border_w = math.max(1, SCALE)
-      local table_x = x
-
       for ri, row in ipairs(rows) do
         local cell_x = table_x
         local is_header = (ri == 1)
         local row_font = is_header and self.fonts.bold or self.fonts.regular
+        local cell_h = row_heights[ri]
 
         -- Row background for header
         if is_header then
           local total_w = 0
           for c = 1, num_cols do total_w = total_w + col_widths[c] end
-          renderer.draw_rect(cell_x, y, total_w, cell_h, style.background2)
+          renderer.draw_rect(cell_x, y, total_w + border_w * (num_cols + 1), cell_h, style.background2)
         end
 
         for c = 1, num_cols do
-          local cell_text = row[c] or ""
           local cw = col_widths[c]
+          local wrapped_lines = row_wrapped[ri][c]
 
-          -- Cell border
+          -- Cell borders
           renderer.draw_rect(cell_x, y, border_w, cell_h, style.divider)
-          renderer.draw_rect(cell_x, y, cw, border_w, style.divider)
+          renderer.draw_rect(cell_x, y, cw + border_w, border_w, style.divider)
 
-          -- Text alignment
-          local text_w = row_font:get_width(cell_text)
-          local text_x = cell_x + padding_x
-          local align = aligns[c] or "left"
-          if align == "center" then
-            text_x = cell_x + (cw - text_w) / 2
-          elseif align == "right" then
-            text_x = cell_x + cw - text_w - padding_x
+          -- Draw wrapped text lines
+          local text_y = y + padding_y * 0.5
+          for _, line_text in ipairs(wrapped_lines) do
+            local text_w = row_font:get_width(line_text)
+            local text_x = cell_x + border_w + cell_pad
+            local align = aligns[c] or "left"
+            local inner_w = cw - cell_pad * 2
+            if align == "center" then
+              text_x = cell_x + border_w + (cw - text_w) / 2
+            elseif align == "right" then
+              text_x = cell_x + border_w + cw - text_w - cell_pad
+            end
+            renderer.draw_text(row_font, line_text, text_x, text_y, style.text)
+            text_y = text_y + line_height
           end
-
-          renderer.draw_text(row_font, cell_text, text_x, y + padding_y * 0.5, style.text)
 
           -- Right border of last column
           if c == num_cols then
-            renderer.draw_rect(cell_x + cw, y, border_w, cell_h, style.divider)
+            renderer.draw_rect(cell_x + cw + border_w, y, border_w, cell_h, style.divider)
           end
 
-          cell_x = cell_x + cw
+          cell_x = cell_x + cw + border_w
         end
 
         -- Bottom border of row
@@ -609,7 +678,7 @@ function MarkdownView:draw()
 
         y = y + cell_h
       end
-      y = y + padding_y
+      y = y + border_w + padding_y
     end
 
     ::draw_next::
