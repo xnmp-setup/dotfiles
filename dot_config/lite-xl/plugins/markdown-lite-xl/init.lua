@@ -9,8 +9,34 @@ local command = require "core.command"
 local style = require "core.style"
 local View = require "core.view"
 local common = require "core.common"
+local tokenizer = require "core.tokenizer"
+local syntax = require "core.syntax"
 
 local main = {}
+
+local lang_to_ext = {
+  lua = "_.lua", python = "_.py", py = "_.py",
+  javascript = "_.js", js = "_.js", typescript = "_.ts", ts = "_.ts",
+  c = "_.c", cpp = "_.cpp", ["c++"] = "_.cpp", h = "_.h",
+  rust = "_.rs", rs = "_.rs", go = "_.go",
+  sh = "_.sh", bash = "_.sh", zsh = "_.sh",
+  json = "_.json", yaml = "_.yaml", yml = "_.yaml", toml = "_.toml",
+  html = "_.html", css = "_.css", xml = "_.xml",
+  java = "_.java", ruby = "_.rb", rb = "_.rb",
+  sql = "_.sql", markdown = "_.md", md = "_.md",
+}
+
+local function get_syntax_for_lang(lang)
+  if not lang or lang == "" then return nil end
+  local fake = lang_to_ext[lang:lower()]
+  if fake then return syntax.get(fake) end
+  for i = #syntax.items, 1, -1 do
+    if syntax.items[i].name:lower() == lang:lower() then
+      return syntax.items[i]
+    end
+  end
+  return nil
+end
 
 -- ============================================================================
 -- Inline parser
@@ -473,7 +499,8 @@ function MarkdownView:draw()
     -- Code block
     elseif block.type == "code_block" then
       local code_font = self.fonts.code
-      local code_height = #block.lines * code_font:get_height() * 1.3 + padding_y * 1.5
+      local code_line_h = code_font:get_height() * 1.3
+      local code_height = #block.lines * code_line_h + padding_y * 1.5
       local bg_x = x - padding_x * 0.5
       local bg_w = max_width + padding_x
       renderer.draw_rect(bg_x, y, bg_w, code_height, style.background2)
@@ -484,10 +511,29 @@ function MarkdownView:draw()
       renderer.draw_rect(bg_x, y, bg_w, bw, style.divider)
       renderer.draw_rect(bg_x, y + code_height - bw, bg_w, bw, style.divider)
       y = y + padding_y * 0.75
-      local code_color = style.syntax and style.syntax["string"] or style.text
-      for _, code_line in ipairs(block.lines) do
-        renderer.draw_text(code_font, code_line, x + padding_x * 0.5, y, code_color)
-        y = y + code_font:get_height() * 1.3
+
+      local syn = get_syntax_for_lang(block.lang)
+      if syn then
+        local state = string.char(0)
+        for _, code_line in ipairs(block.lines) do
+          local tokens, new_state = tokenizer.tokenize(syn, code_line .. "\n", state)
+          state = new_state
+          local tx = x + padding_x * 0.5
+          for _, type, text in tokenizer.each_token(tokens) do
+            text = text:gsub("\n$", "")
+            if #text > 0 then
+              local color = style.syntax[type] or style.syntax["normal"] or style.text
+              tx = renderer.draw_text(code_font, text, tx, y, color)
+            end
+          end
+          y = y + code_line_h
+        end
+      else
+        local code_color = style.syntax and style.syntax["normal"] or style.text
+        for _, code_line in ipairs(block.lines) do
+          renderer.draw_text(code_font, code_line, x + padding_x * 0.5, y, code_color)
+          y = y + code_line_h
+        end
       end
       y = y + padding_y * 0.75
 
