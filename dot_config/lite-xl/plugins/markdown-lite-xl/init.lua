@@ -178,9 +178,9 @@ local function parse_blocks(text)
     end
 
     -- Heading
-    local h_level, h_text = line:match("^(#+)%s+(.+)$")
+    local h_level, h_text = line:match("^(#+)%s(.*)$")
     if h_level then
-      table.insert(blocks, { type = "heading", level = #h_level, text = h_text })
+      table.insert(blocks, { type = "heading", level = #h_level, text = h_text or "" })
       i = i + 1
       goto next_block
     end
@@ -279,6 +279,8 @@ local function parse_blocks(text)
     end
     if #para_lines > 0 then
       table.insert(blocks, { type = "paragraph", text = table.concat(para_lines, " ") })
+    else
+      i = i + 1
     end
 
     ::next_block::
@@ -347,10 +349,13 @@ function MarkdownView:scroll_to_pos(pos)
 end
 
 function MarkdownView:update(...)
-  local new_content = self.initial_active_view.doc:get_text(1, 1, math.huge, math.huge)
-  if self.text_content ~= new_content then
-    self.blocks = parse_blocks(new_content)
-    self.text_content = new_content
+  local view = self.initial_active_view
+  if view and view.doc then
+    local ok, new_content = pcall(view.doc.get_text, view.doc, 1, 1, math.huge, math.huge)
+    if ok and new_content and self.text_content ~= new_content then
+      self.blocks = parse_blocks(new_content)
+      self.text_content = new_content
+    end
   end
   MarkdownView.super.update(self, ...)
 end
@@ -551,6 +556,7 @@ function MarkdownView:draw()
       for _, row in ipairs(rows) do
         num_cols = math.max(num_cols, #row)
       end
+      if num_cols == 0 then goto draw_next end
 
       local border_w = math.max(1, SCALE)
       local cell_pad = padding_x * 0.75
