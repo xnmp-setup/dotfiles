@@ -333,7 +333,7 @@ function MarkdownView:try_close(...)
 end
 
 function MarkdownView:get_scrollable_size()
-  return self.scrollable_size + self.size.y
+  return self.scrollable_size
 end
 
 function MarkdownView:scroll_by(delta)
