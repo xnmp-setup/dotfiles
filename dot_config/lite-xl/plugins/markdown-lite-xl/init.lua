@@ -328,6 +328,10 @@ function MarkdownView:new()
   self.blocks = {}
   self.scrollable = true
   self.scrollable_size = 0
+  self.segments = {}
+  self.sel_start = nil
+  self.sel_end = nil
+  self.mouse_selecting = false
 
   local size = style.code_font:get_size()
   local home = os.getenv("HOME")
@@ -381,9 +385,95 @@ function MarkdownView:update(...)
     if ok and new_content and self.text_content ~= new_content then
       self.blocks = parse_blocks(new_content)
       self.text_content = new_content
+      self.sel_start = nil
+      self.sel_end = nil
     end
   end
   MarkdownView.super.update(self, ...)
+end
+
+function MarkdownView:draw_text_seg(font, text, x, y, color, line_height)
+  local w = font:get_width(text)
+  table.insert(self.segments, { x = x, y = y, w = w, h = line_height, text = text })
+  return renderer.draw_text(font, text, x, y, color)
+end
+
+function MarkdownView:resolve_segment(px, py)
+  local best = nil
+  local best_dist = math.huge
+  for i, seg in ipairs(self.segments) do
+    if py >= seg.y and py < seg.y + seg.h then
+      if px >= seg.x and px < seg.x + seg.w then
+        return i
+      end
+      local dist = math.min(math.abs(px - seg.x), math.abs(px - (seg.x + seg.w)))
+      if dist < best_dist then
+        best_dist = dist
+        best = i
+      end
+    end
+  end
+  if best then return best end
+  -- Find closest segment by y
+  for i, seg in ipairs(self.segments) do
+    local dy = math.abs(py - (seg.y + seg.h * 0.5))
+    if dy < best_dist then
+      best_dist = dy
+      best = i
+    end
+  end
+  return best
+end
+
+function MarkdownView:on_mouse_pressed(button, x, y, clicks)
+  if MarkdownView.super.on_mouse_pressed(self, button, x, y, clicks) then
+    return true
+  end
+  if button == "left" then
+    local idx = self:resolve_segment(x, y)
+    if idx then
+      self.sel_start = idx
+      self.sel_end = idx
+      self.mouse_selecting = true
+    end
+    return true
+  end
+end
+
+function MarkdownView:on_mouse_moved(x, y, dx, dy)
+  MarkdownView.super.on_mouse_moved(self, x, y, dx, dy)
+  if self.mouse_selecting then
+    local idx = self:resolve_segment(x, y)
+    if idx then
+      self.sel_end = idx
+    end
+  end
+end
+
+function MarkdownView:on_mouse_released(button, x, y)
+  MarkdownView.super.on_mouse_released(self, button, x, y)
+  self.mouse_selecting = false
+end
+
+function MarkdownView:get_selection_text()
+  if not self.sel_start or not self.sel_end then return nil end
+  local s = math.min(self.sel_start, self.sel_end)
+  local e = math.max(self.sel_start, self.sel_end)
+  local parts = {}
+  local prev_y = nil
+  for i = s, e do
+    local seg = self.segments[i]
+    if seg then
+      if prev_y and seg.y > prev_y + seg.h * 0.5 then
+        table.insert(parts, "\n")
+      end
+      local text = seg.text
+      if i == s then text = text:gsub("^%s+", "") end
+      table.insert(parts, text)
+      prev_y = seg.y
+    end
+  end
+  return table.concat(parts)
 end
 
 -- Draw inline spans with word-wrapping
@@ -428,7 +518,7 @@ function MarkdownView:draw_spans(spans, x, y, max_width)
         cx = cx + pad
       end
 
-      renderer.draw_text(font, draw_text, cx, y, color)
+      self:draw_text_seg(font, draw_text, cx, y, color, line_height)
 
       if span.underline then
         local uh = math.max(1, SCALE)
@@ -447,6 +537,7 @@ end
 
 function MarkdownView:draw()
   self:draw_background(style.background)
+  self.segments = {}
 
   local ox, oy = self:get_content_offset()
   local padding_x = style.padding.x
@@ -523,7 +614,7 @@ function MarkdownView:draw()
             text = text:gsub("\n$", "")
             if #text > 0 then
               local color = style.syntax[type] or style.syntax["normal"] or style.text
-              tx = renderer.draw_text(code_font, text, tx, y, color)
+              tx = self:draw_text_seg(code_font, text, tx, y, color, code_line_h)
             end
           end
           y = y + code_line_h
@@ -531,7 +622,7 @@ function MarkdownView:draw()
       else
         local code_color = style.syntax and style.syntax["normal"] or style.text
         for _, code_line in ipairs(block.lines) do
-          renderer.draw_text(code_font, code_line, x + padding_x * 0.5, y, code_color)
+          self:draw_text_seg(code_font, code_line, x + padding_x * 0.5, y, code_color, code_line_h)
           y = y + code_line_h
         end
       end
@@ -573,7 +664,7 @@ function MarkdownView:draw()
         local level = math.floor(item.indent / 2)
         local indent = padding_x + level * padding_x * 1.5
         local bullet = bullets[(level % #bullets) + 1]
-        renderer.draw_text(self.fonts.regular, bullet, x + indent - padding_x, y, bullet_color)
+        self:draw_text_seg(self.fonts.regular, bullet, x + indent - padding_x, y, bullet_color, line_height)
         local spans = parse_inline(item.text, self.fonts, style.text)
         y = self:draw_spans(spans, x + indent, y, max_width - indent)
       end
@@ -586,7 +677,7 @@ function MarkdownView:draw()
         local level = math.floor(item.indent / 2)
         local indent = padding_x + level * padding_x * 1.5
         local num_text = tostring(item.num) .. "."
-        renderer.draw_text(self.fonts.regular, num_text, x + indent - padding_x, y, num_color)
+        self:draw_text_seg(self.fonts.regular, num_text, x + indent - padding_x, y, num_color, line_height)
         local spans = parse_inline(item.text, self.fonts, style.text)
         y = self:draw_spans(spans, x + indent, y, max_width - indent)
       end
@@ -753,6 +844,19 @@ function MarkdownView:draw()
   end
 
   self.scrollable_size = y - oy
+
+  -- Draw selection highlights
+  if self.sel_start and self.sel_end then
+    local s = math.min(self.sel_start, self.sel_end)
+    local e = math.max(self.sel_start, self.sel_end)
+    for i = s, e do
+      local seg = self.segments[i]
+      if seg then
+        renderer.draw_rect(seg.x, seg.y, seg.w, seg.h, style.selection)
+      end
+    end
+  end
+
   self:draw_scrollbar()
 end
 
@@ -808,6 +912,19 @@ command.add(is_markdown_view, {
   ["markdown:scroll-to-bottom"] = function()
     core.active_view:scroll_to_pos(core.active_view:get_scrollable_size())
   end,
+  ["markdown:copy"] = function()
+    local text = core.active_view:get_selection_text()
+    if text then
+      system.set_clipboard(text)
+    end
+  end,
+  ["markdown:select-all"] = function()
+    local view = core.active_view
+    if #view.segments > 0 then
+      view.sel_start = 1
+      view.sel_end = #view.segments
+    end
+  end,
 })
 
 keymap.add {
@@ -816,6 +933,8 @@ keymap.add {
   ["down"] = "markdown:scroll-down",
   ["pageup"] = "markdown:page-up",
   ["pagedown"] = "markdown:page-down",
+  ["ctrl+c"] = "markdown:copy",
+  ["ctrl+a"] = "markdown:select-all",
   ["ctrl+up"] = "markdown:scroll-to-top",
   ["ctrl+down"] = "markdown:scroll-to-bottom",
 }
