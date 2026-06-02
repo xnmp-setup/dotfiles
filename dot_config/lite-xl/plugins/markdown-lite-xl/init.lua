@@ -295,7 +295,6 @@ local MarkdownView = View:extend()
 
 function MarkdownView:new()
   MarkdownView.super.new(self)
-  self.target_size = 500 * SCALE
   self.initial_active_view = core.active_view
   self.text_content = ""
   self.blocks = {}
@@ -326,13 +325,6 @@ end
 function MarkdownView:get_name()
   local v = self.initial_active_view or core.active_view
   return "Preview " .. (v.doc and (v.doc.abs_name or v.doc:get_name()) or "untitled")
-end
-
-function MarkdownView:set_target_size(axis, value)
-  if axis == "x" then
-    self.target_size = value
-    return true
-  end
 end
 
 function MarkdownView:try_close(...)
@@ -709,19 +701,7 @@ end
 function main.start_markdown()
   main.view = MarkdownView()
   local node = core.root_view:get_active_node()
-  node:split("right")
-  node = core.root_view:get_active_node_default()
   node:add_view(main.view)
-  core.root_view.root_node:update_layout()
-
-  local treeview_loaded, treeview = core.try(require, "plugins.treeview")
-  local treeview_target_size = treeview_loaded and treeview.target_size or 0
-
-  function main.view:update(...)
-    local dest = (self.target_size or 0) + treeview_target_size
-    self:move_towards(self.size, "x", dest)
-    MarkdownView.update(self, ...)
-  end
 end
 
 command.add(nil, {
