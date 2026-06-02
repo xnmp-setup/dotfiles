@@ -336,6 +336,16 @@ function MarkdownView:get_scrollable_size()
   return self.scrollable_size + self.size.y
 end
 
+function MarkdownView:scroll_by(delta)
+  self.scroll.to.y = self.scroll.to.y + delta
+  self.scroll.to.y = math.max(0, math.min(self.scroll.to.y, self:get_scrollable_size() - self.size.y))
+end
+
+function MarkdownView:scroll_to_pos(pos)
+  self.scroll.to.y = pos
+  self.scroll.to.y = math.max(0, math.min(self.scroll.to.y, self:get_scrollable_size() - self.size.y))
+end
+
 function MarkdownView:update(...)
   local new_content = self.initial_active_view.doc:get_text(1, 1, math.huge, math.huge)
   if self.text_content ~= new_content then
@@ -719,8 +729,43 @@ command.add(nil, {
   end,
 })
 
+local function is_markdown_view()
+  return core.active_view:is(MarkdownView)
+end
+
+command.add(is_markdown_view, {
+  ["markdown:scroll-up"] = function()
+    local lh = core.active_view.fonts.regular:get_height() * 1.3
+    core.active_view:scroll_by(-lh * 3)
+  end,
+  ["markdown:scroll-down"] = function()
+    local lh = core.active_view.fonts.regular:get_height() * 1.3
+    core.active_view:scroll_by(lh * 3)
+  end,
+  ["markdown:page-up"] = function()
+    local lh = core.active_view.fonts.regular:get_height() * 1.3
+    core.active_view:scroll_by(-lh * 15)
+  end,
+  ["markdown:page-down"] = function()
+    local lh = core.active_view.fonts.regular:get_height() * 1.3
+    core.active_view:scroll_by(lh * 15)
+  end,
+  ["markdown:scroll-to-top"] = function()
+    core.active_view:scroll_to_pos(0)
+  end,
+  ["markdown:scroll-to-bottom"] = function()
+    core.active_view:scroll_to_pos(core.active_view:get_scrollable_size())
+  end,
+})
+
 keymap.add {
   ["alt+shift+m"] = "markdown:show",
+  ["up"] = "markdown:scroll-up",
+  ["down"] = "markdown:scroll-down",
+  ["pageup"] = "markdown:page-up",
+  ["pagedown"] = "markdown:page-down",
+  ["ctrl+up"] = "markdown:scroll-to-top",
+  ["ctrl+down"] = "markdown:scroll-to-bottom",
 }
 
 return main
