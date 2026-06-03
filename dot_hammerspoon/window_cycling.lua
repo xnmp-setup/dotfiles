@@ -85,14 +85,18 @@ function windowCycling.cycleOrRun(appName, launchName, hideBehaviour, hideOnLose
   -- Sort windows by ID for consistent cycling order
   table.sort(wins, function(a, b) return a:id() < b:id() end)
 
-  -- If no unminimized windows, unminimize the last one that was minimized
+  -- If no unminimized windows, unminimize the last one that was minimized on this space
   if #wins == 0 then
-    -- Build list of all minimized windows (check allWins, not just allWinsOnSpace)
-    -- Note: Don't check isStandard() here because minimized windows report isStandard=false
     local allMinimizedWins = {}
     for _, w in ipairs(allWins) do
       if w:isMinimized() then
-        table.insert(allMinimizedWins, w)
+        local winSpaces = hs.spaces.windowSpaces(w)
+        for _, spaceId in ipairs(winSpaces) do
+          if spaceId == currentSpace then
+            table.insert(allMinimizedWins, w)
+            break
+          end
+        end
       end
     end
 
