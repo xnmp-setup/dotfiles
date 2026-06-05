@@ -68,8 +68,8 @@ end
 
 function windowCycling.cycleOrRun(appName, launchName, hideBehaviour, hideOnLoseFocus)
   launchName = launchName or appName
-  hideBehaviour = hideBehaviour or "minimize"
-  if hideOnLoseFocus == nil then hideOnLoseFocus = (hideBehaviour == "hide") end
+  hideBehaviour = hideBehaviour or "hide"
+  if hideOnLoseFocus == nil then hideOnLoseFocus = false end
 
   local app = hs.application.get(appName)
 
