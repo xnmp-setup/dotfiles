@@ -10,7 +10,7 @@ local command = require "core.command"
 
 ------------------------------ Themes ----------------------------------------
 
-core.reload_module("colors.desert")
+core.reload_module("colors.ayu-mirage")
 
 ------------------------------ Fonts -----------------------------------------
 
@@ -40,13 +40,15 @@ end
 local DocView = require "core.docview"
 
 command.add(function()
-  return core.active_view:is(DocView) and core.active_view.doc:has_selection()
+  if not core.active_view:is(DocView) then return false end
+  local l1, c1, l2, c2 = core.active_view.doc:get_selection()
+  return l1 ~= l2 or c1 ~= c2
 end, {
   ["doc:cursors-to-line-ends"] = function()
     local doc = core.active_view.doc
     local seen = {}
     local lines = {}
-    for _, l1, c1, l2, c2 in doc:get_selections(true, true) do
+    for idx, l1, c1, l2, c2 in doc:get_selections(true) do
       local end_line = (c2 == 1 and l2 > l1) and l2 - 1 or l2
       for line = l1, end_line do
         if not seen[line] then
@@ -55,10 +57,12 @@ end, {
         end
       end
     end
-    doc:set_selection(lines[1], #doc.lines[lines[1]])
+    if #lines == 0 then return end
+    doc:set_selection(lines[1], math.huge)
     for i = 2, #lines do
-      doc:add_selection(lines[i], #doc.lines[lines[i]])
+      doc:add_selection(lines[i], math.huge)
     end
+    doc:merge_cursors()
   end,
 })
 
@@ -98,7 +102,7 @@ keymap.add({
   ["alt+down"]         = "doc:move-lines-down",
   ["ctrl+/"]           = "doc:toggle-line-comments",
   ["ctrl+shift+a"]     = "doc:toggle-block-comments",
-  ["ctrl+l"]           = "doc:cursors-to-line-ends",
+  ["ctrl+shift+l"]     = "doc:cursors-to-line-ends",
   ["ctrl+shift+enter"] = "doc:newline-above",
   ["ctrl+enter"]       = "doc:newline-below",
   ["ctrl+]"]           = "doc:indent",
