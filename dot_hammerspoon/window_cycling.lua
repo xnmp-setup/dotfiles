@@ -123,8 +123,13 @@ function windowCycling.cycleOrRun(appName, launchName, opts)
         w:unminimize()
         focusWindow(w, appName, hideOnLoseFocus)
       else
-        app:activate()
-        if hideOnLoseFocus then autoHide.enable(appName) end
+        local otherVisible = filterMinimized(allWins, false)
+        if #otherVisible > 0 then
+          focusWindow(otherVisible[1], appName, hideOnLoseFocus)
+        else
+          app:activate()
+          if hideOnLoseFocus then autoHide.enable(appName) end
+        end
       end
     end
     return
