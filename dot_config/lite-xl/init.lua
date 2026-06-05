@@ -117,6 +117,9 @@ keymap.add({
   -- Multi-cursor / selection
   ["ctrl+shift+l"]     = "doc:select-word",
 
+  -- Tabs
+  ["ctrl+shift+t"]     = "root:reopen-last-closed-tab",
+
   -- View
   ["ctrl+="]           = "scale:increase",
   ["ctrl+-"]           = "scale:decrease",
@@ -208,17 +211,35 @@ config.plugins.linewrapping = {
 
 ---------------------------- Miscellaneous ------------------------------------
 
-local original_close = command.map["root:close"].perform
-command.map["root:close"].perform = function(...)
-  original_close(...)
-  local has_docs = false
-  for _, view in ipairs(core.root_view.root_node:get_children()) do
-    if view:is(DocView) then
-      has_docs = true
-      break
+if not core._closed_tabs then core._closed_tabs = {} end
+
+if not core._close_hooked then
+  core._close_hooked = true
+  local original_close = command.map["root:close"].perform
+  command.map["root:close"].perform = function(node)
+    local view = node.active_view
+    if view:is(DocView) and view.doc and view.doc.filename then
+      table.insert(core._closed_tabs, view.doc.filename)
+    end
+    original_close(node)
+    local has_docs = false
+    for _, v in ipairs(core.root_view.root_node:get_children()) do
+      if v:is(DocView) then
+        has_docs = true
+        break
+      end
+    end
+    if not has_docs then
+      core.quit()
     end
   end
-  if not has_docs then
-    core.quit()
-  end
 end
+
+command.add(nil, {
+  ["root:reopen-last-closed-tab"] = function()
+    local filename = table.remove(core._closed_tabs)
+    if filename then
+      core.root_view:open_doc(core.open_doc(filename))
+    end
+  end,
+})
