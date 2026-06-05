@@ -55,12 +55,34 @@ local function focusWindow(win, appName, hideOnLoseFocus)
   if hideOnLoseFocus then autoHide.enable(appName) end
 end
 
-local function openNewWindow(app, appName, hideOnLoseFocus)
-  app:activate()
-  hs.timer.doAfter(0.1, function()
-    hs.eventtap.keyStroke({"cmd"}, "n")
+local function openNewWindow(app, appName, currentSpace, hideOnLoseFocus)
+  local existingIds = {}
+  for _, w in ipairs(app:allWindows()) do
+    existingIds[w:id()] = true
+  end
+
+  hs.eventtap.keyStroke({"cmd"}, "n", 0, app)
+
+  hs.timer.doAfter(0.5, function()
+    local newWin = nil
+    for _, w in ipairs(app:allWindows()) do
+      if w:isStandard() and not existingIds[w:id()] then
+        newWin = w
+        break
+      end
+    end
+
+    if newWin then
+      local winSpaces = hs.spaces.windowSpaces(newWin)
+      if winSpaces and #winSpaces > 0 and winSpaces[1] ~= currentSpace then
+        hs.spaces.moveWindowToSpace(newWin, currentSpace)
+      end
+      hs.timer.doAfter(0.1, function()
+        newWin:focus()
+      end)
+    end
+    if hideOnLoseFocus then autoHide.enable(appName) end
   end)
-  if hideOnLoseFocus then autoHide.enable(appName) end
 end
 
 function windowCycling.cycleOrRun(appName, launchName, opts)
@@ -115,7 +137,7 @@ function windowCycling.cycleOrRun(appName, launchName, opts)
   -- 2. No windows at all on this space
   if #localVisible == 0 then
     if multiWorkspace then
-      openNewWindow(app, appName, hideOnLoseFocus)
+      openNewWindow(app, appName, currentSpace, hideOnLoseFocus)
     else
       local otherMinimized = filterMinimized(allWins, true)
       if #otherMinimized > 0 then
