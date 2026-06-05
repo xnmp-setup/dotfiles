@@ -4,9 +4,6 @@ local autoHide = require("auto_hide")
 
 local lastMinimized = {}
 
--- When true, prefer opening a new window on the current workspace rather than
--- switching to a window on another workspace.
-windowCycling.multiWorkspace = true
 
 local function getAppWindows(app)
   local wins = app:allWindows()
@@ -66,10 +63,12 @@ local function openNewWindow(app, appName, hideOnLoseFocus)
   if hideOnLoseFocus then autoHide.enable(appName) end
 end
 
-function windowCycling.cycleOrRun(appName, launchName, hideBehaviour, hideOnLoseFocus)
+function windowCycling.cycleOrRun(appName, launchName, opts)
   launchName = launchName or appName
-  hideBehaviour = hideBehaviour or "hide"
-  if hideOnLoseFocus == nil then hideOnLoseFocus = false end
+  opts = opts or {}
+  local hideBehaviour = opts.hideBehaviour or "hide"
+  local hideOnLoseFocus = opts.hideOnLoseFocus or false
+  local multiWorkspace = opts.multiWorkspace or false
 
   local app = hs.application.get(appName)
 
@@ -115,7 +114,7 @@ function windowCycling.cycleOrRun(appName, launchName, hideBehaviour, hideOnLose
 
   -- 2. No windows at all on this space
   if #localVisible == 0 then
-    if windowCycling.multiWorkspace then
+    if multiWorkspace then
       openNewWindow(app, appName, hideOnLoseFocus)
     else
       local otherMinimized = filterMinimized(allWins, true)
