@@ -5,7 +5,7 @@ require("hs.ipc").cliInstall()
 local helpers = require("helpers")
 local windowCycling = require("window_cycling")
 -- ---------- App cycling like your F-keys ----------
-hs.hotkey.bind({}, "F9", function() windowCycling.cycleOrRun("Ghostty", "Ghostty", { multiWorkspace = true }) end)
+hs.hotkey.bind({}, "F9", function() windowCycling.cycleOrRun("Ghostty", "Ghostty") end)
 hs.hotkey.bind({}, "F7", function() windowCycling.cycleOrRun("Google Chrome", "Google Chrome", { multiWorkspace = true }) end)
 hs.hotkey.bind({}, "F6", function() windowCycling.cycleOrRun("Google Chrome", "Google Chrome", { multiWorkspace = true }) end)
 -- hs.hotkey.bind({}, "F5", function() windowCycling.cycleOrRun("Arc", "Arc") end)
