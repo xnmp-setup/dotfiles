@@ -5,6 +5,10 @@ local autoHide = require("auto_hide")
 -- Track last minimized window per app
 local lastMinimized = {}
 
+-- When true, prefer opening a new window on the current workspace rather than
+-- switching to a minimized window on another workspace.
+windowCycling.multiWorkspace = true
+
 -- Like your AHK CycleOrRun(exe): if 1 window and active -> minimize, else focus; if many -> cycle
 function windowCycling.cycleOrRun(appName, launchName, hideBehaviour, hideOnLoseFocus)
   launchName = launchName or appName
@@ -127,7 +131,37 @@ function windowCycling.cycleOrRun(appName, launchName, hideBehaviour, hideOnLose
       return
     end
 
-    -- No minimized windows found, just activate the app
+    if windowCycling.multiWorkspace then
+      -- Open a new window on the current space
+      app:activate()
+      hs.timer.doAfter(0.1, function()
+        hs.eventtap.keyStroke({"cmd"}, "n")
+      end)
+      if hideOnLoseFocus then
+        autoHide.enable(appName)
+      end
+      return
+    end
+
+    -- Non-multiWorkspace: try to unminimize a window on another space
+    local otherSpaceMinimized = {}
+    for _, w in ipairs(allWins) do
+      if w:isMinimized() then
+        table.insert(otherSpaceMinimized, w)
+      end
+    end
+
+    if #otherSpaceMinimized > 0 then
+      local winToRestore = otherSpaceMinimized[#otherSpaceMinimized]
+      winToRestore:unminimize()
+      winToRestore:focus()
+      if hideOnLoseFocus then
+        autoHide.enable(appName)
+      end
+      return
+    end
+
+    -- Fallback: just activate (switches to other space's open window)
     app:activate()
     if hideOnLoseFocus then
       autoHide.enable(appName)

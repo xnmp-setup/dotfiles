@@ -16,8 +16,8 @@ hs.hotkey.bind({}, "F3", function() windowCycling.cycleOrRun("Zed", "Zed") end)
 --hs.hotkey.bind({}, "F3", function() windowCycling.cycleOrRun("Code", "Visual Studio Code") end)
 
 hs.hotkey.bind({}, "F8", function() windowCycling.cycleOrRun("tauri-explorer", "tauri-explorer", "hide", false) end)
-hs.hotkey.bind({}, "F10", function() windowCycling.cycleOrRun("Lite XL", "Lite XL", "hide") end)
-hs.hotkey.bind({ "alt" }, "n", function() windowCycling.cycleOrRun("Lite XL", "Lite XL", "hide") end)
+hs.hotkey.bind({}, "F10", function() windowCycling.cycleOrRun("Lite XL", "Lite XL") end)
+hs.hotkey.bind({ "alt" }, "n", function() windowCycling.cycleOrRun("Lite XL", "Lite XL") end)
 
 -- Chained hotkey: Alt+M then E for Marta
 -- helpers.bindSequence({"alt"}, {"M", "E"}, 0.5, function()
