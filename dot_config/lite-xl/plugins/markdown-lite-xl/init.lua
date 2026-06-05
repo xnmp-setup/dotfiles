@@ -397,7 +397,7 @@ function MarkdownView:update(...)
       self.text_content = new_content
       self.sel_start = nil
       self.sel_end = nil
-      self.block_heights = nil
+      self.block_height_cache = {}
     end
   end
   MarkdownView.super.update(self, ...)
@@ -546,43 +546,6 @@ function MarkdownView:draw_spans(spans, x, y, max_width)
   return y + line_height
 end
 
-function MarkdownView:estimate_block_height(block, max_width)
-  local padding_y = style.padding.y
-  local line_height = self.fonts.regular:get_height()
-
-  if block.type == "empty" then
-    return line_height * 0.7
-  elseif block.type == "heading" then
-    local level = math.min(block.level, 6)
-    local h = self.fonts.h[level]:get_height() * 1.3
-    local extra = padding_y * 1.7
-    if level <= 2 then extra = extra + padding_y * 0.8 + SCALE end
-    return h + extra + padding_y * 0.5
-  elseif block.type == "paragraph" then
-    local font = self.fonts.regular
-    local text_w = font:get_width(block.text)
-    local num_lines = math.max(1, math.ceil(text_w / max_width))
-    return num_lines * line_height * 1.3 + line_height * 0.5
-  elseif block.type == "code_block" then
-    local code_line_h = self.fonts.code:get_height() * 1.3
-    return #block.lines * code_line_h + padding_y * 3
-  elseif block.type == "hr" then
-    return line_height + 2 * SCALE
-  elseif block.type == "blockquote" then
-    local font = self.fonts.italic
-    local text_w = font:get_width(block.text)
-    local num_lines = math.max(1, math.ceil(text_w / max_width))
-    return num_lines * line_height * 1.3 + line_height * 0.5
-  elseif block.type == "ul" then
-    return #block.items * line_height * 1.3 + line_height * 0.2
-  elseif block.type == "ol" then
-    return #block.items * line_height * 1.3 + line_height * 0.2
-  elseif block.type == "table" then
-    local row_h = line_height * 1.3 + padding_y
-    return #block.rows * row_h + padding_y
-  end
-  return line_height
-end
 
 function MarkdownView:draw()
   self:draw_background(style.background)
@@ -597,19 +560,17 @@ function MarkdownView:draw()
   local line_height = self.fonts.regular:get_height()
 
   local view_top = self.scroll.y
-  local view_bottom = self.scroll.y + self.size.y
+  local cache = self.block_height_cache or {}
 
-  for _, block in ipairs(self.blocks) do
+  local y_before = y
+  for bi, block in ipairs(self.blocks) do
     local block_y_rel = y - oy
-    local est_h = self:estimate_block_height(block, max_width)
-    if block_y_rel + est_h < view_top then
-      y = y + est_h
+    local cached_h = cache[bi]
+    if cached_h and block_y_rel + cached_h < view_top then
+      y = y + cached_h
       goto draw_next
     end
-    if block_y_rel > view_bottom then
-      y = y + est_h
-      goto draw_next
-    end
+    y_before = y
 
     -- Empty line
     if block.type == "empty" then
@@ -888,8 +849,10 @@ function MarkdownView:draw()
       y = y + border_w + padding_y
     end
 
+    cache[bi] = y - y_before
     ::draw_next::
   end
+  self.block_height_cache = cache
 
   self.scrollable_size = y - oy
 
