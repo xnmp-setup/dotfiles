@@ -4,10 +4,8 @@ require("hs.ipc").cliInstall()
 
 local helpers = require("helpers")
 local windowCycling = require("window_cycling")
-local dropdownTerminal = require("dropdown_terminal")
-
 -- ---------- App cycling like your F-keys ----------
-hs.hotkey.bind({}, "F9", dropdownTerminal.toggle)
+hs.hotkey.bind({}, "F9", function() windowCycling.cycleOrRun("Ghostty", "Ghostty") end)
 hs.hotkey.bind({}, "F7", function() windowCycling.cycleOrRun("Google Chrome", "Google Chrome") end)
 hs.hotkey.bind({}, "F6", function() windowCycling.cycleOrRun("Google Chrome", "Google Chrome") end)
 -- hs.hotkey.bind({}, "F5", function() windowCycling.cycleOrRun("Arc", "Arc") end)

@@ -3,7 +3,7 @@ quick-terminal-position = top
 quick-terminal-size = 65%,1000px
 
 background-opacity = 0.95
-macos-hidden = always
+macos-hidden = never
 macos-titlebar-style = tabs
 
 macos-window-buttons = hidden
