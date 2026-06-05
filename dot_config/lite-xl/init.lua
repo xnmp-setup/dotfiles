@@ -163,6 +163,15 @@ function core.confirm_close_docs(docs, close_fn, ...)
   close_fn(...)
 end
 
+---------------------------- Line Wrapping -----------------------------------
+
+config.plugins.linewrapping = {
+  mode = "word",
+  enable_by_default = true,
+  indent = true,
+  guide = false,
+}
+
 ---------------------------- Miscellaneous ------------------------------------
 
 local original_close = command.map["root:close"].perform
