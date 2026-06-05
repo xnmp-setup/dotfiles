@@ -117,6 +117,7 @@
             "ctrl-shift-f": "pane::DeploySearch",
             "ctrl-shift-h": ["pane::DeploySearch", { "replace_enabled": true }],
             "ctrl-shift-k": "editor::DeleteLine",
+            "ctrl-l": "editor::SplitSelectionIntoLines",
             "ctrl-shift-l": "editor::SelectAllMatches",
             "ctrl-shift-t": "pane::ReopenClosedItem",
             "ctrl-shift-n": "workspace::NewWindow",
@@ -148,6 +149,11 @@
 
             // git graph
             "ctrl-alt-g": "git_graph::Open",
+
+            // REPL
+            "ctrl-enter": "repl::RunInPlace",
+            "shift-enter": "repl::Run",
+            "ctrl-\\": "repl::ClearOutputs",
 
             // navigate back / go to definition
             "alt-ctrl-left": "pane::GoBack",
