@@ -66,6 +66,55 @@ end, {
   end,
 })
 
+----------------------- Find: Enter cycles matches --------------------------
+
+local find_search = require "core.doc.search"
+local CommandView = require "core.commandview"
+
+local function find_target_view()
+  if core.last_active_view and core.last_active_view:is(DocView) then
+    return core.last_active_view
+  end
+end
+
+local function is_in_find_commandview()
+  if not core.active_view:is(CommandView) then return false end
+  local label = core.active_view.label or ""
+  return label:find("^Find") ~= nil and find_target_view() ~= nil
+end
+
+command.add(is_in_find_commandview, {
+  ["find-replace:next-or-wrap"] = function()
+    local text = core.active_view:get_text()
+    local dv = find_target_view()
+    if text == "" or not dv then return end
+    local _, _, sl2, sc2 = dv.doc:get_selection(true)
+    local line1, col1, line2, col2 = find_search.find(
+      dv.doc, sl2, sc2, text, { wrap = true, no_case = true }
+    )
+    if line1 then
+      dv.doc:set_selection(line2, col2, line1, col1)
+      dv:scroll_to_line(line2, true)
+    end
+  end,
+  ["find-replace:prev-or-wrap"] = function()
+    local text = core.active_view:get_text()
+    local dv = find_target_view()
+    if text == "" or not dv then return end
+    local sl1, sc1 = dv.doc:get_selection(true)
+    local line1, col1, line2, col2 = find_search.find(
+      dv.doc, sl1, sc1, text, { wrap = true, no_case = true, reverse = true }
+    )
+    if line1 then
+      dv.doc:set_selection(line2, col2, line1, col1)
+      dv:scroll_to_line(line2, true)
+    end
+  end,
+  ["find-replace:close-find"] = function()
+    core.active_view:exit(true)
+  end,
+})
+
 --------------------------- Key bindings -------------------------------------
 
 -- VSCode-style keybindings (overwrite defaults)
@@ -131,6 +180,13 @@ keymap.add_direct {
   ["ctrl+pageup"]  = { "root:switch-to-previous-tab" },
   ["ctrl+pagedown"] = { "root:switch-to-next-tab" },
 }
+
+-- Enter/Shift+Enter cycle through find matches; Escape closes without resetting
+keymap.add({
+  ["return"]       = "find-replace:next-or-wrap",
+  ["shift+return"] = "find-replace:prev-or-wrap",
+  ["escape"]       = "find-replace:close-find",
+}, true)
 
 ------------------------------ Evergreen (tree-sitter) -------------------------
 
