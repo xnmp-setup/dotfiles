@@ -346,11 +346,21 @@ function MarkdownView:new()
     bold_italic = renderer.font.load(inter .. "BoldItalic.otf", size),
     strikethrough = renderer.font.load(inter .. "Regular.otf", size, { strikethrough = true }),
     code = renderer.font.load(code_path, size * 0.9),
-    h = {}
+    h = {},
+    h_inline = {},
   }
   local h_scales = { 1.8, 1.5, 1.25, 1.1, 1.0, 0.9 }
   for i, s in ipairs(h_scales) do
-    self.fonts.h[i] = renderer.font.load(inter .. "Bold.otf", size * s)
+    local h_size = size * s
+    self.fonts.h[i] = renderer.font.load(inter .. "Bold.otf", h_size)
+    self.fonts.h_inline[i] = {
+      regular = self.fonts.h[i],
+      bold = self.fonts.h[i],
+      italic = renderer.font.load(inter .. "BoldItalic.otf", h_size),
+      bold_italic = renderer.font.load(inter .. "BoldItalic.otf", h_size),
+      strikethrough = renderer.font.load(inter .. "Bold.otf", h_size, { strikethrough = true }),
+      code = renderer.font.load(code_path, h_size * 0.85),
+    }
   end
 end
 
@@ -387,6 +397,7 @@ function MarkdownView:update(...)
       self.text_content = new_content
       self.sel_start = nil
       self.sel_end = nil
+      self.block_heights = nil
     end
   end
   MarkdownView.super.update(self, ...)
@@ -535,6 +546,44 @@ function MarkdownView:draw_spans(spans, x, y, max_width)
   return y + line_height
 end
 
+function MarkdownView:estimate_block_height(block, max_width)
+  local padding_y = style.padding.y
+  local line_height = self.fonts.regular:get_height()
+
+  if block.type == "empty" then
+    return line_height * 0.7
+  elseif block.type == "heading" then
+    local level = math.min(block.level, 6)
+    local h = self.fonts.h[level]:get_height() * 1.3
+    local extra = padding_y * 1.7
+    if level <= 2 then extra = extra + padding_y * 0.8 + SCALE end
+    return h + extra + padding_y * 0.5
+  elseif block.type == "paragraph" then
+    local font = self.fonts.regular
+    local text_w = font:get_width(block.text)
+    local num_lines = math.max(1, math.ceil(text_w / max_width))
+    return num_lines * line_height * 1.3 + line_height * 0.5
+  elseif block.type == "code_block" then
+    local code_line_h = self.fonts.code:get_height() * 1.3
+    return #block.lines * code_line_h + padding_y * 3
+  elseif block.type == "hr" then
+    return line_height + 2 * SCALE
+  elseif block.type == "blockquote" then
+    local font = self.fonts.italic
+    local text_w = font:get_width(block.text)
+    local num_lines = math.max(1, math.ceil(text_w / max_width))
+    return num_lines * line_height * 1.3 + line_height * 0.5
+  elseif block.type == "ul" then
+    return #block.items * line_height * 1.3 + line_height * 0.2
+  elseif block.type == "ol" then
+    return #block.items * line_height * 1.3 + line_height * 0.2
+  elseif block.type == "table" then
+    local row_h = line_height * 1.3 + padding_y
+    return #block.rows * row_h + padding_y
+  end
+  return line_height
+end
+
 function MarkdownView:draw()
   self:draw_background(style.background)
   self.segments = {}
@@ -547,7 +596,20 @@ function MarkdownView:draw()
   local max_width = self.size.x - padding_x * 2
   local line_height = self.fonts.regular:get_height()
 
+  local view_top = self.scroll.y
+  local view_bottom = self.scroll.y + self.size.y
+
   for _, block in ipairs(self.blocks) do
+    local block_y_rel = y - oy
+    local est_h = self:estimate_block_height(block, max_width)
+    if block_y_rel + est_h < view_top then
+      y = y + est_h
+      goto draw_next
+    end
+    if block_y_rel > view_bottom then
+      y = y + est_h
+      goto draw_next
+    end
 
     -- Empty line
     if block.type == "empty" then
@@ -556,23 +618,9 @@ function MarkdownView:draw()
     -- Heading
     elseif block.type == "heading" then
       local level = math.min(block.level, 6)
-      local font = self.fonts.h[level]
       y = y + padding_y * 1.2
-      local h_size = font:get_size()
-      local home = os.getenv("HOME")
-      local inter = home .. "/Library/Fonts/Inter-"
-      local code_path = style.code_font:get_path()
-      if type(code_path) == "table" then code_path = code_path[1] end
-      local spans = parse_inline(block.text, {
-        regular = font,
-        bold = font,
-        italic = renderer.font.load(inter .. "BoldItalic.otf", h_size),
-        bold_italic = renderer.font.load(inter .. "BoldItalic.otf", h_size),
-        strikethrough = renderer.font.load(inter .. "Bold.otf", h_size, { strikethrough = true }),
-        code = renderer.font.load(code_path, h_size * 0.85),
-      }, style.syntax["keyword"])
+      local spans = parse_inline(block.text, self.fonts.h_inline[level], style.syntax["keyword"])
       y = self:draw_spans(spans, x, y, max_width)
-      -- Underline for H1 and H2
       if level <= 2 then
         local uh = math.max(1, SCALE)
         y = y + padding_y * 0.3
