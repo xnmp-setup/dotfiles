@@ -16,6 +16,7 @@ hs.hotkey.bind({}, "F3", function() windowCycling.cycleOrRun("Zed", "Zed") end)
 --hs.hotkey.bind({}, "F3", function() windowCycling.cycleOrRun("Code", "Visual Studio Code") end)
 
 hs.hotkey.bind({}, "F8", function() windowCycling.cycleOrRun("tauri-explorer", "tauri-explorer", nil, false) end)
+hs.hotkey.bind({}, "F12", function() windowCycling.cycleOrRun("Microsoft Teams", "Microsoft Teams") end)
 hs.hotkey.bind({}, "F10", function() windowCycling.cycleOrRun("Lite XL", "Lite XL") end)
 hs.hotkey.bind({ "alt" }, "n", function() windowCycling.cycleOrRun("Lite XL", "Lite XL") end)
 
