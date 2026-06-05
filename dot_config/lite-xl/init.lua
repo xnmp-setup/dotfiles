@@ -129,6 +129,36 @@ keymap.add_direct {
   ["ctrl+pagedown"] = { "root:switch-to-next-tab" },
 }
 
+------------------------------ Evergreen (tree-sitter) -------------------------
+
+local ts_lib = USERDIR .. '/libraries/tree_sitter/init.lib'
+local ts_parser = USERDIR .. '/plugins/evergreen-python/parser.so'
+
+if system.get_file_info(ts_lib) and system.get_file_info(ts_parser) then
+  local evergreenLangs = require 'plugins.evergreen.languages'
+
+  evergreenLangs.addDef {
+    name = 'python',
+    files = { '%.py$', '%.pyw$', '%.pyi$' },
+    path = USERDIR .. '/plugins/evergreen-python',
+    soFile = 'parser{SOEXT}',
+    queryFiles = {
+      highlights = 'queries/highlights.scm',
+    },
+  }
+else
+  core.add_thread(function()
+    local missing = {}
+    if not system.get_file_info(ts_lib) then missing[#missing+1] = ts_lib end
+    if not system.get_file_info(ts_parser) then missing[#missing+1] = ts_parser end
+    core.warn(
+      'Evergreen tree-sitter disabled — missing native binaries:\n  %s\n'
+      .. 'See: https://github.com/Evergreen-lxl/lite-xl-tree-sitter/releases',
+      table.concat(missing, '\n  ')
+    )
+  end)
+end
+
 ------------------------------ Plugins ----------------------------------------
 
 -- config.plugins.detectindent = false
