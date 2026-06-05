@@ -103,10 +103,14 @@ function windowCycling.cycleOrRun(appName, launchName, opts)
   end
 
   if app:isHidden() then
-    app:unhide()
-    app:activate()
-    if hideOnLoseFocus then autoHide.enable(appName) end
-    return
+    if multiWorkspace then
+      app:unhide()
+    else
+      app:unhide()
+      app:activate()
+      if hideOnLoseFocus then autoHide.enable(appName) end
+      return
+    end
   end
 
   local currentSpace = hs.spaces.focusedSpace()
