@@ -99,6 +99,7 @@
     "terminal": {
         "font_size": 15,
         "font_family": "Hack Nerd Font",
+        "shell": "system",
     },
     "sticky_scroll": { "enabled": true },
     "agent": {

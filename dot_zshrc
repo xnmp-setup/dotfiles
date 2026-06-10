@@ -63,6 +63,7 @@ export PATH="$PATH:/opt/homebrew/bin"
 export PATH="$HOME/.npm-global/bin:$PATH"
 export PATH="$HOME/.cargo/bin:$PATH"
 export CLAUDE_CODE_ENABLE_LSP=1
+export CLAUDE_CODE_NO_FLICKER=1
 [[ -x "$HOME/.atuin/bin/atuin" ]] && export PATH="$HOME/.atuin/bin:$PATH"
 
 # --- fpath (must be before compinit) ---
@@ -166,7 +167,8 @@ alias ls="eza --icons --group-directories-first"
 alias ll="eza -l --icons --git --group-directories-first"
 alias du="dust"
 alias tv='tidy-viewer'
-alias cc="claude"
+alias cc="claude --permission-mode auto"
+alias ccr="claude --resume --permission-mode auto"
 alias cc-dsp='docker sandbox run claude . --dangerously-skip-permissions'
 alias m="micro"
 alias cc-box='~/Repos/claude-docker-base/run_cc-box.sh'

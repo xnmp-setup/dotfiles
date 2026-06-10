@@ -70,6 +70,11 @@
             "alt-m r": "workspace::ToggleRightDock",
             "alt-m t": "workspace::ToggleBottomDock",
 
+            // tab cycling — overrides Zed's editor::LineUp/Down
+            "ctrl-pageup": "pane::ActivatePreviousItem",
+            "ctrl-pagedown": "pane::ActivateNextItem",
+            "ctrl-t": "workspace::NewFile",
+
             // buffer top/bottom — cmd+home/end (macOS style) and ctrl+home/end (Linux style)
             "cmd-home": "editor::MoveToBeginning",
             "cmd-end": "editor::MoveToEnd",
@@ -107,7 +112,6 @@
             "ctrl-s": "workspace::Save",
             "ctrl-w": ["pane::CloseActiveItem", { "close_pinned": false }],
             "ctrl-n": "workspace::NewFile",
-            "ctrl-t": "workspace::NewFile",
             "ctrl-d": ["editor::SelectNext", { "replace_newest": false }],
             "ctrl-f": "buffer_search::Deploy",
             "ctrl-h": "buffer_search::DeployReplace",
@@ -121,10 +125,6 @@
             "ctrl-shift-l": "editor::SelectAllMatches",
             "ctrl-shift-t": "pane::ReopenClosedItem",
             "ctrl-shift-n": "workspace::NewWindow",
-
-            // tab cycling — overrides Zed's editor::LineUp/Down
-            "ctrl-pageup": "pane::ActivatePreviousItem",
-            "ctrl-pagedown": "pane::ActivateNextItem",
 
             // pane navigation — overrides editor::SelectLine (cmd-l), ToggleSelectedDiffHunks (cmd-'),
             // file_finder::Toggle (cmd-p), ToggleLineNumbers (cmd-;)
@@ -165,8 +165,14 @@
     {
         "context": "Terminal",
         "bindings": {
+            "alt-m b": "workspace::ToggleLeftDock",
+            "alt-m e": "project_panel::ToggleFocus",
+            "alt-m g": "git_panel::ToggleFocus",
+            "alt-m j": "workspace::ToggleBottomDock",
+            "alt-m r": "workspace::ToggleRightDock",
+            "alt-m t": "workspace::ToggleBottomDock",
             "ctrl-r": ["projects::OpenRecent", { "create_new_window": false }],
-            "ctrl-shift-t": "workspace::NewTerminal",
+            "ctrl-t": "workspace::NewTerminal",
             "ctrl-shift-w": "pane::CloseActiveItem",
             "ctrl-pageup": "pane::ActivatePreviousItem",
             "ctrl-pagedown": "pane::ActivateNextItem",
@@ -176,19 +182,43 @@
     {
         "context": "ProjectPanel",
         "bindings": {
+            "alt-m b": "workspace::ToggleLeftDock",
+            "alt-m e": "project_panel::ToggleFocus",
+            "alt-m g": "git_panel::ToggleFocus",
+            "alt-m j": "workspace::ToggleBottomDock",
+            "alt-m r": "workspace::ToggleRightDock",
+            "alt-m t": "workspace::ToggleBottomDock",
             "ctrl-p": "file_finder::Toggle"
         }
     },
     {
         "context": "GitPanel > Editor",
         "bindings": {
+            "alt-m b": "workspace::ToggleLeftDock",
+            "alt-m e": "project_panel::ToggleFocus",
+            "alt-m g": "git_panel::ToggleFocus",
+            "alt-m j": "workspace::ToggleBottomDock",
+            "alt-m r": "workspace::ToggleRightDock",
+            "alt-m t": "workspace::ToggleBottomDock",
             "enter": "git::Commit",
             "shift-enter": "editor::Newline"
         }
     },
     {
+        "context": "GitGraph",
+        "bindings": {
+            "ctrl-p": "file_finder::Toggle"
+        }
+    },
+    {
         "context": "Terminal && selection",
         "bindings": {
+            "alt-m b": "workspace::ToggleLeftDock",
+            "alt-m e": "project_panel::ToggleFocus",
+            "alt-m g": "git_panel::ToggleFocus",
+            "alt-m j": "workspace::ToggleBottomDock",
+            "alt-m r": "workspace::ToggleRightDock",
+            "alt-m t": "workspace::ToggleBottomDock",
             "ctrl-c": "terminal::Copy"
         }
     }
