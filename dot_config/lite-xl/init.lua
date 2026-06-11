@@ -186,7 +186,7 @@ keymap.add({
   ["return"]       = "find-replace:next-or-wrap",
   ["shift+return"] = "find-replace:prev-or-wrap",
   ["escape"]       = "find-replace:close-find",
-}, true)
+})
 
 ------------------------------ Evergreen (tree-sitter) -------------------------
 
