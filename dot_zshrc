@@ -170,6 +170,18 @@ alias tv='tidy-viewer'
 
 export ANTHROPIC_MODEL="fable"
 
+# Intercepts !query before shell parsing — avoids history expansion and
+# allows apostrophes. !! and !( fall through to normal zsh behaviour.
+_haiku_accept_line() {
+  if [[ "$BUFFER" == '!'* && "$BUFFER" != '!!'* && "$BUFFER" != '!('* ]]; then
+    local query="${BUFFER#!}"
+    query="${query##[[:space:]]}"
+    BUFFER="_anthropic_haiku ${(q)query}"
+  fi
+  zle .accept-line
+}
+zle -N accept-line _haiku_accept_line
+
 # Sends a prompt to haiku and prints the response. Uses OAuth creds,
 # ANTHROPIC_API_KEY, or falls back to the claude CLI.
 _anthropic_haiku() {
