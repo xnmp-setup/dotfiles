@@ -24,15 +24,71 @@ hs.hotkey.bind({ "alt" }, "n", function() windowCycling.cycleOrRun("Lite XL", "L
 -- end)
 
 
----------- Window movement hotkeys ----------
-hs.hotkey.bind({ "cmd", "ctrl" }, "Left", helpers.moveWindowLeft)
-hs.hotkey.bind({ "cmd", "ctrl" }, "Right", helpers.moveWindowRight)
+---------- Window movement hotkeys (with quadrant chords) ----------
+-- Pressing two arrows within 100ms snaps to a quadrant:
+--   Up+Left = top-left, Up+Right = top-right
+--   Down+Left = bottom-left, Down+Right = bottom-right
+-- A single arrow (no second press within 100ms) does its original action.
+
+local arrowChord = { pending = nil, timer = nil }
+local CHORD_TIMEOUT = 0.1  -- 100ms
+
+local quadrantActions = {
+  ["Up+Left"]    = function() helpers.snap(hs.window.focusedWindow(), 0,   0,   0.5, 0.5) end,
+  ["Up+Right"]   = function() helpers.snap(hs.window.focusedWindow(), 0.5, 0,   0.5, 0.5) end,
+  ["Down+Left"]  = function() helpers.snap(hs.window.focusedWindow(), 0,   0.5, 0.5, 0.5) end,
+  ["Down+Right"] = function() helpers.snap(hs.window.focusedWindow(), 0.5, 0.5, 0.5, 0.5) end,
+}
+
+local singleArrowActions = {
+  Up    = helpers.toggleTopCenterMaximize,
+  Down  = function() end,  -- no single-Down action
+  Left  = helpers.moveWindowLeft,
+  Right = helpers.moveWindowRight,
+}
+
+local function handleArrow(direction)
+  if arrowChord.pending then
+    -- Second arrow within the timeout — snap to quadrant (overrides first action)
+    local first = arrowChord.pending
+    arrowChord.timer:stop()
+    arrowChord.pending = nil
+    arrowChord.timer = nil
+
+    -- Normalize key pair order (vertical+horizontal)
+    local vertical = (first == "Up" or first == "Down") and first or direction
+    local horizontal = (first == "Left" or first == "Right") and first or direction
+
+    local key = vertical .. "+" .. horizontal
+    local action = quadrantActions[key]
+    if action then
+      action()
+    else
+      -- Both same axis (e.g. Up+Down) — just fire the second one
+      local fn = singleArrowActions[direction]
+      if fn then fn() end
+    end
+  else
+    -- First arrow — fire immediately, but stay open for a chord
+    local fn = singleArrowActions[direction]
+    if fn then fn() end
+
+    arrowChord.pending = direction
+    arrowChord.timer = hs.timer.doAfter(CHORD_TIMEOUT, function()
+      arrowChord.pending = nil
+      arrowChord.timer = nil
+    end)
+  end
+end
+
+hs.hotkey.bind({ "cmd", "ctrl" }, "Up",    function() handleArrow("Up") end)
+hs.hotkey.bind({ "cmd", "ctrl" }, "Down",  function() handleArrow("Down") end)
+hs.hotkey.bind({ "cmd", "ctrl" }, "Left",  function() handleArrow("Left") end)
+hs.hotkey.bind({ "cmd", "ctrl" }, "Right", function() handleArrow("Right") end)
 
 ---------- Window resize hotkeys ----------
 hs.hotkey.bind({ "cmd", "ctrl" }, "-", helpers.shrinkWindow)
 hs.hotkey.bind({ "cmd", "ctrl" }, "=", helpers.growWindow)
-
-hs.hotkey.bind({ "cmd", "ctrl" }, "Up", helpers.toggleTopCenterMaximize)
 
 -- Store previous frames for unmaximize
 local unmaximizeSavedFrames = {}
