@@ -79,13 +79,25 @@ def rebuild_context_bar(m):
     result += "\x1b[0m"
     return result
 
+SEP = " | "  # separator used by ccstatusline (can be NBSP or regular space)
+NBSP_SEP = "\xa0|\xa0"
+
 for line in sys.stdin:
     # strip "no git" and the orphaned separator+color it leaves behind
     line = line.replace("⎇\xa0no\xa0git", "")
-    # strip orphaned color span + separator left behind after "no git" removal
     line = re.sub(r"\x1b\[38;5;\d+m\x1b\[39m\xa0\|\xa0", "", line)
-    # shorten model name to just the family
-    line = re.sub(r"(\x1b\[[0-9;]+m)([^\x1b]+)", lambda m2: m2.group(1) + shorten_model(m2.group(2)), line)
+    # shorten model name to just the family and recolor orange
+    # model uses color 30 (dark teal) from ccstatusline
+    MODEL_COLORS = {"Opus": "208", "Sonnet": "216", "Haiku": "223", "Fable": "204"}
+    def recolor_model(m2):
+        name = shorten_model(m2.group(1))
+        color = MODEL_COLORS.get(name, "208")
+        return f"\x1b[38;5;{color}m{name}"
+    line = re.sub(r"\x1b\[38;5;30m([^\x1b]+)", recolor_model, line)
+    # remove separator: cwd | branch (after \e[49m, before \e[38;5;155m⎇)
+    line = re.sub(r"(\x1b\[49m)\xa0\|\xa0(\x1b\[38;5;\d+m⎇)", r"\1 \2", line)
+    # remove separator: model | bar (before \e[38;5;Nm[ where [ starts the bar)
+    line = re.sub(r"\xa0\|\xa0(\x1b\[38;5;\d+m\[)", r" \1", line)
     # 1000k -> 1m (for parts outside the context bar)
     line = re.sub(r"(\d+)000k", r"\g<1>m", line)
     # rebuild context bar: match \e[38;5;Nm[████░░░░] Xk/Yk (N%)\e[39m
