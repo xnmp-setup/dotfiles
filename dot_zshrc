@@ -179,11 +179,40 @@ cc() {
   local query="$*"
   local routing_prompt="Classify this query's complexity with exactly one phrase: simple, medium, complex, or very complex. simple = anything a small fast model can handle: greetings, factual lookups, unit conversions, short summaries, basic how-to questions. medium = tasks needing some reasoning or context but no deep expertise: writing drafts, debugging a small snippet, explaining a concept in depth. complex = multi-step reasoning, research, planning, architecture decisions, non-trivial code tasks. very complex = exhaustive analysis, large-scale design, deep technical work requiring sustained reasoning. Reply with only that phrase, nothing else.\n\nQuery: $query"
 
+  local _haiku_model="${ANTHROPIC_DEFAULT_HAIKU_MODEL:-claude-haiku-4-5-20251001}"
+  local _base_url="${ANTHROPIC_BASE_URL:-https://api.anthropic.com}"
+  local _creds=~/.claude/.credentials.json
+  local _auth_header _token _expires _now
+  _now=$(( $(date +%s) * 1000 ))
+
+  if [[ -f "$_creds" ]]; then
+    _token=$(jq -r '.claudeAiOauth.accessToken // empty' "$_creds" 2>/dev/null)
+    _expires=$(jq -r '.claudeAiOauth.expiresAt // 0' "$_creds" 2>/dev/null)
+    (( _expires > _now )) && _auth_header="Authorization: Bearer $_token"
+  fi
+
+  if [[ -z "$_auth_header" ]] && [[ -n "$ANTHROPIC_API_KEY" ]]; then
+    _auth_header="x-api-key: $ANTHROPIC_API_KEY"
+  fi
+
   local complexity
-  complexity=$(
-    command claude -p "$routing_prompt" --model haiku 2>/dev/null \
-      | grep -oi '\(very complex\|complex\|medium\|simple\)' | head -1 | tr '[:upper:]' '[:lower:]'
-  )
+  if [[ -n "$_auth_header" ]]; then
+    complexity=$(
+      curl -s "$_base_url/v1/messages" \
+        -H "$_auth_header" \
+        -H "anthropic-version: 2023-06-01" \
+        -H "content-type: application/json" \
+        -d "{\"model\":\"$_haiku_model\",\"max_tokens\":10,\"messages\":[{\"role\":\"user\",\"content\":$(printf '%s' "$routing_prompt" | jq -Rs .)}]}" \
+        2>/dev/null \
+        | jq -r '.content[0].text // empty' \
+        | grep -oi '\(very complex\|complex\|medium\|simple\)' | head -1 | tr '[:upper:]' '[:lower:]'
+    )
+  else
+    complexity=$(
+      command claude -p "$routing_prompt" --model haiku 2>/dev/null \
+        | grep -oi '\(very complex\|complex\|medium\|simple\)' | head -1 | tr '[:upper:]' '[:lower:]'
+    )
+  fi
 
   local model
   case "$complexity" in
@@ -210,6 +239,7 @@ alias copy=pbcopy
 alias pbcopy='xsel --clipboard --input'
 alias pbpaste='xsel --clipboard --output'
 alias x='tauri-explorer &>/dev/null & disown'
+alias lxl='lite-xl'
 alias gg='keifu'
 zss() {
   local diff
