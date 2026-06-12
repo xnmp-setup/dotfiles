@@ -176,7 +176,7 @@ _haiku_accept_line() {
   if [[ "$BUFFER" == '!'* && "$BUFFER" != '!!'* && "$BUFFER" != '!('* ]]; then
     local query="${BUFFER#!}"
     query="${query##[[:space:]]}"
-    BUFFER="_anthropic_haiku ${(q)query}"
+    BUFFER="_anthropic_smart ${(q)query}"
   fi
   zle .accept-line
 }
@@ -211,6 +211,28 @@ _anthropic_haiku() {
       | jq -r '.content[0].text // empty'
   else
     command claude -p "$prompt" --model haiku 2>/dev/null
+  fi
+}
+
+# Routes a !query: if it maps to a shell command, pre-fills the next
+# prompt with it (just hit enter to run); otherwise prints the answer.
+_anthropic_smart() {
+  local query="$1"
+  local prompt="You are a shell assistant on $(uname -s). If the user's request can be satisfied by a single shell command, reply with ONLY that command on one line, prefixed by 'CMD: ' and nothing else. Otherwise, answer directly in plain text. Do not use markdown or code fences.
+
+Request: $query"
+
+  local response
+  response=$(_anthropic_haiku "$prompt")
+
+  if [[ "$response" == CMD:* ]]; then
+    local cmd="${response#CMD:}"
+    cmd="${cmd##[[:space:]]}"      # trim leading whitespace
+    cmd="${cmd%%[[:space:]]}"      # trim trailing whitespace
+    cmd="${cmd#\`}"; cmd="${cmd%\`}"   # strip stray backticks
+    print -z -- "$cmd"
+  else
+    print -r -- "$response"
   fi
 }
 
