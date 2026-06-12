@@ -169,16 +169,11 @@ alias du="dust"
 alias tv='tidy-viewer'
 
 export ANTHROPIC_MODEL="fable"
-cc() {
-  # No args or flags passed directly → skip routing
-  if [[ $# -eq 0 ]] || [[ "$1" == -* ]]; then
-    command claude --permission-mode auto --model "$ANTHROPIC_MODEL" "$@"
-    return
-  fi
 
-  local query="$*"
-  local routing_prompt="Classify this query's complexity with exactly one phrase: simple, medium, complex, or very complex. simple = anything a small fast model can handle: greetings, factual lookups, unit conversions, short summaries, basic how-to questions. medium = tasks needing some reasoning or context but no deep expertise: writing drafts, debugging a small snippet, explaining a concept in depth. complex = multi-step reasoning, research, planning, architecture decisions, non-trivial code tasks. very complex = exhaustive analysis, large-scale design, deep technical work requiring sustained reasoning. Reply with only that phrase, nothing else.\n\nQuery: $query"
-
+# Sends a prompt to haiku and prints the response. Uses OAuth creds,
+# ANTHROPIC_API_KEY, or falls back to the claude CLI.
+_anthropic_haiku() {
+  local prompt="$1"
   local _haiku_model="${ANTHROPIC_DEFAULT_HAIKU_MODEL:-claude-haiku-4-5-20251001}"
   local _base_url="${ANTHROPIC_BASE_URL:-https://api.anthropic.com}"
   local _creds=~/.claude/.credentials.json
@@ -191,36 +186,45 @@ cc() {
     (( _expires > _now )) && _auth_header="Authorization: Bearer $_token"
   fi
 
-  if [[ -z "$_auth_header" ]] && [[ -n "$ANTHROPIC_API_KEY" ]]; then
+  [[ -z "$_auth_header" ]] && [[ -n "$ANTHROPIC_API_KEY" ]] && \
     _auth_header="x-api-key: $ANTHROPIC_API_KEY"
+
+  if [[ -n "$_auth_header" ]]; then
+    curl -s "$_base_url/v1/messages" \
+      -H "$_auth_header" \
+      -H "anthropic-version: 2023-06-01" \
+      -H "content-type: application/json" \
+      -d "{\"model\":\"$_haiku_model\",\"max_tokens\":256,\"messages\":[{\"role\":\"user\",\"content\":$(printf '%s' "$prompt" | jq -Rs .)}]}" \
+      2>/dev/null \
+      | jq -r '.content[0].text // empty'
+  else
+    command claude -p "$prompt" --model haiku 2>/dev/null
+  fi
+}
+
+cc() {
+  # No args or flags passed directly → skip routing
+  if [[ $# -eq 0 ]] || [[ "$1" == -* ]]; then
+    command claude --permission-mode auto --model "$ANTHROPIC_MODEL" "$@"
+    return
   fi
 
+  local query="$*"
+  local routing_prompt="Classify this query's complexity with exactly one phrase: simple, medium, complex, or very complex. simple = anything a small fast model can handle: greetings, factual lookups, unit conversions, short summaries, basic how-to questions. medium = tasks needing some reasoning or context but no deep expertise: writing drafts, debugging a small snippet, explaining a concept in depth. complex = multi-step reasoning, research, planning, architecture decisions, non-trivial code tasks. very complex = exhaustive analysis, large-scale design, deep technical work requiring sustained reasoning. Reply with only that phrase, nothing else.\n\nQuery: $query"
+
   local complexity
-  if [[ -n "$_auth_header" ]]; then
-    complexity=$(
-      curl -s "$_base_url/v1/messages" \
-        -H "$_auth_header" \
-        -H "anthropic-version: 2023-06-01" \
-        -H "content-type: application/json" \
-        -d "{\"model\":\"$_haiku_model\",\"max_tokens\":10,\"messages\":[{\"role\":\"user\",\"content\":$(printf '%s' "$routing_prompt" | jq -Rs .)}]}" \
-        2>/dev/null \
-        | jq -r '.content[0].text // empty' \
-        | grep -oi '\(very complex\|complex\|medium\|simple\)' | head -1 | tr '[:upper:]' '[:lower:]'
-    )
-  else
-    complexity=$(
-      command claude -p "$routing_prompt" --model haiku 2>/dev/null \
-        | grep -oi '\(very complex\|complex\|medium\|simple\)' | head -1 | tr '[:upper:]' '[:lower:]'
-    )
-  fi
+  complexity=$(
+    _anthropic_haiku "$routing_prompt" \
+      | grep -oi '\(very complex\|complex\|medium\|simple\)' | head -1 | tr '[:upper:]' '[:lower:]'
+  )
 
   local model
   case "$complexity" in
-    simple)       model="haiku"  ;;
-    medium)       model="sonnet" ;;
-    complex)      model="opus"   ;;
+    simple)         model="haiku"  ;;
+    medium)         model="sonnet" ;;
+    complex)        model="opus"   ;;
     "very complex") model="fable"  ;;
-    *)            model="$ANTHROPIC_MODEL" ;;
+    *)              model="$ANTHROPIC_MODEL" ;;
   esac
 
   print -P "%F{cyan}→ $model%f"
