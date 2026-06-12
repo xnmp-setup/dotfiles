@@ -7,6 +7,8 @@ macos-hidden = never
 macos-titlebar-style = tabs
 
 macos-window-buttons = hidden
+# Don't auto-copy on text selection (use ctrl+c to copy explicitly)
+copy-on-select = false
 split-divider-color = #FFBF00
 font-thicken = true
 font-thicken-strength = 80
