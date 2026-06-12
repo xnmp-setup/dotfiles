@@ -343,6 +343,16 @@ fz() {
   fi
 }
 
+# Text if it has a non-binary encoding (us-ascii/utf-8/...), or it's empty.
+_is_text_file() {
+  [[ -f "$1" ]] || return 1
+  local enc type
+  enc=$(file -b --mime-encoding -- "$1" 2>/dev/null)
+  [[ -n "$enc" && "$enc" != "binary" ]] && return 0
+  type=$(file -b --mime-type -- "$1" 2>/dev/null)
+  [[ "$type" == "inode/x-empty" ]]
+}
+
 fzf-file-widget() {
   local sel quoted
 
@@ -361,7 +371,12 @@ fzf-file-widget() {
     quoted+=("${(q)f}")
   done
 
-  LBUFFER+="${(j: :)quoted} "
+  # Single text file on an empty prompt → prefill `m <file>` to open in micro.
+  if [[ ${#quoted} -eq 1 && -z "$LBUFFER" ]] && _is_text_file "${(f)sel}"; then
+    LBUFFER="m ${quoted[1]} "
+  else
+    LBUFFER+="${(j: :)quoted} "
+  fi
   zle reset-prompt
 }
 zle -N fzf-file-widget
