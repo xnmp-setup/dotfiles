@@ -359,6 +359,8 @@ _fzf_open_cmd() {
   local f="$1"
   case "${f:l:e}" in
     csv|tsv|tab)                                  print -r -- tv ;;  # tidy-viewer
+    zip|tar|tgz|tbz|tbz2|txz|tzst|gz|bz2|xz|zst|7z|rar|cpio|iso)
+                                                  print -r -- 'bsdtar -tf' ;;  # list archive
     png|jpg|jpeg|gif|webp|bmp|svg|ico|tiff|avif)  print -r -- o  ;;  # GUI image viewer
     pdf|epub|mp4|mkv|webm|mov|mp3|flac|wav|ogg|opus|m4a|odt|docx|xlsx|pptx)
                                                   print -r -- o  ;;  # GUI app
