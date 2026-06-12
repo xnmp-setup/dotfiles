@@ -91,6 +91,7 @@ function windowCycling.cycleOrRun(appName, launchName, opts)
   local hideBehaviour = opts.hideBehaviour or "hide"
   local hideOnLoseFocus = opts.hideOnLoseFocus or false
   local multiWorkspace = opts.multiWorkspace or false
+  local focusAll = opts.focusAll or false
 
   local app = hs.application.get(appName)
 
@@ -104,6 +105,9 @@ function windowCycling.cycleOrRun(appName, launchName, opts)
 
   if app:isHidden() then
     if multiWorkspace then
+      app:unhide()
+    elseif focusAll then
+      -- unhide and fall through to focusAll logic which will raise all windows
       app:unhide()
     else
       app:unhide()
@@ -161,8 +165,49 @@ function windowCycling.cycleOrRun(appName, launchName, opts)
     return
   end
 
-  -- 3. One window on this space: toggle minimize/hide
+  -- 3. focusAll mode: raise all visible windows, or toggle hide if already focused
   local focused = hs.window.focusedWindow()
+  if focusAll and #localVisible > 0 then
+    local appHasFocus = focused and focused:application():name() == app:name()
+
+    -- Check if all app windows are already contiguous at the top of z-order
+    local allInFront = false
+    if appHasFocus then
+      allInFront = true
+      local ordered = hs.window.orderedWindows()
+      local appIds = {}
+      for _, w in ipairs(localVisible) do appIds[w:id()] = true end
+      for i = 1, #localVisible do
+        if i > #ordered or not appIds[ordered[i]:id()] then
+          allInFront = false
+          break
+        end
+      end
+    end
+
+    if allInFront then
+      lastMinimized[appName] = focused:id()
+      if hideBehaviour == "hide" then
+        app:hide()
+        autoHide.disable(appName)
+      else
+        for _, w in ipairs(localVisible) do w:minimize() end
+      end
+    else
+      -- Focus the last window first (brings app to front visually),
+      -- then after compositor settles, focus remaining windows in sequence
+      localVisible[#localVisible]:focus()
+      hs.timer.doAfter(0.02, function()
+        for i = #localVisible - 1, 1, -1 do
+          localVisible[i]:focus()
+        end
+        if hideOnLoseFocus then autoHide.enable(appName) end
+      end)
+    end
+    return
+  end
+
+  -- 4. One window on this space: toggle minimize/hide
   if #localVisible == 1 then
     if focused and focused:id() == localVisible[1]:id() then
       lastMinimized[appName] = localVisible[1]:id()
@@ -178,7 +223,7 @@ function windowCycling.cycleOrRun(appName, launchName, opts)
     return
   end
 
-  -- 4. Multiple windows: cycle
+  -- 5. Multiple windows: cycle
   local idx = 1
   if focused then
     for i, w in ipairs(localVisible) do
