@@ -167,7 +167,40 @@ alias ls="eza --icons --group-directories-first"
 alias ll="eza -l --icons --git --group-directories-first"
 alias du="dust"
 alias tv='tidy-viewer'
-alias cc="claude --permission-mode auto"
+
+export ANTHROPIC_MODEL="fable"
+cc() {
+  # No args or flags passed directly → skip routing
+  if [[ $# -eq 0 ]] || [[ "$1" == -* ]]; then
+    command claude --permission-mode auto --model "$ANTHROPIC_MODEL" "$@"
+    return
+  fi
+
+  local query="$*"
+  local routing_prompt="Classify this query's complexity with exactly one phrase: simple, medium, complex, or very complex. simple = anything a small fast model can handle: greetings, factual lookups, unit conversions, short summaries, basic how-to questions. medium = tasks needing some reasoning or context but no deep expertise: writing drafts, debugging a small snippet, explaining a concept in depth. complex = multi-step reasoning, research, planning, architecture decisions, non-trivial code tasks. very complex = exhaustive analysis, large-scale design, deep technical work requiring sustained reasoning. Reply with only that phrase, nothing else.\n\nQuery: $query"
+
+  local complexity
+  complexity=$(
+    command claude -p "$routing_prompt" --model haiku 2>/dev/null \
+      | grep -oi '\(very complex\|complex\|medium\|simple\)' | head -1 | tr '[:upper:]' '[:lower:]'
+  )
+
+  local model
+  case "$complexity" in
+    simple)       model="haiku"  ;;
+    medium)       model="sonnet" ;;
+    complex)      model="opus"   ;;
+    "very complex") model="fable"  ;;
+    *)            model="$ANTHROPIC_MODEL" ;;
+  esac
+
+  print -P "%F{cyan}→ $model%f"
+  command claude --permission-mode auto --model "$model" "$query"
+}
+alias ccs="claude --permission-mode auto --model sonnet"
+alias ccf="claude --permission-mode auto --model fable"
+alias cco="claude --permission-mode auto --model opus"
+alias cch="claude --permission-mode auto --model haiku"
 alias ccr="claude --resume --permission-mode auto"
 alias cc-dsp='docker sandbox run claude . --dangerously-skip-permissions'
 alias m="micro"
