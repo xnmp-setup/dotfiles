@@ -30,7 +30,6 @@ echo "$OUTPUT" \
 import sys, re
 
 FAMILIES = ("Opus", "Sonnet", "Haiku", "Fable")
-SEP = "\xa0|\xa0"  # NBSP | NBSP separator used by ccstatusline
 
 def shorten_model(text):
     lo = text.lower()
@@ -39,13 +38,61 @@ def shorten_model(text):
             return name
     return text
 
+BG_EMPTY = "236"  # dark gray bg for empty portion
+FG_ON_FILL = "0"  # black text on the bright filled portion
+
+def rebuild_context_bar(m):
+    """Replace [████░░░░] Xk/Yk (N%) with a text-inside-bar using bg colors."""
+    fg_code = m.group(1)  # the ansi256 fg color code number
+    bar = m.group(2)      # e.g. ████████░░░░░░░░
+    label = m.group(3)    # e.g. 100k/200k (50%)
+
+    filled = bar.count("█")
+    bar_width = filled + bar.count("░")
+    if bar_width == 0:
+        return m.group(0)
+
+    # 1000k -> 1m in label
+    label = re.sub(r"(\d+)000k", r"\g<1>m", label)
+
+    # Full original width: [bar] + space + label
+    full_width = 2 + bar_width + 1 + len(label)
+    proportion = filled / bar_width
+
+    # Pad label to full width, centered
+    text = label.center(full_width)
+
+    # Split at the proportional fill point
+    split = round(proportion * full_width)
+    text_filled = text[:split]
+    text_empty = text[split:]
+
+    fg_num = int(fg_code) if fg_code else 203
+
+    # Filled: bg is the same color as the text was, text is black
+    # Empty: dark gray bg, text stays the original color
+    result = ""
+    if text_filled:
+        result += f"\x1b[48;5;{fg_num};38;5;{FG_ON_FILL}m{text_filled}"
+    if text_empty:
+        result += f"\x1b[48;5;{BG_EMPTY};38;5;{fg_num}m{text_empty}"
+    result += "\x1b[0m"
+    return result
+
 for line in sys.stdin:
     # strip "no git" and the orphaned separator+color it leaves behind
     line = line.replace("⎇\xa0no\xa0git", "")
-    line = re.sub(r"\xa0\|\xa0\x1b\[[0-9;]+m\x1b\[39m", "", line)
+    # strip orphaned color span + separator left behind after "no git" removal
+    line = re.sub(r"\x1b\[38;5;\d+m\x1b\[39m\xa0\|\xa0", "", line)
     # shorten model name to just the family
-    line = re.sub(r"(\x1b\[[0-9;]+m)([^\x1b]+)", lambda m: m.group(1) + shorten_model(m.group(2)), line)
-    # 1000k -> 1m
+    line = re.sub(r"(\x1b\[[0-9;]+m)([^\x1b]+)", lambda m2: m2.group(1) + shorten_model(m2.group(2)), line)
+    # 1000k -> 1m (for parts outside the context bar)
     line = re.sub(r"(\d+)000k", r"\g<1>m", line)
+    # rebuild context bar: match \e[38;5;Nm[████░░░░] Xk/Yk (N%)\e[39m
+    line = re.sub(
+        r"\x1b\[38;5;(\d+)m\[([█░]+)\]\s+([^\x1b]+)\x1b\[39m",
+        rebuild_context_bar,
+        line
+    )
     sys.stdout.write(line)
 '
