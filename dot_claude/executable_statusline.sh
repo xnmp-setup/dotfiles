@@ -22,6 +22,30 @@ fi
 
 ESC=$(printf '\x1b')
 
-echo "$OUTPUT" | sed \
-  -e "s/${ESC}\[38;5;203m/${NEW_FG}/g" \
-  -e 's|\.\.\./||g'
+echo "$OUTPUT" \
+  | sed \
+      -e "s/${ESC}\[38;5;203m/${NEW_FG}/g" \
+      -e 's|\.\.\./||g' \
+  | python3 -c '
+import sys, re
+
+FAMILIES = ("Opus", "Sonnet", "Haiku", "Fable")
+SEP = "\xa0|\xa0"  # NBSP | NBSP separator used by ccstatusline
+
+def shorten_model(text):
+    lo = text.lower()
+    for name in FAMILIES:
+        if name.lower() in lo:
+            return name
+    return text
+
+for line in sys.stdin:
+    # strip "no git" and the orphaned separator+color it leaves behind
+    line = line.replace("⎇\xa0no\xa0git", "")
+    line = re.sub(r"\xa0\|\xa0\x1b\[[0-9;]+m\x1b\[39m", "", line)
+    # shorten model name to just the family
+    line = re.sub(r"(\x1b\[[0-9;]+m)([^\x1b]+)", lambda m: m.group(1) + shorten_model(m.group(2)), line)
+    # 1000k -> 1m
+    line = re.sub(r"(\d+)000k", r"\g<1>m", line)
+    sys.stdout.write(line)
+'

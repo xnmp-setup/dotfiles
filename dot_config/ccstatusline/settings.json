@@ -1,0 +1,67 @@
+{
+  "version": 3,
+  "lines": [
+    [
+      {
+        "id": "2c872d2f-eea4-497c-aeff-f158b725093a",
+        "type": "current-working-dir",
+        "metadata": {
+          "segments": "1"
+        },
+        "rawValue": true,
+        "color": "white",
+        "backgroundColor": "bgBlue"
+      },
+      {
+        "id": "2",
+        "type": "separator"
+      },
+      {
+        "id": "5",
+        "type": "git-branch",
+        "color": "brightGreen"
+      },
+      {
+        "id": "4",
+        "type": "separator"
+      },
+      {
+        "id": "model-1",
+        "type": "model",
+        "rawValue": true,
+        "color": "cyan"
+      },
+      {
+        "id": "4b",
+        "type": "separator"
+      },
+      {
+        "id": "710bb178-20ce-457b-8117-6a358621f848",
+        "type": "context-bar",
+        "rawValue": true,
+        "color": "brightRed"
+      }
+    ],
+    [],
+    []
+  ],
+  "flexMode": "full-minus-40",
+  "compactThreshold": 60,
+  "colorLevel": 2,
+  "inheritSeparatorColors": false,
+  "globalBold": false,
+  "minimalistMode": false,
+  "powerline": {
+    "enabled": false,
+    "separators": [
+      ""
+    ],
+    "separatorInvertBackground": [
+      false
+    ],
+    "startCaps": [],
+    "endCaps": [],
+    "autoAlign": false,
+    "continueThemeAcrossLines": false
+  }
+}
