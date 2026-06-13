@@ -72,3 +72,9 @@ font-size = 16
 
 # Normal/full zsh tab
 keybind = ctrl+t=new_tab
+
+# Subtle theme-colored flash on the new line when you press Enter.
+# (Additive glow on one row only — does not distort/sample fresh output,
+# so it won't make output appear late like the earlier radial version did.)
+custom-shader = /home/chong/.config/ghostty/shaders/enter-ripple.glsl
+custom-shader-animation = true
