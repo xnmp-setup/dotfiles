@@ -108,14 +108,16 @@
     ],
     "profiles": 
     {
-        "defaults": 
+        "defaults":
         {
             "colorScheme": "Dimidium",
-            "font": 
+            "font":
             {
                 "face": "MesloLGS NF",
                 "size": 12
-            }
+            },
+            "opacity": 95,
+            "useAcrylic": false
         },
         "list": 
         [
