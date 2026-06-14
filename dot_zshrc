@@ -150,8 +150,13 @@ source ~/.oh-my-zsh/custom/themes/powerlevel10k/powerlevel10k.zsh-theme
 # --- CBA ---
 [ -f ~/.cba_zshrc.sh ] && source ~/.cba_zshrc.sh
 
-# --- NVM (lazy) ---
+# --- NVM (lazy, but put default node on PATH up front so WSL doesn't grab Windows shims) ---
 export NVM_DIR="$HOME/.nvm"
+if [[ -d "$NVM_DIR/versions/node" ]]; then
+  _nvm_node=$(/bin/ls -1 "$NVM_DIR/versions/node" 2>/dev/null | sort -V | tail -1)
+  [[ -n "$_nvm_node" ]] && export PATH="$NVM_DIR/versions/node/$_nvm_node/bin:$PATH"
+  unset _nvm_node
+fi
 nvm() {
   unfunction nvm
   [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
