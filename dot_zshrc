@@ -94,12 +94,16 @@ zstyle ':completion:*' cache-path "${XDG_CACHE_HOME:-$HOME/.cache}/zcompcache"
 
 autoload -Uz compinit
 _zcompdump="${XDG_CACHE_HOME:-$HOME/.cache}/zcompdump"
-if [[ -n "$_zcompdump"(#qN.mh+24) ]]; then
-  compinit -d "$_zcompdump"
+# NB: use an array glob (Nmh+24) rather than [[ -n "$d"(#qN...) ]] — the (#q...)
+# flag form requires EXTENDED_GLOB, which isn't set here, so the old test always
+# fell through to the slow full audit (compaudit ~400-500ms) on every shell.
+_dump_stale=( "$_zcompdump"(Nmh+24) )
+if (( $#_dump_stale )); then
+  compinit -d "$_zcompdump"      # >24h old: full rebuild + security audit
 else
-  compinit -C -d "$_zcompdump"
+  compinit -C -d "$_zcompdump"   # fresh: fast path, skips compaudit
 fi
-unset _zcompdump
+unset _zcompdump _dump_stale
 
 autoload -U +X bashcompinit && bashcompinit
 
@@ -173,7 +177,7 @@ alias ll="eza -l --icons --git --group-directories-first"
 alias du="dust"
 alias tv='tidy-viewer'
 
-export ANTHROPIC_MODEL="fable"
+export ANTHROPIC_MODEL="opus"
 
 # Intercepts !query before shell parsing — avoids history expansion and
 # allows apostrophes. !! and !( fall through to normal zsh behaviour.
@@ -714,3 +718,14 @@ fi
 
 export PATH="$PATH:/snap/bin"
 
+# Collapse duplicate PATH entries (keeps first occurrence of each). -U = keep-unique.
+typeset -gU path PATH
+
+
+# WezTerm: report cwd via OSC 7 so new tabs/panes inherit the working directory.
+if [[ -n "$WEZTERM_PANE" ]]; then
+  __wezterm_osc7() { printf '\033]7;file://%s%s\a' "$HOST" "$PWD"; }
+  autoload -Uz add-zsh-hook
+  add-zsh-hook -Uz chpwd __wezterm_osc7
+  __wezterm_osc7
+fi
