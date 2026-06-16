@@ -96,12 +96,16 @@ zstyle ':completion:*' cache-path "${XDG_CACHE_HOME:-$HOME/.cache}/zcompcache"
 
 autoload -Uz compinit
 _zcompdump="${XDG_CACHE_HOME:-$HOME/.cache}/zcompdump"
-if [[ -n "$_zcompdump"(#qN.mh+24) ]]; then
-  compinit -d "$_zcompdump"
+# NB: use an array glob (Nmh+24) rather than [[ -n "$d"(#qN...) ]] — the (#q...)
+# flag form requires EXTENDED_GLOB, which isn't set here, so the old test always
+# fell through to the slow full audit (compaudit ~400-500ms) on every shell.
+_dump_stale=( "$_zcompdump"(Nmh+24) )
+if (( $#_dump_stale )); then
+  compinit -d "$_zcompdump"      # >24h old: full rebuild + security audit
 else
-  compinit -C -d "$_zcompdump"
+  compinit -C -d "$_zcompdump"   # fresh: fast path, skips compaudit
 fi
-unset _zcompdump
+unset _zcompdump _dump_stale
 
 autoload -U +X bashcompinit && bashcompinit
 
@@ -152,8 +156,13 @@ source ~/.oh-my-zsh/custom/themes/powerlevel10k/powerlevel10k.zsh-theme
 # --- CBA ---
 [ -f ~/.cba_zshrc.sh ] && source ~/.cba_zshrc.sh
 
-# --- NVM (lazy) ---
+# --- NVM (lazy, but put default node on PATH up front so WSL doesn't grab Windows shims) ---
 export NVM_DIR="$HOME/.nvm"
+if [[ -d "$NVM_DIR/versions/node" ]]; then
+  _nvm_node=$(/bin/ls -1 "$NVM_DIR/versions/node" 2>/dev/null | sort -V | tail -1)
+  [[ -n "$_nvm_node" ]] && export PATH="$NVM_DIR/versions/node/$_nvm_node/bin:$PATH"
+  unset _nvm_node
+fi
 nvm() {
   unfunction nvm
   [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
@@ -169,7 +178,107 @@ alias ls="eza --icons --group-directories-first"
 alias ll="eza -l --icons --git --group-directories-first"
 alias du="dust"
 alias tv='tidy-viewer'
-alias cc="claude --permission-mode auto"
+
+export ANTHROPIC_MODEL="opus"
+
+# Intercepts !query before shell parsing — avoids history expansion and
+# allows apostrophes. !! and !( fall through to normal zsh behaviour.
+_haiku_accept_line() {
+  if [[ "$BUFFER" == '!'* && "$BUFFER" != '!!'* && "$BUFFER" != '!('* ]]; then
+    local query="${BUFFER#!}"
+    query="${query##[[:space:]]}"
+    BUFFER="_anthropic_smart ${(q)query}"
+  fi
+  zle .accept-line
+}
+zle -N accept-line _haiku_accept_line
+
+# Sends a prompt to haiku and prints the response. Uses OAuth creds,
+# ANTHROPIC_API_KEY, or falls back to the claude CLI.
+_anthropic_haiku() {
+  local prompt="$1"
+  local _haiku_model="${ANTHROPIC_DEFAULT_HAIKU_MODEL:-claude-haiku-4-5-20251001}"
+  local _base_url="${ANTHROPIC_BASE_URL:-https://api.anthropic.com}"
+  local _creds=~/.claude/.credentials.json
+  local _auth_header _token _expires _now
+  _now=$(( $(date +%s) * 1000 ))
+
+  if [[ -f "$_creds" ]]; then
+    _token=$(jq -r '.claudeAiOauth.accessToken // empty' "$_creds" 2>/dev/null)
+    _expires=$(jq -r '.claudeAiOauth.expiresAt // 0' "$_creds" 2>/dev/null)
+    (( _expires > _now )) && _auth_header="Authorization: Bearer $_token"
+  fi
+
+  [[ -z "$_auth_header" ]] && [[ -n "$ANTHROPIC_API_KEY" ]] && \
+    _auth_header="x-api-key: $ANTHROPIC_API_KEY"
+
+  if [[ -n "$_auth_header" ]]; then
+    curl -s "$_base_url/v1/messages" \
+      -H "$_auth_header" \
+      -H "anthropic-version: 2023-06-01" \
+      -H "content-type: application/json" \
+      -d "{\"model\":\"$_haiku_model\",\"max_tokens\":256,\"messages\":[{\"role\":\"user\",\"content\":$(printf '%s' "$prompt" | jq -Rs .)}]}" \
+      2>/dev/null \
+      | jq -r '.content[0].text // empty'
+  else
+    command claude -p "$prompt" --model haiku 2>/dev/null
+  fi
+}
+
+# Routes a !query: if it maps to a shell command, pre-fills the next
+# prompt with it (just hit enter to run); otherwise prints the answer.
+_anthropic_smart() {
+  local query="$1"
+  local prompt="You are a shell assistant on $(uname -s). If the user's request can be satisfied by a single shell command, reply with ONLY that command on one line, prefixed by 'CMD: ' and nothing else. Otherwise, answer directly in plain text. Do not use markdown or code fences.
+
+Request: $query"
+
+  local response
+  response=$(_anthropic_haiku "$prompt")
+
+  if [[ "$response" == CMD:* ]]; then
+    local cmd="${response#CMD:}"
+    cmd="${cmd##[[:space:]]}"      # trim leading whitespace
+    cmd="${cmd%%[[:space:]]}"      # trim trailing whitespace
+    cmd="${cmd#\`}"; cmd="${cmd%\`}"   # strip stray backticks
+    print -z -- "$cmd"
+  else
+    print -r -- "$response"
+  fi
+}
+
+cc() {
+  # No args or flags passed directly → skip routing
+  if [[ $# -eq 0 ]] || [[ "$1" == -* ]]; then
+    command claude --permission-mode auto --model "$ANTHROPIC_MODEL" "$@"
+    return
+  fi
+
+  local query="$*"
+  local routing_prompt="Classify this query's complexity with exactly one phrase: simple, medium, complex, or very complex. simple = anything a small fast model can handle: greetings, factual lookups, unit conversions, short summaries, basic how-to questions. medium = tasks needing some reasoning or context but no deep expertise: writing drafts, debugging a small snippet, explaining a concept in depth. complex = multi-step reasoning, research, planning, architecture decisions, non-trivial code tasks. very complex = exhaustive analysis, large-scale design, deep technical work requiring sustained reasoning. Reply with only that phrase, nothing else.\n\nQuery: $query"
+
+  local complexity
+  complexity=$(
+    _anthropic_haiku "$routing_prompt" \
+      | grep -oi '\(very complex\|complex\|medium\|simple\)' | head -1 | tr '[:upper:]' '[:lower:]'
+  )
+
+  local model
+  case "$complexity" in
+    simple)         model="haiku"  ;;
+    medium)         model="sonnet" ;;
+    complex)        model="opus"   ;;
+    "very complex") model="fable"  ;;
+    *)              model="$ANTHROPIC_MODEL" ;;
+  esac
+
+  print -P "%F{cyan}→ $model%f"
+  command claude --permission-mode auto --model "$model" "$query"
+}
+alias ccs="claude --permission-mode auto --model sonnet"
+alias ccf="claude --permission-mode auto --model fable"
+alias cco="claude --permission-mode auto --model opus"
+alias cch="claude --permission-mode auto --model haiku"
 alias ccr="claude --resume --permission-mode auto"
 alias cc-dsp='docker sandbox run claude . --dangerously-skip-permissions'
 alias m="micro"
@@ -179,6 +288,7 @@ alias copy=pbcopy
 alias pbcopy='xsel --clipboard --input'
 alias pbpaste='xsel --clipboard --output'
 alias x='tauri-explorer &>/dev/null & disown'
+alias lxl='lite-xl'
 alias gg='keifu'
 zss() {
   local diff
@@ -244,6 +354,31 @@ fz() {
   fi
 }
 
+# Text if it has a non-binary encoding (us-ascii/utf-8/...), or it's empty.
+_is_text_file() {
+  [[ -f "$1" ]] || return 1
+  local enc type
+  enc=$(file -b --mime-encoding -- "$1" 2>/dev/null)
+  [[ -n "$enc" && "$enc" != "binary" ]] && return 0
+  type=$(file -b --mime-type -- "$1" 2>/dev/null)
+  [[ "$type" == "inode/x-empty" ]]
+}
+
+# Pick the command to open a file with, by extension then content.
+# Echoes nothing for "no opinion" (caller falls back to the bare filename).
+_fzf_open_cmd() {
+  local f="$1"
+  case "${f:l:e}" in
+    csv|tsv|tab)                                  print -r -- tv ;;  # tidy-viewer
+    zip|tar|tgz|tbz|tbz2|txz|tzst|gz|bz2|xz|zst|7z|rar|cpio|iso)
+                                                  print -r -- 'bsdtar -tf' ;;  # list archive
+    png|jpg|jpeg|gif|webp|bmp|svg|ico|tiff|avif)  print -r -- o  ;;  # GUI image viewer
+    pdf|epub|mp4|mkv|webm|mov|mp3|flac|wav|ogg|opus|m4a|odt|docx|xlsx|pptx)
+                                                  print -r -- o  ;;  # GUI app
+    *) _is_text_file "$f" && print -r -- m ;;                        # micro
+  esac
+}
+
 fzf-file-widget() {
   local sel quoted
 
@@ -262,7 +397,13 @@ fzf-file-widget() {
     quoted+=("${(q)f}")
   done
 
-  LBUFFER+="${(j: :)quoted} "
+  # Single file on an empty prompt → prefill the right opener (tv/o/m).
+  local cmd
+  if [[ ${#quoted} -eq 1 && -z "$LBUFFER" ]] && cmd=$(_fzf_open_cmd "${(f)sel}") && [[ -n "$cmd" ]]; then
+    LBUFFER="$cmd ${quoted[1]} "
+  else
+    LBUFFER+="${(j: :)quoted} "
+  fi
   zle reset-prompt
 }
 zle -N fzf-file-widget
@@ -579,3 +720,14 @@ fi
 
 export PATH="$PATH:/snap/bin"
 
+# Collapse duplicate PATH entries (keeps first occurrence of each). -U = keep-unique.
+typeset -gU path PATH
+
+
+# WezTerm: report cwd via OSC 7 so new tabs/panes inherit the working directory.
+if [[ -n "$WEZTERM_PANE" ]]; then
+  __wezterm_osc7() { printf '\033]7;file://%s%s\a' "$HOST" "$PWD"; }
+  autoload -Uz add-zsh-hook
+  add-zsh-hook -Uz chpwd __wezterm_osc7
+  __wezterm_osc7
+fi

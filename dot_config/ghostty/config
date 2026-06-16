@@ -7,6 +7,8 @@ macos-hidden = never
 macos-titlebar-style = tabs
 
 macos-window-buttons = hidden
+# Don't auto-copy on text selection (use ctrl+c to copy explicitly)
+copy-on-select = false
 split-divider-color = #FFBF00
 font-thicken = true
 font-thicken-strength = 80
@@ -70,3 +72,9 @@ font-size = 16
 
 # Normal/full zsh tab
 keybind = ctrl+t=new_tab
+
+# Subtle theme-colored flash on the new line when you press Enter.
+# (Additive glow on one row only — does not distort/sample fresh output,
+# so it won't make output appear late like the earlier radial version did.)
+custom-shader = /home/chong/.config/ghostty/shaders/enter-ripple.glsl
+custom-shader-animation = true

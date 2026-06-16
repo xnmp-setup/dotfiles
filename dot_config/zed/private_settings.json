@@ -34,7 +34,6 @@
         "light": "Material Icon Theme",
         "dark": "Material Icon Theme"
     },
-    "proxy": "http://cba.proxy.prismaaccess.com:8080",
     "edit_predictions": {
               "open_ai_compatible_api": {
                    "model": "@bedrock-eus1/us.anthropic.claude-haiku-4-5-20251001-v1:0",

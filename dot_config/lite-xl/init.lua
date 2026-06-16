@@ -10,11 +10,28 @@ local command = require "core.command"
 
 ------------------------------ Themes ----------------------------------------
 
-core.reload_module("colors.ayu-mirage")
+-- Load the first theme that's actually installed. A missing `require` here
+-- throws and aborts the rest of init.lua (load_user_directory runs the whole
+-- file), so never call reload_module on a theme that may not exist.
+local function load_first_theme(names)
+  for _, name in ipairs(names) do
+    if pcall(core.reload_module, "colors." .. name) then return name end
+  end
+  core.warn("No preferred theme found; using default")
+end
+
+load_first_theme { "ayu-mirage", "cosmic-dusk", "default" }
 
 ------------------------------ Fonts -----------------------------------------
 
-style.code_font = renderer.font.load(DATADIR .. "/fonts/JetBrainsMono-Regular.ttf", 16 * SCALE)
+-- Default antialiasing is "subpixel", which assumes a vertical RGB stripe and
+-- produces colored fringing (reads as "blurry") on non-RGB panels like QD-OLED.
+-- "grayscale" + full hinting renders crisply on those. See core/style.lua docs.
+local FONT_OPTS = { antialiasing = "grayscale", hinting = "full" }
+
+style.font = renderer.font.load(DATADIR .. "/fonts/FiraSans-Regular.ttf", 15 * SCALE, FONT_OPTS)
+style.big_font = style.font:copy(46 * SCALE)
+style.code_font = renderer.font.load(DATADIR .. "/fonts/JetBrainsMono-Regular.ttf", 16 * SCALE, FONT_OPTS)
 
 ------------------------------ Hide UI ---------------------------------------
 
@@ -194,6 +211,8 @@ local ts_lib = USERDIR .. '/libraries/tree_sitter/init.lib'
 local ts_parser = USERDIR .. '/plugins/evergreen-python/parser.so'
 
 if system.get_file_info(ts_lib) and system.get_file_info(ts_parser) then
+  -- Native binaries present: register the python grammar. The evergreen plugin
+  -- autoloads on its own and pulls in libraries.tree_sitter.
   local evergreenLangs = require 'plugins.evergreen.languages'
 
   evergreenLangs.addDef {
@@ -206,6 +225,13 @@ if system.get_file_info(ts_lib) and system.get_file_info(ts_parser) then
     },
   }
 else
+  -- No native tree-sitter binaries (e.g. fresh Arch install): the evergreen
+  -- plugin's own autoload does `require 'libraries.tree_sitter'` and would
+  -- error. init.lua runs before load_plugins(), so disabling it here stops the
+  -- broken autoload. Stock language_python.lua provides regex highlighting.
+  config.plugins.evergreen = false
+  config.plugins['evergreen-python'] = false
+
   core.add_thread(function()
     local missing = {}
     if not system.get_file_info(ts_lib) then missing[#missing+1] = ts_lib end
