@@ -190,6 +190,11 @@ config.keys = {
   { key = 'Backspace', mods = 'CTRL', action = act.SendString '\x17' },
   { key = 'Delete', mods = 'ALT', action = act.SendString '\x1bd' },
   { key = 'Delete', mods = 'CTRL', action = act.SendString '\x1bd' },
+  -- Word nav: karabiner rewrites ctrl+left/right => alt(option)+left/right,
+  -- so the terminal sees Alt+Arrow. Emit the real ctrl+arrow CSI sequences
+  -- (zsh binds these to backward-word/forward-word; TUIs read them too).
+  { key = 'LeftArrow', mods = 'ALT', action = act.SendString '\x1b[1;5D' },
+  { key = 'RightArrow', mods = 'ALT', action = act.SendString '\x1b[1;5C' },
   { key = 'k', mods = 'CTRL|SHIFT', action = act.SendString '\x0b' },
   { key = 'Home', mods = 'SHIFT', action = act.SendString '\x1b[1;2H' },
   { key = 'End', mods = 'SHIFT', action = act.SendString '\x1b[1;2F' },
