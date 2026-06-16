@@ -62,9 +62,23 @@ config.window_padding = { left = 10, right = 10, top = 6, bottom = 6 }
 
 -- Ghostty: macos-titlebar-style = tabs + hidden window buttons.
 -- Windows nearest: integrate the min/max/close buttons into the tab bar.
-config.window_decorations = 'INTEGRATED_BUTTONS|RESIZE'
+config.window_decorations = 'RESIZE'
 config.use_fancy_tab_bar = true
 config.tab_max_width = 32
+local scheme = wezterm.color.get_builtin_schemes()[config.color_scheme]
+config.window_frame = {
+  font_size = 16,
+  active_titlebar_bg = scheme.background,
+  inactive_titlebar_bg = scheme.background,
+  border_left_width = '1px',
+  border_right_width = '1px',
+  border_bottom_height = '1px',
+  border_top_height = '1px',
+  border_left_color = '#555555',
+  border_right_color = '#555555',
+  border_bottom_color = '#555555',
+  border_top_color = '#555555',
+}
 
 -- split-divider-color = #FFBF00
 config.colors = { split = '#FFBF00' }
@@ -181,21 +195,53 @@ config.keys = {
   { key = 'End', mods = 'SHIFT', action = act.SendString '\x1b[1;2F' },
 }
 
--- ---------- Tab bar: orange for Claude Code ----------
+-- ---------- Tab bar styling ----------
 wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
   local pane_info = tab.active_pane
   local title = pane_info.title or ''
   local proc = pane_info.foreground_process_name or ''
+  local is_active = tab.is_active
 
   local is_claude = proc:find('claude') ~= nil
 
+  -- For non-claude tabs, show "cwd" or "cwd: command" if a process is running
+  if not is_claude then
+    local cwd = pane_info.current_working_dir
+    local basename = ''
+    if cwd then
+      local path = cwd.file_path or cwd:gsub('^file://[^/]*', '')
+      basename = path:match('[^/]+$') or path
+    end
+
+    local proc_name = proc:match('[^/\\]+$') or ''
+    local shells = { bash=1, sh=1, zsh=1, fish=1, nu=1, login=1 }
+    if proc_name ~= '' and not shells[proc_name] then
+      -- Running a command — show "cwd: command args" from pane title
+      -- pane title is usually set to the running command by the shell
+      local cmd = pane_info.title or proc_name
+      title = basename .. ': ' .. cmd
+    else
+      title = basename
+    end
+  end
+
+  -- Append pane count if more than one
+  local pane_count = #tab.panes
+  if pane_count > 1 then
+    title = title .. ' (' .. pane_count .. ')'
+  end
+
   if is_claude then
+    local bg = is_active and '#C0623A' or '#7A3D24'
+    local fg = is_active and '#ffffff' or '#cccccc'
     return {
-      { Background = { Color = '#C0623A' } },
-      { Foreground = { Color = '#ffffff' } },
+      { Background = { Color = bg } },
+      { Foreground = { Color = fg } },
       { Text = ' ' .. title .. ' ' },
     }
   end
+
+  return { { Text = ' ' .. title .. ' ' } }
 end)
 
 return config

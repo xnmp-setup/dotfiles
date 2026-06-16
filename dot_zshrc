@@ -7,6 +7,13 @@ fi
 
 [[ $PWD == "$HOME" ]] && cd ~/Documents/Inbox
 
+# --- WezTerm shell integration: emit OSC 7 on directory change ---
+__wezterm_osc7() {
+  printf '\e]7;file://%s%s\e\\' "${HOST}" "${PWD}"
+}
+chpwd_functions=(${chpwd_functions[@]} __wezterm_osc7)
+__wezterm_osc7  # emit on shell startup too
+
 # --- History ---
 HISTFILE="$HOME/.zsh_history"
 HISTSIZE=50000
