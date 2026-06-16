@@ -2,7 +2,13 @@
 # Wrapper around ccstatusline that recolors the context bar based on usage %.
 # ccstatusline reads JSON from stdin, so we tee stdin to it.
 
-OUTPUT=$(cat | bunx -y ccstatusline@latest 2>/dev/null)
+# Force a wide effective width so ccstatusline never truncates the line.
+# Truncation clips the (last) context bar mid-draw and appends "...", which
+# (a) breaks the rebuild_context_bar regex below and (b) strips the "(N%)"
+# the color picker greps for. The bar width is fixed (16 chars) regardless of
+# this value, so a large width only prevents truncation — no visual downside.
+# CCSTATUSLINE_WIDTH is checked first in ccstatusline's width probe and wins.
+OUTPUT=$(cat | CCSTATUSLINE_WIDTH=1000 bunx -y ccstatusline@latest 2>/dev/null)
 
 # Extract the percentage from the context bar, e.g. "(15%)"
 PCT=$(echo "$OUTPUT" | grep -oE '\([0-9]+%\)' | head -1 | tr -dc '0-9')
