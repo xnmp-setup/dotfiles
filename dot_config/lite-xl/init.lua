@@ -14,7 +14,7 @@ core.reload_module("colors.ayu-mirage")
 
 ------------------------------ Fonts -----------------------------------------
 
-style.code_font = renderer.font.load(DATADIR .. "/fonts/JetBrainsMono-Regular.ttf", 18 * SCALE)
+style.code_font = renderer.font.load(DATADIR .. "/fonts/JetBrainsMono-Regular.ttf", 16 * SCALE)
 
 ------------------------------ Hide UI ---------------------------------------
 
