@@ -44,26 +44,33 @@ def shorten_model(text):
             return name
     return text
 
-BG_EMPTY = "236"  # dark gray bg for empty portion
+BG_EMPTY = "238"  # gray bg for empty portion (lighter than 236, keeps contrast)
 FG_ON_FILL = "0"  # black text on the bright filled portion
 
 def rebuild_context_bar(m):
     """Replace [████░░░░] Xk/Yk (N%) with a text-inside-bar using bg colors."""
     fg_code = m.group(1)  # the ansi256 fg color code number
     bar = m.group(2)      # e.g. ████████░░░░░░░░
-    label = m.group(3)    # e.g. 100k/200k (50%)
+    label = m.group(3)    # e.g. 203k/1.0M (20%)
 
     filled = bar.count("█")
     bar_width = filled + bar.count("░")
     if bar_width == 0:
         return m.group(0)
 
-    # 1000k -> 1m in label
-    label = re.sub(r"(\d+)000k", r"\g<1>m", label)
-
-    # Full original width: [bar] + space + label
-    full_width = 2 + bar_width + 1 + len(label)
     proportion = filled / bar_width
+
+    # Reformat label "203k/1.0M (20%)" -> "20% of 1.0M".
+    mm = re.search(r"/\s*([0-9.]+[kKmM]?)\s*\((\d+)%\)", label)
+    if mm:
+        total, pct = mm.group(1), mm.group(2)
+        label = f"{pct}% of {total}"
+    else:
+        # Fallback: just shorten 1000k -> 1m if the format is unexpected.
+        label = re.sub(r"(\d+)000k", r"\g<1>m", label)
+
+    # Constant-width bar (20 chars), independent of label length.
+    full_width = 20
 
     # Pad label to full width, centered
     text = label.center(full_width)
@@ -75,13 +82,18 @@ def rebuild_context_bar(m):
 
     fg_num = int(fg_code) if fg_code else 203
 
-    # Filled: bg is the same color as the text was, text is black
-    # Empty: dark gray bg, text stays the original color
+    # Remap the bar color (used for both the fill block and the empty-portion
+    # text) for better contrast on the grey bg. Red (203) is left as-is.
+    BAR_FG = {78: 114, 227: 221}
+    bar_fg = BAR_FG.get(fg_num, fg_num)
+
+    # Filled: bg is the bar color, text is black
+    # Empty: grey bg, text in the bar color
     result = ""
     if text_filled:
-        result += f"\x1b[48;5;{fg_num};38;5;{FG_ON_FILL}m{text_filled}"
+        result += f"\x1b[48;5;{bar_fg};38;5;{FG_ON_FILL}m{text_filled}"
     if text_empty:
-        result += f"\x1b[48;5;{BG_EMPTY};38;5;{fg_num}m{text_empty}"
+        result += f"\x1b[48;5;{BG_EMPTY};38;5;{bar_fg}m{text_empty}"
     result += "\x1b[0m"
     return result
 
