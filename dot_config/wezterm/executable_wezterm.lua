@@ -294,51 +294,83 @@ local STATUS_STYLE = {
 
 wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
   local pane_info = tab.active_pane
-  local title = pane_info.title or ''
-  local proc = pane_info.foreground_process_name or ''
+  local title = ''
+  local uv = pane_info.user_vars or {}
   local is_active = tab.is_active
+
+  -- Resolve the foreground command. WezTerm's foreground_process_name only sees
+  -- the wslhost.exe proxy for WSL panes, never the real process, so prefer the
+  -- WEZTERM_PROG user var the zsh hooks publish from inside WSL. Fall back to the
+  -- OS process for panes without the hook (e.g. the pwsh local domain). prog is a
+  -- command line ("git status"); foreground_process_name is a path (".../pwsh.exe").
+  local prog = uv.WEZTERM_PROG
+  local proc_name, display_cmd
+  if prog and prog ~= '' then
+    proc_name = (prog:match('^%S+') or prog):match('[^/\\]+$') or prog
+    display_cmd = prog
+  else
+    local proc = pane_info.foreground_process_name or ''
+    proc_name = proc:match('[^/\\]+$') or proc
+    display_cmd = proc_name
+  end
 
   -- Overlays (InputSelector, etc.) replace the active pane with one that has no
   -- cwd and no foreground process. Fall back to the last known rendered title.
-  if not pane_info.current_working_dir and (proc == '' or proc == nil) then
+  if not pane_info.current_working_dir and (proc_name == '' or proc_name == nil) then
     local cached = last_tab_title[tostring(tab.tab_id)]
     if cached then
       return cached
     end
   end
 
-  local is_claude = proc:find('claude') ~= nil
+  local is_claude = proc_name:find('claude') ~= nil
 
-  -- For non-claude tabs, show "cwd" or "cwd: command" if a process is running
-  if not is_claude then
-    local cwd = pane_info.current_working_dir
-    local basename = ''
-    if cwd then
-      local path
-      if type(cwd) == 'userdata' then
-        -- Url object. file_path (already decoded) is nil when the OSC-7 host !=
-        -- local host, so fall back to the percent-encoded .path and decode that.
-        -- Never call string methods on the userdata, or the handler errors and
-        -- wezterm shows the raw full-path title.
-        path = cwd.file_path
-        if not path or path == '' then
-          path = (cwd.path or ''):gsub('%%(%x%x)', function(h) return string.char(tonumber(h, 16)) end)
-        end
-      else
-        -- Legacy string form: "file://host/path"
-        path = tostring(cwd):gsub('^file://[^/]*', '')
+  -- Working directory basename (the project name). Reliable via OSC-7 even under
+  -- WSL, unlike pane_info.title which stays "wslhost.exe" until claude gets around
+  -- to setting its own title. Used for both claude and plain tabs.
+  local cwd = pane_info.current_working_dir
+  local basename = ''
+  if cwd then
+    local path
+    if type(cwd) == 'userdata' then
+      -- Url object. file_path (already decoded) is nil when the OSC-7 host !=
+      -- local host, so fall back to the percent-encoded .path and decode that.
+      -- Never call string methods on the userdata, or the handler errors and
+      -- wezterm shows the raw full-path title.
+      path = cwd.file_path
+      if not path or path == '' then
+        path = (cwd.path or ''):gsub('%%(%x%x)', function(h) return string.char(tonumber(h, 16)) end)
       end
-      path = path:gsub('[/\\]+$', '')
-      basename = path:match('[^/\\]+$') or path
+    else
+      -- Legacy string form: "file://host/path"
+      path = tostring(cwd):gsub('^file://[^/]*', '')
     end
+    path = path:gsub('[/\\]+$', '')
+    basename = path:match('[^/\\]+$') or path
+  end
 
-    local proc_name = proc:match('[^/\\]+$') or ''
-    local shells = { bash=1, sh=1, zsh=1, fish=1, nu=1, login=1 }
+  -- Names that aren't a real foreground command: shells, plus the WSL proxy that
+  -- foreground_process_name / the raw pane title report before claude (or the
+  -- WEZTERM_PROG hook) sets a proper title.
+  local shells = { bash=1, sh=1, zsh=1, fish=1, nu=1, login=1,
+                   ['pwsh.exe']=1, ['powershell.exe']=1, ['cmd.exe']=1,
+                   ['wslhost.exe']=1, ['wsl.exe']=1, ['wslrelay.exe']=1 }
+
+  if is_claude then
+    -- Show the title Claude Code sets via OSC ("Claude Code", or whatever /rename
+    -- changes it to). Until it does, the raw WSL pane title is "wslhost.exe", so
+    -- fall back to the project dir / "claude".
+    local t = pane_info.title or ''
+    local tbase = t:match('[^/\\]+$') or t
+    if t ~= '' and not shells[tbase] then
+      title = t
+    else
+      title = basename ~= '' and basename or 'claude'
+    end
+  else
+    -- Plain tab: "cwd", or "cwd: command" when a process is running.
     if proc_name ~= '' and not shells[proc_name] then
-      -- Running a command — show "cwd: command args" from pane title
-      -- pane title is usually set to the running command by the shell
-      local cmd = pane_info.title or proc_name
-      title = basename .. ': ' .. cmd
+      title = basename .. ': ' .. display_cmd
     else
       title = basename
     end
@@ -364,7 +396,7 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
   }
   if is_claude then
     local fg = is_active and '#ffffff' or '#bbbbbb'
-    local status = (pane_info.user_vars or {}).claude_status
+    local status = uv.claude_status
     local style = status and STATUS_STYLE[status]
     if style then
       local bg = is_active and style.active_bg or style.inactive_bg
