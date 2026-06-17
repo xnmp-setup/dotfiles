@@ -375,9 +375,13 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
       title = basename ~= '' and basename or 'claude'
     end
   else
-    -- Plain tab: "cwd", or "cwd: command" when a process is running.
+    -- Plain tab: "cwd", "cwd: command" when a process is running, or "pwsh: cwd"
+    -- for an idle PowerShell pane to distinguish it from WSL shells (bare cwd).
+    local pwsh = proc_name == 'pwsh.exe' or proc_name == 'powershell.exe'
     if proc_name ~= '' and not shells[proc_name] then
       title = basename .. ': ' .. display_cmd
+    elseif pwsh then
+      title = basename ~= '' and ('pwsh: ' .. basename) or 'pwsh'
     else
       title = basename
     end
