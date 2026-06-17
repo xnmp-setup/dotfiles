@@ -1,1 +1,2 @@
-after making changes, use chezmoi apply, but only to the files changed. Note: this is actually already done by a hook.
+Use chezmoi apply, after changes, but only to the files changed. 
+DO NOT chezmoi apply without viewing the diff first. DO NOT use --force
