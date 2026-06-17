@@ -13,9 +13,14 @@
 # Mechanism: OSC 1337 SetUserVar. We CANNOT write to /dev/tty — Claude spawns
 # hooks without a controlling terminal, so /dev/tty open-for-write fails with
 # ENXIO ("Device not configured") even though `[ -w /dev/tty ]` is true (it only
-# checks mode bits). Instead resolve this pane's real device from $WEZTERM_PANE
-# via `wezterm cli list` and write the escape sequence there. The sequence is a
-# non-rendered control sequence, so it won't disturb Claude's TUI. Silent no-op
+# checks mode bits). Two ways to find the pane's real device:
+#   - Native (mac/Linux): WEZTERM_PANE is exported; map it to a tty via
+#     `wezterm cli list` and write the escape there.
+#   - WSL: WEZTERM_PANE is NOT propagated across the boundary and the wezterm
+#     binary is Windows-side, so instead walk up the process tree from this hook
+#     to the claude process and write to its pty. That pty is bridged to the
+#     WezTerm pane, the same path the shell's own OSC-7 output takes.
+# The sequence is non-rendered, so it won't disturb Claude's TUI. Silent no-op
 # outside WezTerm so it can never break a session.
 
 status="$1"
@@ -38,17 +43,36 @@ if [ "$status" = "notification" ]; then
 fi
 
 [ "$TERM_PROGRAM" = "WezTerm" ] || exit 0
-[ -n "$WEZTERM_PANE" ] || exit 0
 
-# wezterm CLI lives next to the gui binary that launched us.
-wt="${WEZTERM_EXECUTABLE%-gui}"
-[ -x "$wt" ] || wt="$(command -v wezterm 2>/dev/null)"
-[ -n "$wt" ] && [ -x "$wt" ] || exit 0
+tty_dev=""
 
-# Map this pane id to its tty device.
-tty_dev=$("$wt" cli list --format json 2>/dev/null \
-  | jq -r --argjson p "$WEZTERM_PANE" \
-      '.[] | select(.pane_id == $p) | .tty_name // empty' 2>/dev/null)
+# Native panes (mac/Linux) export WEZTERM_PANE: map the pane id to its tty via the
+# wezterm CLI, which lives next to the gui binary that launched us.
+if [ -n "$WEZTERM_PANE" ]; then
+  wt="${WEZTERM_EXECUTABLE%-gui}"
+  [ -x "$wt" ] || wt="$(command -v wezterm 2>/dev/null)"
+  if [ -n "$wt" ] && [ -x "$wt" ]; then
+    tty_dev=$("$wt" cli list --format json 2>/dev/null \
+      | jq -r --argjson p "$WEZTERM_PANE" \
+          '.[] | select(.pane_id == $p) | .tty_name // empty' 2>/dev/null)
+  fi
+fi
+
+# WSL (or any pane where WEZTERM_PANE didn't resolve): the hook has no controlling
+# terminal, but the claude process that spawned it does. Walk up the process tree
+# to the first pts/tty device and write there; under WSL that pty is bridged to
+# the WezTerm pane.
+if [ -z "$tty_dev" ]; then
+  pid=$PPID
+  while [ -n "$pid" ] && [ "$pid" -gt 1 ]; do
+    t=$(ps -o tty= -p "$pid" 2>/dev/null | tr -d ' ')
+    case "$t" in
+      pts/*|tty*) tty_dev="/dev/$t"; break ;;
+    esac
+    pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
+  done
+fi
+
 [ -n "$tty_dev" ] && [ -w "$tty_dev" ] || exit 0
 
 # OSC 1337 SetUserVar requires the value to be base64-encoded.
