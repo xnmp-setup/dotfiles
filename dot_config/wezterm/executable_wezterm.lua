@@ -33,6 +33,18 @@ local function pane_or_tab_nav(delta)
   end)
 end
 
+-- Spawn a new tab immediately after the current one (not appended at end).
+local function spawn_tab_next(domain)
+  return wezterm.action_callback(function(win, pane)
+    local idx
+    for _, item in ipairs(win:mux_window():tabs_with_info()) do
+      if item.is_active then idx = item.index; break end
+    end
+    win:perform_action(act.SpawnTab(domain), pane)
+    win:perform_action(act.MoveTab(idx + 1), pane)
+  end)
+end
+
 -- Last known tab title — format-tab-title stashes here so overlays (InputSelector
 -- etc.) that blank the active pane don't cause a flicker to an empty title.
 local last_tab_title = {}
@@ -182,17 +194,20 @@ config.keys = {
       }, pane)
     end
   end) },
-  { key = 't', mods = 'CTRL', action = act.SpawnTab 'CurrentPaneDomain' },
+  { key = 't', mods = 'CTRL', action = spawn_tab_next('CurrentPaneDomain') },
   -- new PowerShell (pwsh) tab in the local Windows domain (default domain is WSL).
   -- Full path to the MSI install — avoids the slow WindowsApps execution-alias stub.
-  {
-    key = 't',
-    mods = 'CTRL|SHIFT',
-    action = act.SpawnCommandInNewTab {
+  { key = 't', mods = 'CTRL|SHIFT', action = wezterm.action_callback(function(win, pane)
+    local idx
+    for _, item in ipairs(win:mux_window():tabs_with_info()) do
+      if item.is_active then idx = item.index; break end
+    end
+    win:perform_action(act.SpawnCommandInNewTab {
       domain = { DomainName = 'local' },
       args = { 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' },
-    },
-  },
+    }, pane)
+    win:perform_action(act.MoveTab(idx + 1), pane)
+  end) },
   { key = 'n', mods = 'CTRL', action = act.SpawnWindow },
   { key = 'PageUp', mods = 'CTRL', action = pane_or_tab_nav(-1) },
   { key = 'PageDown', mods = 'CTRL', action = pane_or_tab_nav(1) },
