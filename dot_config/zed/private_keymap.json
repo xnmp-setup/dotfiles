@@ -121,8 +121,7 @@
             "ctrl-shift-f": "pane::DeploySearch",
             "ctrl-shift-h": ["pane::DeploySearch", { "replace_enabled": true }],
             "ctrl-shift-k": "editor::DeleteLine",
-            "ctrl-l": "editor::SplitSelectionIntoLines",
-            "ctrl-shift-l": "editor::SelectAllMatches",
+            "ctrl-shift-l": "editor::SplitSelectionIntoLines",
             "ctrl-shift-t": "pane::ReopenClosedItem",
             "ctrl-shift-n": "workspace::NewWindow",
 

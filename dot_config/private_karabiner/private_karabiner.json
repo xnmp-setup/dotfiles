@@ -9,7 +9,9 @@
                             {
                                 "conditions": [
                                     {
-                                        "bundle_identifiers": ["^dev\\.zed\\.Zed$"],
+                                        "bundle_identifiers": [
+                                            "^dev\\.zed\\.Zed$"
+                                        ],
                                         "type": "frontmost_application_if"
                                     }
                                 ],
@@ -68,32 +70,8 @@
                                     {
                                         "bundle_identifiers": [
                                             "^com\\.googlecode\\.iterm2$",
-                                            "^com\\.mitchellh\\.ghostty$"
-                                        ],
-                                        "type": "frontmost_application_if"
-                                    }
-                                ],
-                                "from": {
-                                    "key_code": "end",
-                                    "modifiers": {
-                                        "mandatory": ["control"],
-                                        "optional": ["shift"]
-                                    }
-                                },
-                                "to": [
-                                    {
-                                        "key_code": "end",
-                                        "modifiers": ["option"]
-                                    }
-                                ],
-                                "type": "basic"
-                            },
-                            {
-                                "conditions": [
-                                    {
-                                        "bundle_identifiers": [
-                                            "^com\\.googlecode\\.iterm2$",
-                                            "^com\\.mitchellh\\.ghostty$"
+                                            "^com\\.mitchellh\\.ghostty$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_if"
                                     }
@@ -125,7 +103,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }
@@ -152,7 +131,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }
@@ -184,7 +164,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }
@@ -208,7 +189,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }
@@ -238,7 +220,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }
@@ -265,7 +248,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }
@@ -431,7 +415,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }
@@ -458,7 +443,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }
@@ -485,7 +471,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }
@@ -512,7 +499,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }
@@ -539,7 +527,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }
@@ -566,7 +555,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }
@@ -593,7 +583,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }
@@ -620,7 +611,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }
@@ -647,7 +639,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }
@@ -674,7 +667,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }
@@ -701,7 +695,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }
@@ -728,7 +723,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }
@@ -755,7 +751,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }
@@ -782,7 +779,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }
@@ -809,7 +807,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }
@@ -836,7 +835,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }
@@ -863,7 +863,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }
@@ -890,7 +891,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }
@@ -917,7 +919,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }
@@ -944,7 +947,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }
@@ -971,7 +975,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }
@@ -998,7 +1003,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }
@@ -1025,7 +1031,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }
@@ -1052,7 +1059,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }
@@ -1079,7 +1087,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }
@@ -1106,7 +1115,8 @@
                                             "^com\\.googlecode\\.iterm2$",
                                             "^com\\.mitchellh\\.ghostty$",
                                             "^com\\.microsoft\\.VSCode$",
-                                            "^dev\\.zed\\.Zed$"
+                                            "^dev\\.zed\\.Zed$",
+                                            "^com\\.github\\.wez\\.wezterm$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }

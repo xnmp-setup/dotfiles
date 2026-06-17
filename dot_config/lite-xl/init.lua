@@ -31,7 +31,7 @@ local FONT_OPTS = { antialiasing = "grayscale", hinting = "full" }
 
 style.font = renderer.font.load(DATADIR .. "/fonts/FiraSans-Regular.ttf", 15 * SCALE, FONT_OPTS)
 style.big_font = style.font:copy(46 * SCALE)
-style.code_font = renderer.font.load(DATADIR .. "/fonts/JetBrainsMono-Regular.ttf", 18 * SCALE, FONT_OPTS)
+style.code_font = renderer.font.load(DATADIR .. "/fonts/JetBrainsMono-Regular.ttf", 16 * SCALE, FONT_OPTS)
 
 ------------------------------ Hide UI ---------------------------------------
 
@@ -179,9 +179,10 @@ keymap.add({
   ["ctrl+shift+h"]     = "find-replace:open",
   ["ctrl+f"]           = "find-replace:find",
   ["ctrl+shift+f"]     = "project-search:find",
-
-  -- Multi-cursor / selection
-  ["ctrl+shift+l"]     = "doc:select-word",
+  -- ctrl+d: VSCode/Sublime "add cursor at next occurrence". With no selection,
+  -- select-add-next's predicate fails and lite-xl falls through to select-word
+  -- (selects the word under the cursor), seeding the next press.
+  ["ctrl+d"]           = { "find-replace:select-add-next", "doc:select-word" },
 
   -- Tabs
   ["ctrl+shift+t"]     = "root:reopen-last-closed-tab",
