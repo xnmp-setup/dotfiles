@@ -28,3 +28,7 @@
 - When unsure, ask clarifying questions rather than guessing.
 - Fix root causes, not symptoms. Avoid band-aid fixes like stopPropagation to mask duplicate handlers, setTimeout to paper over race conditions, or flags to suppress unwanted side effects. If a fix feels like a workaround, step back and address the underlying design issue.
 
+## Misc
+- When testing whether hooks work, don't pipe text to the shell scripts. Instead run actual commands that would trigger the hooks.
+
+@RTK.md
