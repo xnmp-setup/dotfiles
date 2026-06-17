@@ -210,7 +210,8 @@ local STATUS_STYLE = {
   -- stopped / turn finished: claude orange (matches the no-status fallback).
   -- No glyph — the claude icon in the title already marks these tabs.
   done      = { glyph = '', active_bg = '#C0623A', inactive_bg = '#7A3D24' },
-  attention = { glyph = '⚠', active_bg = '#C0392B', inactive_bg = '#6E2A22' },
+  -- vivid saturated red, kept distinct from the muted claude-orange "done"
+  attention = { glyph = '⚠', active_bg = '#E5252B', inactive_bg = '#8A1418' },
 }
 
 wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
