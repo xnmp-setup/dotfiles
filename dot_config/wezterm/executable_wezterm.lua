@@ -55,17 +55,60 @@ config.send_composed_key_when_right_alt_is_pressed = false
 config.use_ime = false
 
 -- ---------- Appearance ----------
-config.color_scheme = 'Ayu Mirage' -- if missing, try 'Ayu Mirage (Gogh)' or 'ayu'
-config.font_size = 16
+-- Color schemes ported from the Ghostty themes (~/.config/ghostty/themes/).
+-- WezTerm ships no cosmic-dusk/rapture builtins, so define them inline and pick
+-- one via config.color_scheme. set-theme.sh sed-rewrites that line to switch.
+config.color_schemes = {
+  -- Ghostty "Cosmic Dusk" (~/.config/ghostty/themes/Cosmic Dusk).
+  ['Cosmic Dusk'] = {
+    background = '#0e1330',
+    foreground = '#d8dce8',
+    cursor_bg = '#d4607a',
+    cursor_fg = '#0c1024',
+    cursor_border = '#d4607a',
+    selection_bg = '#2a3060',
+    selection_fg = '#f0f2fa',
+    ansi = { '#0c1024', '#d4607a', '#69db7c', '#fbbf24', '#6a7acc', '#b09ac0', '#7aadcc', '#d8dce8' },
+    brights = { '#2a3060', '#e87898', '#7eeea0', '#ffd43b', '#7a8ae0', '#c4b0d8', '#8ac0e0', '#f0f2fa' },
+  },
+  -- "Rapture" — no Ghostty theme exists; palette matched to the other apps'
+  -- rapture themes (Zed/Lite XL/Micro).
+  ['Rapture'] = {
+    background = '#111e2a',
+    foreground = '#c0c9e5',
+    cursor_bg = '#7afde1',
+    cursor_fg = '#111e2a',
+    cursor_border = '#7afde1',
+    selection_bg = '#304b66',
+    selection_fg = '#ffffff',
+    ansi = { '#000000', '#fc644d', '#7afde1', '#fff09b', '#6c9bf5', '#ff4fa1', '#64e0ff', '#c0c9e5' },
+    brights = { '#304b66', '#fc644d', '#7afde1', '#fff09b', '#6c9bf5', '#ff4fa1', '#64e0ff', '#ffffff' },
+  },
+}
+config.color_scheme = 'Cosmic Dusk'
+config.font_size = 16 -- matches Ghostty's font-size = 16
 config.window_background_opacity = 0.95
 config.window_padding = { left = 10, right = 10, top = 6, bottom = 6 }
 
 -- Ghostty: macos-titlebar-style = tabs + hidden window buttons.
 -- Windows nearest: integrate the min/max/close buttons into the tab bar.
 config.window_decorations = 'RESIZE'
+-- Hyprland (tiling Wayland) has no server-side title bar, so WezTerm draws its
+-- own title strip + control buttons over the tab bar and the glyphs render as
+-- broken empty squares. Hyprland handles move/resize itself, so drop decorations
+-- entirely there. Other environments (e.g. GNOME) keep the resizable border.
+local function running_under_hyprland()
+  return os.getenv('HYPRLAND_INSTANCE_SIGNATURE') ~= nil
+    or (os.getenv('XDG_CURRENT_DESKTOP') or ''):lower():find('hyprland') ~= nil
+end
+if running_under_hyprland() then
+  config.window_decorations = 'NONE'
+end
 config.use_fancy_tab_bar = true
 config.tab_max_width = 32
-local scheme = wezterm.color.get_builtin_schemes()[config.color_scheme]
+local scheme = config.color_schemes[config.color_scheme]
+  or wezterm.color.get_builtin_schemes()[config.color_scheme]
+  or { background = '#0e1330' }
 config.window_frame = {
   font_size = 16,
   active_titlebar_bg = scheme.background,
