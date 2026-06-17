@@ -4,6 +4,34 @@
             "complex_modifications": {
                 "rules": [
                     {
+                        "description": "WezTerm: cmd+opt+' => ctrl+shift+alt+cmd+t (split right)",
+                        "manipulators": [
+                            {
+                                "conditions": [
+                                    {
+                                        "bundle_identifiers": [
+                                            "^com\\.github\\.wez\\.wezterm$"
+                                        ],
+                                        "type": "frontmost_application_if"
+                                    }
+                                ],
+                                "from": {
+                                    "key_code": "quote",
+                                    "modifiers": {
+                                        "mandatory": ["command", "option"]
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "key_code": "t",
+                                        "modifiers": ["control", "shift", "option", "command"]
+                                    }
+                                ],
+                                "type": "basic"
+                            }
+                        ]
+                    },
+                    {
                         "description": "Zed: option+m => option+m (bypass IME for alt-m chord)",
                         "manipulators": [
                             {

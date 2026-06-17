@@ -74,6 +74,7 @@ end
 config.send_composed_key_when_left_alt_is_pressed = false
 config.send_composed_key_when_right_alt_is_pressed = false
 config.use_ime = false
+config.debug_key_events = true
 
 -- ---------- Appearance ----------
 -- Color schemes ported from the Ghostty themes (~/.config/ghostty/themes/).
@@ -106,7 +107,8 @@ config.color_schemes = {
     brights = { '#304b66', '#fc644d', '#7afde1', '#fff09b', '#6c9bf5', '#ff4fa1', '#64e0ff', '#ffffff' },
   },
 }
-config.color_scheme = 'Ayu Mirage'
+-- config.color_scheme = 'Ayu Mirage'
+config.color_scheme = 'Horizon Dark (Gogh)'
 config.font_size = 16 -- matches Ghostty's font-size = 16
 config.window_background_opacity = 0.95
 config.window_padding = { left = 10, right = 10, top = 6, bottom = 6 }
@@ -242,6 +244,8 @@ config.keys = {
   { key = 'PageDown', mods = 'SHIFT', action = act.ScrollByPage(1) },
 
   -- panes: create (alt+super) and navigate (super). See NOTES re: Win key on Windows.
+  { key = "'", mods = 'ALT|SUPER', action = act.SplitPane { direction = 'Right' } },
+  { key = 't', mods = 'CTRL|SHIFT|ALT|SUPER', action = act.SplitPane { direction = 'Right' } },
   { key = 'h', mods = 'CTRL', action = act.SplitPane { direction = 'Right' } },
   { key = 'l', mods = 'ALT|SUPER', action = act.SplitPane { direction = 'Left' } },
   { key = 'p', mods = 'ALT|SUPER', action = act.SplitPane { direction = 'Up' } },
