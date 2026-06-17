@@ -211,8 +211,8 @@ config.keys = {
     win:perform_action(act.MoveTab(idx + 1), pane)
   end) },
   { key = 'n', mods = 'CTRL', action = act.SpawnWindow },
-  { key = 'PageUp', mods = 'CTRL', action = pane_or_tab_nav(-1) },
-  { key = 'PageDown', mods = 'CTRL', action = pane_or_tab_nav(1) },
+  { key = 'PageUp', mods = 'CTRL', action = act.ActivateTabRelative(-1) },
+  { key = 'PageDown', mods = 'CTRL', action = act.ActivateTabRelative(1) },
 
   -- clipboard
   -- ctrl+v: normal text paste. ctrl+shift+v: forward ^V to the app so Claude
