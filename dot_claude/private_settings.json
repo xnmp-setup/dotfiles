@@ -19,18 +19,18 @@
             "command": "~/.claude/hooks/wezterm_status.sh working"
           }
         ]
-      }
-    ],
-    "PostToolUse": [
+      },
       {
-        "matcher": "Edit|Write",
+        "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude/hooks/chezmoi_auto_add.sh"
+            "command": "rtk hook claude"
           }
         ]
-      },
+      }
+    ],
+    "PostToolUse": [
       {
         "matcher": "*",
         "hooks": [
