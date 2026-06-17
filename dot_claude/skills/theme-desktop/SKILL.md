@@ -44,13 +44,31 @@ The palette must be cohesive — all colors should feel like they belong to the 
 
 ### 4. Generate theme files
 
-Create theme files for all ten apps using the palette. Read the existing themes/configs as format reference before writing.
+Create theme files for all eleven apps using the palette. Read the existing themes/configs as format reference before writing.
 
 #### Ghostty (`~/.config/ghostty/themes/{theme-name}`)
 
 No file extension. Key-value format with 16 palette entries, background, foreground, cursor-color, cursor-text, selection-background, selection-foreground.
 
 Reference: read any file in `~/.config/ghostty/themes/` for the exact format.
+
+#### WezTerm (`~/.config/wezterm/wezterm.lua`, inline)
+
+WezTerm has no per-theme files — schemes live inline in the `config.color_schemes` table in `wezterm.lua`. Add a new entry keyed by the Title Case theme name:
+
+```lua
+['Theme Name'] = {
+  background = '#...', foreground = '#...',
+  cursor_bg = '#...', cursor_fg = '#...', cursor_border = '#...',
+  selection_bg = '#...', selection_fg = '#...',
+  ansi = { black, red, green, yellow, blue, magenta, cyan, white },      -- palette 0-7
+  brights = { brblack, brred, brgreen, bryellow, brblue, brmagenta, brcyan, brwhite }, -- palette 8-15
+},
+```
+
+Map directly from the Ghostty palette (same 16 colors + background/foreground/cursor/selection). Insert the entry into the existing `config.color_schemes` table; do not duplicate the table.
+
+Reference: read the `config.color_schemes` block in `~/.config/wezterm/wezterm.lua` for the exact format.
 
 #### Tauri Explorer (`~/.config/tauri-explorer/themes/{theme-name}.css`)
 
@@ -177,6 +195,7 @@ Reference: read any file in `~/.config/p10k-themes/` for the exact format and wh
 Update each app's config to use the new theme:
 
 - **Ghostty**: In `~/.config/ghostty/config`, update the `theme = ...` line
+- **WezTerm**: In `~/.config/wezterm/wezterm.lua`, update the `config.color_scheme = '...'` line to the Title Case theme name (must match a key added to `config.color_schemes`)
 - **Lite XL**: In `~/.config/lite-xl/init.lua`, update the `core.reload_module("colors....")` line
 - **Micro**: In `~/.config/micro/settings.json`, update the `"colorscheme"` value
 - **VS Code**: In `~/.config/Code/User/settings.json`, update `"workbench.colorTheme"` value
@@ -212,6 +231,7 @@ Tauri Explorer applies internal compositing that shifts theme colors (typically 
 
 List the files created and configs updated. Note that:
 - Ghostty applies on config reload (Ctrl+Shift+,)
+- WezTerm applies on config reload (Ctrl+Shift+,)
 - Lite XL and Micro apply on next launch
 - VS Code: restart VS Code fully (not just reload window) for new extensions to load
 - Zed: theme applies immediately; if not, restart Zed

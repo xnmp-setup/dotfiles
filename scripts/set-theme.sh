@@ -82,6 +82,22 @@ else
   skipped+=("Ghostty (no config at $config)")
 fi
 
+# --- WezTerm ---
+# Schemes are defined inline in wezterm.lua (config.color_schemes), so only
+# switch when the requested theme actually exists there.
+config="$HOME/.config/wezterm/wezterm.lua"
+if [[ -f "$config" ]]; then
+  if grep -qF "['$title']" "$config"; then
+    sed -i "s|^config.color_scheme = .*|config.color_scheme = '$title'|" "$config"
+    echo "  ✓ WezTerm → $title"
+    ((changed++))
+  else
+    skipped+=("WezTerm (no '$title' scheme defined in wezterm.lua)")
+  fi
+else
+  skipped+=("WezTerm (no config at $config)")
+fi
+
 # --- Lite XL ---
 config="$HOME/.config/lite-xl/init.lua"
 if [[ -f "$config" ]]; then
@@ -221,6 +237,7 @@ echo ""
 if (( changed > 0 )); then
   echo "Updated $changed app(s). Reload to see changes:"
   echo "  Ghostty: Ctrl+Shift+,"
+  echo "  WezTerm: Ctrl+Shift+, (reloads config)"
   echo "  Lite XL / Micro: relaunch"
   echo "  VS Code: restart (new extensions need full restart)"
   echo "  Obsidian: restart or toggle in Appearance"
