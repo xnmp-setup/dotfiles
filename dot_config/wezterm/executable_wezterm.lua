@@ -207,8 +207,9 @@ config.keys = {
 -- Each state has an emphasized active bg and a dulled inactive bg.
 local STATUS_STYLE = {
   working   = { glyph = '◐', active_bg = '#4C6B8A', inactive_bg = '#2C3E50' },
-  -- stopped / turn finished: claude orange (matches the no-status fallback)
-  done      = { glyph = '●', active_bg = '#C0623A', inactive_bg = '#7A3D24' },
+  -- stopped / turn finished: claude orange (matches the no-status fallback).
+  -- No glyph — the claude icon in the title already marks these tabs.
+  done      = { glyph = '', active_bg = '#C0623A', inactive_bg = '#7A3D24' },
   attention = { glyph = '⚠', active_bg = '#C0392B', inactive_bg = '#6E2A22' },
 }
 
@@ -253,10 +254,11 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
     local style = status and STATUS_STYLE[status]
     if style then
       local bg = is_active and style.active_bg or style.inactive_bg
+      local prefix = style.glyph ~= '' and (' ' .. style.glyph) or ''
       return {
         { Background = { Color = bg } },
         { Foreground = { Color = fg } },
-        { Text = ' ' .. style.glyph .. ' ' .. title .. ' ' },
+        { Text = prefix .. ' ' .. title .. ' ' },
       }
     end
     -- No status yet (fresh tab before first hook fires): keep claude orange.
