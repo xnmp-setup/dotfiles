@@ -34,7 +34,12 @@ local function pane_or_tab_nav(delta)
 end
 
 -- ---------- Default shell ----------
--- config.default_domain = 'WSL:Ubuntu-24.04'  -- Windows/WSL only
+-- Default new tabs/windows to the WSL distro, but only on Windows: this domain
+-- doesn't exist on Mac/Linux and setting it there errors at config load. There
+-- the built-in local domain is used instead.
+if wezterm.target_triple:find('windows') then
+  config.default_domain = 'WSL:Ubuntu-24.04'
+end
 
 -- ---------- Renderer ----------
 -- The default OpenGL path on this build uses a generic GL adapter and is slow
@@ -105,6 +110,8 @@ if running_under_hyprland() then
   config.window_decorations = 'NONE'
 end
 config.use_fancy_tab_bar = true
+config.show_new_tab_button_in_tab_bar = false -- drop the "+" new-tab button
+config.show_close_tab_button_in_tabs = false  -- drop the per-tab "x" (it overlapped the title)
 config.tab_max_width = 32
 local scheme = config.color_schemes[config.color_scheme]
   or wezterm.color.get_builtin_schemes()[config.color_scheme]
@@ -269,8 +276,22 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
     local cwd = pane_info.current_working_dir
     local basename = ''
     if cwd then
-      local path = cwd.file_path or cwd:gsub('^file://[^/]*', '')
-      basename = path:match('[^/]+$') or path
+      local path
+      if type(cwd) == 'userdata' then
+        -- Url object. file_path (already decoded) is nil when the OSC-7 host !=
+        -- local host, so fall back to the percent-encoded .path and decode that.
+        -- Never call string methods on the userdata, or the handler errors and
+        -- wezterm shows the raw full-path title.
+        path = cwd.file_path
+        if not path or path == '' then
+          path = (cwd.path or ''):gsub('%%(%x%x)', function(h) return string.char(tonumber(h, 16)) end)
+        end
+      else
+        -- Legacy string form: "file://host/path"
+        path = tostring(cwd):gsub('^file://[^/]*', '')
+      end
+      path = path:gsub('[/\\]+$', '')
+      basename = path:match('[^/\\]+$') or path
     end
 
     local proc_name = proc:match('[^/\\]+$') or ''
