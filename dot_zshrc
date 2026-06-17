@@ -236,6 +236,8 @@ Request: $query"
   fi
 }
 
+alias q="_anthropic_smart"
+
 cc() {
   # No args or flags passed directly → skip routing
   if [[ $# -eq 0 ]] || [[ "$1" == -* ]]; then
