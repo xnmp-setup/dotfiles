@@ -33,6 +33,10 @@ local function pane_or_tab_nav(delta)
   end)
 end
 
+-- Last known tab title — format-tab-title stashes here so overlays (InputSelector
+-- etc.) that blank the active pane don't cause a flicker to an empty title.
+local last_tab_title = {}
+
 -- ---------- Default shell ----------
 -- Default new tabs/windows to the WSL distro, but only on Windows: this domain
 -- doesn't exist on Mac/Linux and setting it there errors at config load. There
@@ -90,7 +94,7 @@ config.color_schemes = {
     brights = { '#304b66', '#fc644d', '#7afde1', '#fff09b', '#6c9bf5', '#ff4fa1', '#64e0ff', '#ffffff' },
   },
 }
-config.color_scheme = 'Cosmic Dusk'
+config.color_scheme = 'Ayu Mirage'
 config.font_size = 16 -- matches Ghostty's font-size = 16
 config.window_background_opacity = 0.95
 config.window_padding = { left = 10, right = 10, top = 6, bottom = 6 }
@@ -270,6 +274,15 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
   local proc = pane_info.foreground_process_name or ''
   local is_active = tab.is_active
 
+  -- Overlays (InputSelector, etc.) replace the active pane with one that has no
+  -- cwd and no foreground process. Fall back to the last known rendered title.
+  if not pane_info.current_working_dir and (proc == '' or proc == nil) then
+    local cached = last_tab_title[tostring(tab.tab_id)]
+    if cached then
+      return cached
+    end
+  end
+
   local is_claude = proc:find('claude') ~= nil
 
   -- For non-claude tabs, show "cwd" or "cwd: command" if a process is running
@@ -313,6 +326,7 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
     title = title .. ' (' .. pane_count .. ')'
   end
 
+  local result
   if is_claude then
     local fg = is_active and '#ffffff' or '#bbbbbb'
     local status = (pane_info.user_vars or {}).claude_status
@@ -320,22 +334,25 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
     if style then
       local bg = is_active and style.active_bg or style.inactive_bg
       local prefix = style.glyph ~= '' and (' ' .. style.glyph) or ''
-      return {
+      result = {
         { Background = { Color = bg } },
         { Foreground = { Color = fg } },
         { Text = prefix .. ' ' .. title .. ' ' },
       }
+    else
+      local bg = is_active and '#C0623A' or '#7A3D24'
+      result = {
+        { Background = { Color = bg } },
+        { Foreground = { Color = fg } },
+        { Text = ' ' .. title .. ' ' },
+      }
     end
-    -- No status yet (fresh tab before first hook fires): keep claude orange.
-    local bg = is_active and '#C0623A' or '#7A3D24'
-    return {
-      { Background = { Color = bg } },
-      { Foreground = { Color = fg } },
-      { Text = ' ' .. title .. ' ' },
-    }
+  else
+    result = { { Text = ' ' .. title .. ' ' } }
   end
 
-  return { { Text = ' ' .. title .. ' ' } }
+  last_tab_title[tostring(tab.tab_id)] = result
+  return result
 end)
 
 return config
