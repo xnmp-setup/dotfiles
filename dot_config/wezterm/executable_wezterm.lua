@@ -173,15 +173,22 @@ config.keys = {
   -- tabs / windows / panes
   -- Close pane: immediate if only shell running, else prompt (Enter to confirm).
   { key = 'w', mods = 'CTRL', action = wezterm.action_callback(function(window, pane)
-    local dominated_by_shell = true
-    local procs = pane:get_foreground_process_name()
-    if procs then
-      local name = procs:match('[^/\\]+$') or procs
-      local skip = { bash=1, sh=1, zsh=1, fish=1, tmux=1, nu=1, login=1 }
-      if not skip[name] then
-        dominated_by_shell = false
-      end
+    -- Decide whether the pane is idle at a shell (close silently) or has a program
+    -- running (confirm first). Under WSL get_foreground_process_name only sees the
+    -- wslhost.exe proxy, so prefer the WEZTERM_PROG user var the zsh hooks publish:
+    -- precmd sets it to "zsh" at the prompt, preexec to the running command line.
+    -- Fall back to the OS process for panes without the hook (e.g. the pwsh domain).
+    local skip = { bash=1, sh=1, zsh=1, fish=1, tmux=1, nu=1, login=1,
+                   ['pwsh.exe']=1, ['powershell.exe']=1, ['cmd.exe']=1 }
+    local prog = (pane:get_user_vars() or {}).WEZTERM_PROG
+    local name
+    if prog and prog ~= '' then
+      name = (prog:match('^%S+') or prog):match('[^/\\]+$') or prog
+    else
+      local procs = pane:get_foreground_process_name()
+      name = procs and (procs:match('[^/\\]+$') or procs) or nil
     end
+    local dominated_by_shell = name == nil or skip[name] ~= nil
     if dominated_by_shell then
       window:perform_action(act.CloseCurrentPane { confirm = false }, pane)
     else
