@@ -201,6 +201,17 @@ config.keys = {
 }
 
 -- ---------- Tab bar styling ----------
+-- Claude session status, set per-pane via the OSC 1337 SetUserVar "claude_status"
+-- escape sequence emitted by ~/.claude/hooks/wezterm_status.sh. Drives a leading
+-- glyph + tab tint so you can see at a glance which tabs are working vs waiting.
+-- Each state has an emphasized active bg and a dulled inactive bg.
+local STATUS_STYLE = {
+  working   = { glyph = '◐', active_bg = '#4C6B8A', inactive_bg = '#2C3E50' },
+  -- stopped / turn finished: claude orange (matches the no-status fallback)
+  done      = { glyph = '●', active_bg = '#C0623A', inactive_bg = '#7A3D24' },
+  attention = { glyph = '⚠', active_bg = '#C0392B', inactive_bg = '#6E2A22' },
+}
+
 wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
   local pane_info = tab.active_pane
   local title = pane_info.title or ''
@@ -237,8 +248,19 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
   end
 
   if is_claude then
+    local fg = is_active and '#ffffff' or '#bbbbbb'
+    local status = (pane_info.user_vars or {}).claude_status
+    local style = status and STATUS_STYLE[status]
+    if style then
+      local bg = is_active and style.active_bg or style.inactive_bg
+      return {
+        { Background = { Color = bg } },
+        { Foreground = { Color = fg } },
+        { Text = ' ' .. style.glyph .. ' ' .. title .. ' ' },
+      }
+    end
+    -- No status yet (fresh tab before first hook fires): keep claude orange.
     local bg = is_active and '#C0623A' or '#7A3D24'
-    local fg = is_active and '#ffffff' or '#cccccc'
     return {
       { Background = { Color = bg } },
       { Foreground = { Color = fg } },
