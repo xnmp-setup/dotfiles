@@ -172,7 +172,7 @@
             "alt-m t": "workspace::ToggleBottomDock",
             "ctrl-r": ["projects::OpenRecent", { "create_new_window": false }],
             "ctrl-t": "workspace::NewTerminal",
-            "ctrl-shift-w": "pane::CloseActiveItem",
+            "ctrl-w": "pane::CloseActiveItem",
             "ctrl-pageup": "pane::ActivatePreviousItem",
             "ctrl-pagedown": "pane::ActivateNextItem",
             "ctrl-v": "terminal::Paste"
