@@ -113,7 +113,7 @@ end
 if running_under_hyprland() then
   config.window_decorations = 'NONE'
 end
-config.use_fancy_tab_bar = true
+config.use_fancy_tab_bar = false
 config.show_new_tab_button_in_tab_bar = false -- drop the "+" new-tab button
 config.show_close_tab_button_in_tabs = false  -- drop the per-tab "x" (it overlapped the title)
 config.tab_max_width = 32
@@ -135,7 +135,12 @@ config.window_frame = {
 }
 
 -- split-divider-color = #FFBF00
-config.colors = { split = '#FFBF00' }
+config.colors = {
+  split = '#FFBF00',
+  tab_bar = {
+    background = scheme.background,
+  },
+}
 
 -- copy-on-select = false (only copy via explicit ctrl+c)
 config.mouse_bindings = {
@@ -326,7 +331,18 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
     title = title .. ' (' .. pane_count .. ')'
   end
 
+  local intensity = is_active and 'Normal' or 'Half'
+  local underline = is_active and 'Single' or 'None'
+  local sep_color = is_active and '#555555' or '#333333'
+
   local result
+  local sep_left = {
+    { Attribute = { Underline = 'None' } },
+    { Attribute = { Intensity = 'Normal' } },
+    { Background = { Color = scheme.background } },
+    { Foreground = { Color = sep_color } },
+    { Text = '▎' },
+  }
   if is_claude then
     local fg = is_active and '#ffffff' or '#bbbbbb'
     local status = (pane_info.user_vars or {}).claude_status
@@ -335,6 +351,9 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
       local bg = is_active and style.active_bg or style.inactive_bg
       local prefix = style.glyph ~= '' and (' ' .. style.glyph) or ''
       result = {
+        sep_left[1], sep_left[2], sep_left[3], sep_left[4], sep_left[5],
+        { Attribute = { Intensity = intensity } },
+        { Attribute = { Underline = underline } },
         { Background = { Color = bg } },
         { Foreground = { Color = fg } },
         { Text = prefix .. ' ' .. title .. ' ' },
@@ -342,13 +361,23 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
     else
       local bg = is_active and '#C0623A' or '#7A3D24'
       result = {
+        sep_left[1], sep_left[2], sep_left[3], sep_left[4], sep_left[5],
+        { Attribute = { Intensity = intensity } },
+        { Attribute = { Underline = underline } },
         { Background = { Color = bg } },
         { Foreground = { Color = fg } },
         { Text = ' ' .. title .. ' ' },
       }
     end
   else
-    result = { { Text = ' ' .. title .. ' ' } }
+    local fg = is_active and '#ffffff' or '#aaaaaa'
+    result = {
+      sep_left[1], sep_left[2], sep_left[3], sep_left[4], sep_left[5],
+      { Attribute = { Intensity = intensity } },
+      { Attribute = { Underline = underline } },
+      { Foreground = { Color = fg } },
+      { Text = ' ' .. title .. ' ' },
+    }
   end
 
   last_tab_title[tostring(tab.tab_id)] = result
