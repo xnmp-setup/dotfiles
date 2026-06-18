@@ -403,6 +403,58 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
   return result
 end)
 
+-- ---------- Command palette: Set Theme ----------
+local function persist_color_scheme(name)
+  local config_path = wezterm.config_file
+  local fh = io.open(config_path, 'r')
+  if not fh then return end
+  local content = fh:read('*a')
+  fh:close()
+  local updated = content:gsub(
+    "(config%.color_scheme%s*=%s*)('[^']*')",
+    "%1'" .. name:gsub("'", "\\'") .. "'"
+  )
+  local out = io.open(config_path, 'w')
+  if out then
+    out:write(updated)
+    out:close()
+  end
+end
+
+wezterm.on('augment-command-palette', function(window, pane)
+  return {
+    {
+      brief = 'Set Theme...',
+      icon = 'md_palette',
+      action = wezterm.action_callback(function(win, p)
+        local schemes = wezterm.get_builtin_color_schemes()
+        for name, _ in pairs(config.color_schemes or {}) do
+          schemes[name] = true
+        end
+        local choices = {}
+        for name, _ in pairs(schemes) do
+          table.insert(choices, { label = name })
+        end
+        table.sort(choices, function(a, b) return a.label < b.label end)
+
+        win:perform_action(act.InputSelector {
+          title = 'Set Theme',
+          choices = choices,
+          fuzzy = true,
+          action = wezterm.action_callback(function(w, _, _, label)
+            if label then
+              local overrides = w:get_config_overrides() or {}
+              overrides.color_scheme = label
+              w:set_config_overrides(overrides)
+              persist_color_scheme(label)
+            end
+          end),
+        }, p)
+      end),
+    },
+  }
+end)
+
 return config
 
 -- ---------- NOTES: things that don't port from the Ghostty config ----------
