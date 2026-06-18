@@ -1,5 +1,30 @@
 [mgr]
 
 prepend_keymap = [
+  { on = "<Esc>", run = "plugin smart-escape", desc = "Escape or quit" },
   { on = "<Enter>", run = "plugin smart-enter", desc = "Enter child directory" },
+]
+
+[tasks]
+
+prepend_keymap = [
+  { on = "<Esc>", run = "close", desc = "Close task manager" },
+]
+
+[select]
+
+prepend_keymap = [
+  { on = "<Esc>", run = "close", desc = "Close select" },
+]
+
+[confirm]
+
+prepend_keymap = [
+  { on = "<Esc>", run = "close", desc = "Close confirm" },
+]
+
+[help]
+
+prepend_keymap = [
+  { on = "<Esc>", run = "close", desc = "Close help" },
 ]
