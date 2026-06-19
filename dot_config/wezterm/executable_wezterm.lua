@@ -104,6 +104,12 @@ end
 -- etc.) that blank the active pane don't cause a flicker to an empty title.
 local last_tab_title = {}
 
+-- Per-window focus state, keyed by window-id, maintained by the
+-- window-focus-changed handler below. format-tab-title reads it so an unfocused
+-- window's active tab renders with the dulled inactive styling. nil = unknown
+-- (before any focus event) → treated as focused so nothing dims on first paint.
+local window_focus = {}
+
 -- ---------- Default shell ----------
 -- Default new tabs/windows to the WSL distro, but only on Windows: this domain
 -- doesn't exist on Mac/Linux and setting it there errors at config load. There
@@ -352,7 +358,12 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
   local pane_info = tab.active_pane
   local title = pane_info.title or ''
   local proc = pane_info.foreground_process_name or ''
-  local is_active = tab.is_active
+  -- An active tab in an unfocused window should look inactive: fold the window's
+  -- focus state into is_active so all the styling below (intensity, underline,
+  -- bg tint) dims to match the greyed-out window contents. focus default is nil
+  -- (treated as focused) so tabs don't dim before the first focus event.
+  local window_focused = window_focus[tab.window_id] ~= false
+  local is_active = tab.is_active and window_focused
 
   -- Overlays (InputSelector, etc.) replace the active pane with one that has no
   -- cwd and no foreground process. Fall back to the last known rendered title.
@@ -457,6 +468,40 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
 
   last_tab_title[tostring(tab.tab_id)] = result
   return result
+end)
+
+-- ---------- Dim unfocused windows' tab titles ----------
+-- Record per-window focus state so format-tab-title renders an unfocused
+-- window's active tab with the dulled inactive styling (it gates underline /
+-- intensity on `tab.is_active and window_focused`), then force the tab bar to
+-- repaint immediately.
+--
+-- Subtlety that cost real debugging time: format-tab-title recomputing does NOT
+-- repaint the GUI surface — wezterm calls it constantly (~8-24x/sec per window)
+-- but the visible tab bar only updates on an explicit invalidation. The reliable
+-- trigger is the window-config-reloaded event, which set_config_overrides emits
+-- — but ONLY when the override values actually CHANGE. Re-setting an unchanged
+-- table is silently a no-op (verified: zero reload events), so the title would
+-- lag 1-2s until the next surface refresh and the just-blurred window often
+-- wouldn't update at all. So we flip an override every focus change.
+--
+-- The reload→repaint round trip costs ~135ms regardless of WHICH override is
+-- flipped (measured: identical for opacity vs this), so latency isn't the reason
+-- for the choice. But the override must be visually INERT, else it adds its own
+-- cost/flicker on top: foreground_text_hsb re-renders every glyph (the original
+-- ~2s lag), window_background_opacity recomposites the translucent surface (risk
+-- of a faint opacity flicker). status_update_interval only changes a timer
+-- cadence — no glyph render, no recomposite, no possible visual — so flipping it
+-- 1000<->1001 is the cleanest pure repaint trigger. ~135ms is the floor for this
+-- approach; wezterm exposes no cheaper tab-bar invalidation. window-focus-changed
+-- fires for both the losing and gaining window, so both tab bars repaint at once.
+wezterm.on('window-focus-changed', function(window, pane)
+  local focused = window:is_focused()
+  window_focus[window:window_id()] = focused
+
+  local overrides = window:get_config_overrides() or {}
+  overrides.status_update_interval = focused and 1000 or 1001
+  window:set_config_overrides(overrides)
 end)
 
 -- ---------- Command palette: Set Theme ----------
