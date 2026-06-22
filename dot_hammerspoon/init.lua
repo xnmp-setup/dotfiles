@@ -86,6 +86,19 @@ hs.hotkey.bind({ "cmd", "ctrl" }, "Down",  function() handleArrow("Down") end)
 hs.hotkey.bind({ "cmd", "ctrl" }, "Left",  function() handleArrow("Left") end)
 hs.hotkey.bind({ "cmd", "ctrl" }, "Right", function() handleArrow("Right") end)
 
+---------- Auto-hide top-center windows on focus loss ----------
+-- Any window sitting in the top-center position (via ctrl+up) has its app
+-- hidden when it loses focus.
+local topCenterAutoHide = hs.window.filter.new(true)
+topCenterAutoHide:subscribe(hs.window.filter.windowUnfocused, function(win)
+  if not win then return end
+  local centerFrame = helpers.getTopCenterFrame(win)
+  if centerFrame and helpers.framesEqual(win:frame(), centerFrame) then
+    local app = win:application()
+    if app then app:hide() end
+  end
+end)
+
 ---------- Window resize hotkeys ----------
 hs.hotkey.bind({ "cmd", "ctrl" }, "-", helpers.shrinkWindow)
 hs.hotkey.bind({ "cmd", "ctrl" }, "=", helpers.growWindow)
