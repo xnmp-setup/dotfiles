@@ -10,7 +10,7 @@
         },
         "rawValue": true,
         "color": "white",
-        "backgroundColor": "bgCyan"
+        "backgroundColor": "ansi256:25"
       },
       {
         "id": "2",
