@@ -26,8 +26,13 @@ load_first_theme { "ayu-mirage", "cosmic-dusk", "default" }
 
 -- Default antialiasing is "subpixel", which assumes a vertical RGB stripe and
 -- produces colored fringing (reads as "blurry") on non-RGB panels like QD-OLED.
--- "grayscale" + full hinting renders crisply on those. See core/style.lua docs.
-local FONT_OPTS = { antialiasing = "grayscale", hinting = "full" }
+-- "grayscale" matches the look VSCode/Zed use.
+--
+-- Hinting "full" snaps every stem hard to the pixel grid; a side effect is that
+-- it shoves glyph features like the i-dot horizontally off the vertical stem.
+-- "slight" only snaps vertically (FreeType light autohint) and preserves the
+-- horizontal glyph shape — this is what VSCode/Zed do. See core/style.lua docs.
+local FONT_OPTS = { antialiasing = "grayscale", hinting = "slight" }
 
 style.font = renderer.font.load(DATADIR .. "/fonts/FiraSans-Regular.ttf", 15 * SCALE, FONT_OPTS)
 style.big_font = style.font:copy(46 * SCALE)

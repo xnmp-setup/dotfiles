@@ -346,12 +346,12 @@ config.keys = {
 -- glyph + tab tint so you can see at a glance which tabs are working vs waiting.
 -- Each state has an emphasized active bg and a dulled inactive bg.
 local STATUS_STYLE = {
-  working   = { glyph = '◐', active_bg = '#4C6B8A', inactive_bg = '#2C3E50' },
+  working   = { glyph = '', active_bg = '#4C6B8A', inactive_bg = '#2C3E50' },
   -- stopped / turn finished: claude orange (matches the no-status fallback).
   -- No glyph — the claude icon in the title already marks these tabs.
   done      = { glyph = '', active_bg = '#C0623A', inactive_bg = '#7A3D24' },
   -- vivid saturated red, kept distinct from the muted claude-orange "done"
-  attention = { glyph = '⚠', active_bg = '#E5252B', inactive_bg = '#8A1418' },
+  attention = { glyph = '', active_bg = '#E5252B', inactive_bg = '#8A1418' },
 }
 
 wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)

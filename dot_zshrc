@@ -289,6 +289,7 @@ alias ccf="claude --permission-mode auto --model fable"
 alias cco="claude --permission-mode auto --model opus"
 alias cch="claude --permission-mode auto --model haiku"
 alias ccr="claude --resume --permission-mode auto"
+alias ccc="claude --continue --permission-mode auto"
 alias cc-dsp='docker sandbox run claude . --dangerously-skip-permissions'
 alias m="micro"
 alias cc-box='~/Repos/claude-docker-base/run_cc-box.sh'
