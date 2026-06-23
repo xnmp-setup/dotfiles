@@ -89,7 +89,13 @@ hs.hotkey.bind({ "cmd", "ctrl" }, "Right", function() handleArrow("Right") end)
 ---------- Auto-hide top-center windows on focus loss ----------
 -- Any window sitting in the top-center position (via ctrl+up) has its app
 -- hidden when it loses focus.
-local topCenterAutoHide = hs.window.filter.new(true)
+-- GOTCHA: this MUST be a global (not `local`). hs.window.filter instances
+-- must be retained for the lifetime of the config. If stored in a local that
+-- nothing references after init.lua finishes loading, Lua's GC eventually
+-- reclaims the filter and the subscription silently stops firing — the feature
+-- works right after a reload, then dies after the next GC pass. Keeping it
+-- global anchors it so it survives.
+topCenterAutoHide = hs.window.filter.new(true)
 topCenterAutoHide:subscribe(hs.window.filter.windowUnfocused, function(win)
   if not win then return end
   local centerFrame = helpers.getTopCenterFrame(win)
