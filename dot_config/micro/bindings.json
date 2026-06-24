@@ -4,6 +4,7 @@
     "Ctrl-/": "lua:comment.comment",
     "Ctrl-k": "DeleteLine",
     "Ctrl-d": "SpawnMultiCursor",
+    "Alt-f": "FindNext",
     "CtrlLeft": "WordLeft",
     "CtrlRight": "WordRight",
     "CtrlShiftEnd": "SelectToEnd",
