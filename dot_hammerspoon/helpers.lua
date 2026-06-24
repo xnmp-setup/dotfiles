@@ -254,9 +254,10 @@ function helpers.resizeWindow(direction)
     local newRatio = SIZE_RATIOS[newIndex]
     log.df("resizeWindow: newIndex=%d, newRatio=%.2f", newIndex, newRatio)
 
-    -- Main window frame (stays flush to same side)
+    -- Main window frame (stays flush to same side, keeps vertical size)
+    local f = win:frame()
     local x = (flushSide == "left") and sf.x or (sf.x + sf.w * (1 - newRatio))
-    win:setFrame({ x = x, y = sf.y, w = sf.w * newRatio, h = sf.h })
+    win:setFrame({ x = x, y = f.y, w = sf.w * newRatio, h = f.h })
   end)
 end
 
