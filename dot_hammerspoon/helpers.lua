@@ -197,6 +197,36 @@ function helpers.moveToSide(targetSide)
     log.df("moveToSide: targetSide=%s, flushSide=%s, ratio=%.2f",
       targetSide, flushSide or "nil", ratio)
 
+    -- Third-width windows step through left -> center -> right thirds before
+    -- spilling onto the adjacent monitor.
+    if math.abs(ratio - 1/3) <= 0.05 then
+      local f = win:frame()
+      local thirdW = sf.w * (1/3)
+      local cols = { sf.x, sf.x + thirdW, sf.x + thirdW * 2 }  -- left, center, right
+
+      -- Determine current column by left edge
+      local col = 1
+      for i, cx in ipairs(cols) do
+        if math.abs(f.x - cx) <= TOLERANCE then col = i end
+      end
+
+      local newCol = col + (targetSide == "right" and 1 or -1)
+      log.df("moveToSide: third-width, col=%d -> newCol=%d", col, newCol)
+
+      if newCol >= 1 and newCol <= 3 then
+        win:setFrame({ x = cols[newCol], y = f.y, w = thirdW, h = f.h })
+      else
+        -- Past the edge: move to adjacent monitor, entering from opposite edge
+        local nextScreen = (targetSide == "left") and screen:toWest() or screen:toEast()
+        if nextScreen then
+          local nsf = nextScreen:frame()
+          local x = (targetSide == "left") and (nsf.x + nsf.w * (2/3)) or nsf.x
+          win:setFrame({ x = x, y = nsf.y, w = nsf.w * (1/3), h = nsf.h })
+        end
+      end
+      return
+    end
+
     if not flushSide then
       -- Not flush: snap to target side at half width (default)
       log.d("moveToSide: not flush, snapping to target side")
