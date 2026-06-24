@@ -1,0 +1,236 @@
+[
+  {
+    "label": "Checkout branch",
+    "command": "bash",
+    "args": [
+      "-c",
+      "echo \"[checkout-branch] $ZED_GIT_REF\" > /tmp/zed-git.log; if git -C \"$ZED_GIT_REPOSITORY_PATH\" checkout \"$ZED_GIT_REF\" >> /tmp/zed-git.log 2>&1; then exit 0; fi; if ! grep -q 'would be overwritten by checkout' /tmp/zed-git.log; then osascript -e 'display dialog \"Checkout failed. See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"'; exit 0; fi; CHOICE=$(osascript -e 'button returned of (display dialog \"Local changes block the switch to $ZED_GIT_REF. Choose how to proceed:\" buttons {\"Cancel\", \"Stash & Switch\", \"Stash, Switch, Pop\"} default button \"Cancel\")' 2>> /tmp/zed-git.log) || exit 0; STASHOUT=$(git -C \"$ZED_GIT_REPOSITORY_PATH\" stash push -u -m \"zed: before checkout $ZED_GIT_REF\" 2>&1); echo \"$STASHOUT\" >> /tmp/zed-git.log; if echo \"$STASHOUT\" | grep -q 'No local changes to save'; then osascript -e 'display dialog \"Nothing to stash, but the switch is still blocked (see /tmp/zed-git.log). Resolve manually.\" buttons {\"OK\"} default button \"OK\"'; exit 0; fi; if echo \"$STASHOUT\" | grep -qvi 'saved working directory'; then if ! echo \"$STASHOUT\" | grep -qi 'saved working directory'; then osascript -e 'display dialog \"Stash failed. See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"'; exit 0; fi; fi; if ! git -C \"$ZED_GIT_REPOSITORY_PATH\" checkout \"$ZED_GIT_REF\" >> /tmp/zed-git.log 2>&1; then osascript -e 'display dialog \"Stashed, but switch still failed. Still on old branch; your work is safe in the stash (git stash list). See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"'; exit 0; fi; if [ \"$CHOICE\" = \"Stash, Switch, Pop\" ]; then if git -C \"$ZED_GIT_REPOSITORY_PATH\" stash pop >> /tmp/zed-git.log 2>&1; then osascript -e 'display dialog \"Switched to $ZED_GIT_REF and reapplied your changes.\" buttons {\"OK\"} default button \"OK\"'; else osascript -e 'display dialog \"Switched to $ZED_GIT_REF, but reapplying changes hit conflicts. Your stash was kept (git stash list). See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"'; fi; else osascript -e 'display dialog \"Switched to $ZED_GIT_REF. Your changes are saved in the stash; run git stash pop to restore them.\" buttons {\"OK\"} default button \"OK\"'; fi"
+    ],
+    "tags": [
+      "git-command"
+    ],
+    "reveal": "never",
+    "hide": "always"
+  },
+  {
+    "label": "Push branch",
+    "command": "bash",
+    "args": [
+      "-c",
+      "echo \"[push] $ZED_GIT_REF\" > /tmp/zed-git.log; osascript -e 'display dialog \"Push $ZED_GIT_REF to origin?\" buttons {\"Cancel\", \"Push\"} default button \"Cancel\"' >> /tmp/zed-git.log 2>&1 || exit 0; git -C \"$ZED_GIT_REPOSITORY_PATH\" push -u origin \"$ZED_GIT_REF\" >> /tmp/zed-git.log 2>&1 || osascript -e 'display dialog \"Push failed. See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"'"
+    ],
+    "tags": [
+      "git-command"
+    ],
+    "reveal": "never",
+    "hide": "always"
+  },
+  {
+    "label": "Delete branch",
+    "command": "bash",
+    "args": [
+      "-c",
+      "echo \"[delete-branch] $ZED_GIT_REF\" > /tmp/zed-git.log; osascript -e 'display dialog \"Delete local branch $ZED_GIT_REF?\" buttons {\"Cancel\", \"Delete\"} default button \"Cancel\"' >> /tmp/zed-git.log 2>&1 || exit 0; if git -C \"$ZED_GIT_REPOSITORY_PATH\" branch -d \"$ZED_GIT_REF\" >> /tmp/zed-git.log 2>&1; then exit 0; fi; if grep -q 'not fully merged' /tmp/zed-git.log; then osascript -e 'display dialog \"Branch $ZED_GIT_REF is NOT fully merged. Force delete and lose unmerged commits?\" buttons {\"Cancel\", \"Force Delete\"} default button \"Cancel\"' >> /tmp/zed-git.log 2>&1 || exit 0; git -C \"$ZED_GIT_REPOSITORY_PATH\" branch -D \"$ZED_GIT_REF\" >> /tmp/zed-git.log 2>&1 || osascript -e 'display dialog \"Force delete failed. See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"'; else osascript -e 'display dialog \"Delete failed. See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"'; fi"
+    ],
+    "tags": [
+      "git-command"
+    ],
+    "reveal": "never",
+    "hide": "always"
+  },
+  {
+    "label": "Delete remote branch",
+    "command": "bash",
+    "args": [
+      "-c",
+      "echo \"[delete-remote] $ZED_GIT_REF\" > /tmp/zed-git.log; osascript -e 'display dialog \"Delete REMOTE branch $ZED_GIT_REF on origin? This affects the remote.\" buttons {\"Cancel\", \"Delete\"} default button \"Cancel\"' >> /tmp/zed-git.log 2>&1 || exit 0; git -C \"$ZED_GIT_REPOSITORY_PATH\" push origin --delete \"$(echo \"$ZED_GIT_REF\" | sed 's,^origin/,,')\" >> /tmp/zed-git.log 2>&1 || osascript -e 'display dialog \"Remote delete failed. See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"'"
+    ],
+    "tags": [
+      "git-command"
+    ],
+    "reveal": "never",
+    "hide": "always"
+  },
+  {
+    "label": "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+    "command": "bash",
+    "args": [
+      "-c",
+      ": \"$ZED_GIT_REF\"; exit 0"
+    ],
+    "tags": [
+      "git-command"
+    ],
+    "reveal": "never",
+    "hide": "always"
+  },
+  {
+    "label": "Checkout commit (detached)",
+    "command": "bash",
+    "args": [
+      "-c",
+      "echo \"[checkout-commit] $ZED_GIT_SHA_SHORT\" > /tmp/zed-git.log; git -C \"$ZED_GIT_REPOSITORY_PATH\" checkout \"$ZED_GIT_SHA\" >> /tmp/zed-git.log 2>&1 || osascript -e 'display dialog \"Checkout failed. See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"'"
+    ],
+    "tags": [
+      "git-command"
+    ],
+    "reveal": "never",
+    "hide": "always"
+  },
+  {
+    "label": "Create branch here",
+    "command": "bash",
+    "args": [
+      "-c",
+      "echo \"[create-branch] from $ZED_GIT_SHA_SHORT\" > /tmp/zed-git.log; branch=$(osascript -e 'text returned of (display dialog \"New branch name (from $ZED_GIT_SHA_SHORT):\" default answer \"\")' 2>> /tmp/zed-git.log) || exit 0; if [ -z \"$branch\" ]; then exit 0; fi; git -C \"$ZED_GIT_REPOSITORY_PATH\" checkout -b \"$branch\" \"$ZED_GIT_SHA\" >> /tmp/zed-git.log 2>&1 || osascript -e 'display dialog \"Create branch failed. See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"'"
+    ],
+    "tags": [
+      "git-command"
+    ],
+    "reveal": "never",
+    "hide": "always"
+  },
+  {
+    "label": "Reset (hard)",
+    "command": "bash",
+    "args": [
+      "-c",
+      "echo \"[reset-hard] $ZED_GIT_SHA_SHORT\" > /tmp/zed-git.log; osascript -e 'display dialog \"Reset --hard to $ZED_GIT_SHA_SHORT? This discards uncommitted changes.\" buttons {\"Cancel\", \"Reset\"} default button \"Cancel\"' >> /tmp/zed-git.log 2>&1 || exit 0; git -C \"$ZED_GIT_REPOSITORY_PATH\" reset --hard \"$ZED_GIT_SHA\" >> /tmp/zed-git.log 2>&1 || osascript -e 'display dialog \"Reset failed. See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"'"
+    ],
+    "tags": [
+      "git-command"
+    ],
+    "reveal": "never",
+    "hide": "always"
+  },
+  {
+    "label": "Merge into current branch",
+    "command": "bash",
+    "args": [
+      "-c",
+      "echo \"[merge] $ZED_GIT_SHA_SHORT\" > /tmp/zed-git.log; osascript -e 'display dialog \"Merge $ZED_GIT_SHA_SHORT into current branch?\" buttons {\"Cancel\", \"Merge\"} default button \"Cancel\"' >> /tmp/zed-git.log 2>&1 || exit 0; OUT=$(git -C \"$ZED_GIT_REPOSITORY_PATH\" merge \"$ZED_GIT_SHA\" 2>&1); RC=$?; echo \"$OUT\" >> /tmp/zed-git.log; if [ $RC -eq 0 ]; then exit 0; fi; if ! echo \"$OUT\" | grep -qi 'stash'; then osascript -e 'display dialog \"Merge failed (conflicts?). Resolve in the terminal. See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"'; exit 0; fi; osascript -e 'display dialog \"Merge is blocked by uncommitted local changes. Stash them, merge, then restore?\" buttons {\"Cancel\", \"Stash & Merge\"} default button \"Cancel\"' >> /tmp/zed-git.log 2>&1 || exit 0; SOUT=$(git -C \"$ZED_GIT_REPOSITORY_PATH\" stash push -u -m \"zed: before merge $ZED_GIT_SHA_SHORT\" 2>&1); echo \"$SOUT\" >> /tmp/zed-git.log; if echo \"$SOUT\" | grep -q 'No local changes to save'; then osascript -e 'display dialog \"Nothing to stash, but still blocked. See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"'; exit 0; fi; if ! echo \"$SOUT\" | grep -qi 'saved working directory'; then osascript -e 'display dialog \"Stash failed. See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"'; exit 0; fi; if ! git -C \"$ZED_GIT_REPOSITORY_PATH\" merge \"$ZED_GIT_SHA\" >> /tmp/zed-git.log 2>&1; then osascript -e 'display dialog \"Stashed, but merge hit conflicts. Resolve in terminal; your WIP is in the stash (git stash list). See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"'; exit 0; fi; if git -C \"$ZED_GIT_REPOSITORY_PATH\" stash pop >> /tmp/zed-git.log 2>&1; then osascript -e 'display dialog \"Merged and restored your changes.\" buttons {\"OK\"} default button \"OK\"'; else osascript -e 'display dialog \"Merged, but restoring your changes hit conflicts. Stash kept (git stash list). See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"'; fi"
+    ],
+    "tags": [
+      "git-command"
+    ],
+    "reveal": "never",
+    "hide": "always"
+  },
+  {
+    "label": "Rebase on",
+    "command": "bash",
+    "args": [
+      "-c",
+      "echo \"[rebase] $ZED_GIT_SHA_SHORT\" > /tmp/zed-git.log; osascript -e 'display dialog \"Rebase current branch onto $ZED_GIT_SHA_SHORT?\" buttons {\"Cancel\", \"Rebase\"} default button \"Cancel\"' >> /tmp/zed-git.log 2>&1 || exit 0; OUT=$(git -C \"$ZED_GIT_REPOSITORY_PATH\" rebase \"$ZED_GIT_SHA\" 2>&1); RC=$?; echo \"$OUT\" >> /tmp/zed-git.log; if [ $RC -eq 0 ]; then exit 0; fi; if ! echo \"$OUT\" | grep -qi 'stash'; then osascript -e 'display dialog \"Rebase failed (conflicts?). Resolve in the terminal. See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"'; exit 0; fi; osascript -e 'display dialog \"Rebase is blocked by uncommitted local changes. Stash them, rebase, then restore?\" buttons {\"Cancel\", \"Stash & Rebase\"} default button \"Cancel\"' >> /tmp/zed-git.log 2>&1 || exit 0; SOUT=$(git -C \"$ZED_GIT_REPOSITORY_PATH\" stash push -u -m \"zed: before rebase $ZED_GIT_SHA_SHORT\" 2>&1); echo \"$SOUT\" >> /tmp/zed-git.log; if echo \"$SOUT\" | grep -q 'No local changes to save'; then osascript -e 'display dialog \"Nothing to stash, but still blocked. See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"'; exit 0; fi; if ! echo \"$SOUT\" | grep -qi 'saved working directory'; then osascript -e 'display dialog \"Stash failed. See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"'; exit 0; fi; if ! git -C \"$ZED_GIT_REPOSITORY_PATH\" rebase \"$ZED_GIT_SHA\" >> /tmp/zed-git.log 2>&1; then osascript -e 'display dialog \"Stashed, but rebase hit conflicts. Resolve in terminal; your WIP is in the stash (git stash list). See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"'; exit 0; fi; if git -C \"$ZED_GIT_REPOSITORY_PATH\" stash pop >> /tmp/zed-git.log 2>&1; then osascript -e 'display dialog \"Rebased and restored your changes.\" buttons {\"OK\"} default button \"OK\"'; else osascript -e 'display dialog \"Rebased, but restoring your changes hit conflicts. Stash kept (git stash list). See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"'; fi"
+    ],
+    "tags": [
+      "git-command"
+    ],
+    "reveal": "never",
+    "hide": "always"
+  },
+  {
+    "label": "Cherry-pick",
+    "command": "bash",
+    "args": [
+      "-c",
+      "echo \"[cherry-pick] $ZED_GIT_SHA_SHORT\" > /tmp/zed-git.log; osascript -e 'display dialog \"Cherry-pick $ZED_GIT_SHA_SHORT?\" buttons {\"Cancel\", \"Cherry-pick\"} default button \"Cancel\"' >> /tmp/zed-git.log 2>&1 || exit 0; OUT=$(git -C \"$ZED_GIT_REPOSITORY_PATH\" cherry-pick \"$ZED_GIT_SHA\" 2>&1); RC=$?; echo \"$OUT\" >> /tmp/zed-git.log; if [ $RC -eq 0 ]; then exit 0; fi; if ! echo \"$OUT\" | grep -qi 'stash'; then osascript -e 'display dialog \"Cherry-pick failed (conflicts?). Resolve in the terminal. See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"'; exit 0; fi; osascript -e 'display dialog \"Cherry-pick is blocked by uncommitted local changes. Stash them, cherry-pick, then restore?\" buttons {\"Cancel\", \"Stash & Cherry-pick\"} default button \"Cancel\"' >> /tmp/zed-git.log 2>&1 || exit 0; SOUT=$(git -C \"$ZED_GIT_REPOSITORY_PATH\" stash push -u -m \"zed: before cherry-pick $ZED_GIT_SHA_SHORT\" 2>&1); echo \"$SOUT\" >> /tmp/zed-git.log; if echo \"$SOUT\" | grep -q 'No local changes to save'; then osascript -e 'display dialog \"Nothing to stash, but still blocked. See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"'; exit 0; fi; if ! echo \"$SOUT\" | grep -qi 'saved working directory'; then osascript -e 'display dialog \"Stash failed. See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"'; exit 0; fi; if ! git -C \"$ZED_GIT_REPOSITORY_PATH\" cherry-pick \"$ZED_GIT_SHA\" >> /tmp/zed-git.log 2>&1; then osascript -e 'display dialog \"Stashed, but cherry-pick hit conflicts. Resolve in terminal; your WIP is in the stash (git stash list). See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"'; exit 0; fi; if git -C \"$ZED_GIT_REPOSITORY_PATH\" stash pop >> /tmp/zed-git.log 2>&1; then osascript -e 'display dialog \"Cherry-picked and restored your changes.\" buttons {\"OK\"} default button \"OK\"'; else osascript -e 'display dialog \"Cherry-picked, but restoring your changes hit conflicts. Stash kept (git stash list). See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"'; fi"
+    ],
+    "tags": [
+      "git-command"
+    ],
+    "reveal": "never",
+    "hide": "always"
+  },
+  {
+    "label": "\u2500\u2500\u2500 more \u2500\u2500\u2500",
+    "command": "bash",
+    "args": [
+      "-c",
+      "exit 0"
+    ],
+    "tags": [
+      "git-command"
+    ],
+    "reveal": "never",
+    "hide": "always"
+  },
+  {
+    "label": "Revert",
+    "command": "bash",
+    "args": [
+      "-c",
+      "echo \"[revert] $ZED_GIT_SHA_SHORT\" > /tmp/zed-git.log; osascript -e 'display dialog \"Revert $ZED_GIT_SHA_SHORT? (creates a new commit that undoes it)\" buttons {\"Cancel\", \"Revert\"} default button \"Cancel\"' >> /tmp/zed-git.log 2>&1 || exit 0; OUT=$(git -C \"$ZED_GIT_REPOSITORY_PATH\" revert --no-edit \"$ZED_GIT_SHA\" 2>&1); RC=$?; echo \"$OUT\" >> /tmp/zed-git.log; if [ $RC -eq 0 ]; then exit 0; fi; if ! echo \"$OUT\" | grep -qi 'stash'; then osascript -e 'display dialog \"Revert failed (conflicts?). Resolve in the terminal. See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"' ; exit 0; fi; osascript -e 'display dialog \"Revert is blocked by uncommitted local changes. Stash them, revert, then restore?\" buttons {\"Cancel\", \"Stash & Revert\"} default button \"Cancel\"' >> /tmp/zed-git.log 2>&1 || exit 0; SOUT=$(git -C \"$ZED_GIT_REPOSITORY_PATH\" stash push -u -m \"zed: before revert $ZED_GIT_SHA_SHORT\" 2>&1); echo \"$SOUT\" >> /tmp/zed-git.log; if echo \"$SOUT\" | grep -q 'No local changes to save'; then osascript -e 'display dialog \"Nothing to stash, but still blocked. See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"' ; exit 0; fi; if ! echo \"$SOUT\" | grep -qi 'saved working directory'; then osascript -e 'display dialog \"Stash failed. See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"' ; exit 0; fi; if ! git -C \"$ZED_GIT_REPOSITORY_PATH\" revert --no-edit \"$ZED_GIT_SHA\" >> /tmp/zed-git.log 2>&1; then osascript -e 'display dialog \"Stashed, but revert hit conflicts. Resolve in terminal; your WIP is in the stash (git stash list). See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"' ; exit 0; fi; if git -C \"$ZED_GIT_REPOSITORY_PATH\" stash pop >> /tmp/zed-git.log 2>&1; then osascript -e 'display dialog \"Reverted and restored your changes.\" buttons {\"OK\"} default button \"OK\"' ; else osascript -e 'display dialog \"Reverted, but restoring your changes hit conflicts. Stash kept (git stash list). See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"' ; fi"
+    ],
+    "tags": [
+      "git-command"
+    ],
+    "reveal": "never",
+    "hide": "always"
+  },
+  {
+    "label": "Create tag",
+    "command": "bash",
+    "args": [
+      "-c",
+      "echo \"[tag-create] at $ZED_GIT_SHA_SHORT\" > /tmp/zed-git.log; tag=$(osascript -e 'text returned of (display dialog \"New tag name (at $ZED_GIT_SHA_SHORT):\" default answer \"\")' 2>> /tmp/zed-git.log) || exit 0; if [ -z \"$tag\" ]; then exit 0; fi; if ! git -C \"$ZED_GIT_REPOSITORY_PATH\" tag \"$tag\" \"$ZED_GIT_SHA\" >> /tmp/zed-git.log 2>&1; then osascript -e 'display dialog \"Tag create failed (already exists?). See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"' ; exit 0; fi; PUSH=$(osascript -e 'button returned of (display dialog \"Tag created. Push it to origin now?\" buttons {\"No\", \"Push\"} default button \"No\")' 2>> /tmp/zed-git.log) || exit 0; if [ \"$PUSH\" = \"Push\" ]; then git -C \"$ZED_GIT_REPOSITORY_PATH\" push origin \"$tag\" >> /tmp/zed-git.log 2>&1 || osascript -e 'display dialog \"Tag push failed. See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"' ; fi"
+    ],
+    "tags": [
+      "git-command"
+    ],
+    "reveal": "never",
+    "hide": "always"
+  },
+  {
+    "label": "Delete tag",
+    "command": "bash",
+    "args": [
+      "-c",
+      "echo \"[tag-delete]\" > /tmp/zed-git.log; tag=$(osascript -e 'text returned of (display dialog \"Tag name to delete:\" default answer \"\")' 2>> /tmp/zed-git.log) || exit 0; if [ -z \"$tag\" ]; then exit 0; fi; if ! git -C \"$ZED_GIT_REPOSITORY_PATH\" tag -d \"$tag\" >> /tmp/zed-git.log 2>&1; then osascript -e 'display dialog \"Tag delete failed (no such tag?). See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"' ; exit 0; fi; DEL=$(osascript -e 'button returned of (display dialog \"Local tag deleted. Also delete it on origin?\" buttons {\"No\", \"Delete on origin\"} default button \"No\")' 2>> /tmp/zed-git.log) || exit 0; if [ \"$DEL\" = \"Delete on origin\" ]; then git -C \"$ZED_GIT_REPOSITORY_PATH\" push origin --delete \"$tag\" >> /tmp/zed-git.log 2>&1 || osascript -e 'display dialog \"Remote tag delete failed. See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"' ; fi"
+    ],
+    "tags": [
+      "git-command"
+    ],
+    "reveal": "never",
+    "hide": "always"
+  },
+  {
+    "label": "Push tag",
+    "command": "bash",
+    "args": [
+      "-c",
+      "echo \"[tag-push]\" > /tmp/zed-git.log; tag=$(osascript -e 'text returned of (display dialog \"Tag name to push to origin:\" default answer \"\")' 2>> /tmp/zed-git.log) || exit 0; if [ -z \"$tag\" ]; then exit 0; fi; git -C \"$ZED_GIT_REPOSITORY_PATH\" push origin \"$tag\" >> /tmp/zed-git.log 2>&1 || osascript -e 'display dialog \"Tag push failed. See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"' "
+    ],
+    "tags": [
+      "git-command"
+    ],
+    "reveal": "never",
+    "hide": "always"
+  },
+  {
+    "label": "Reset (soft)",
+    "command": "bash",
+    "args": [
+      "-c",
+      "echo \"[reset-soft] $ZED_GIT_SHA_SHORT\" > /tmp/zed-git.log; osascript -e 'display dialog \"Reset --soft to $ZED_GIT_SHA_SHORT? Moves HEAD; your changes stay staged.\" buttons {\"Cancel\", \"Reset\"} default button \"Cancel\"' >> /tmp/zed-git.log 2>&1 || exit 0; git -C \"$ZED_GIT_REPOSITORY_PATH\" reset --soft \"$ZED_GIT_SHA\" >> /tmp/zed-git.log 2>&1 || osascript -e 'display dialog \"Reset failed. See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"' "
+    ],
+    "tags": [
+      "git-command"
+    ],
+    "reveal": "never",
+    "hide": "always"
+  },
+  {
+    "label": "Reset (mixed)",
+    "command": "bash",
+    "args": [
+      "-c",
+      "echo \"[reset-mixed] $ZED_GIT_SHA_SHORT\" > /tmp/zed-git.log; osascript -e 'display dialog \"Reset --mixed to $ZED_GIT_SHA_SHORT? Moves HEAD; changes kept in working tree (unstaged).\" buttons {\"Cancel\", \"Reset\"} default button \"Cancel\"' >> /tmp/zed-git.log 2>&1 || exit 0; git -C \"$ZED_GIT_REPOSITORY_PATH\" reset --mixed \"$ZED_GIT_SHA\" >> /tmp/zed-git.log 2>&1 || osascript -e 'display dialog \"Reset failed. See /tmp/zed-git.log\" buttons {\"OK\"} default button \"OK\"' "
+    ],
+    "tags": [
+      "git-command"
+    ],
+    "reveal": "never",
+    "hide": "always"
+  }
+]
