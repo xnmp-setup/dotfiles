@@ -1,0 +1,20 @@
+#!/bin/bash
+# Open the current directory's latest Claude Code session transcript as an HTML
+# viewer in the browser. Works in any shell / context (real terminal, Claude's
+# `!` prefix, scripts) since it's a PATH executable, not a shell function.
+#
+#   html                 open the cwd's newest session transcript
+#   html <sessionId>     open a specific session (or transcript path)
+set -euo pipefail
+
+RENDER="$HOME/.claude/scripts/render.py"
+
+if [[ $# -ge 1 && -n "${1:-}" ]]; then
+  idx="$(python3 "$RENDER" "$1" --open)"
+  case "$(uname)" in
+    Darwin) open "$idx" ;;
+    *)      xdg-open "$idx" ;;
+  esac
+else
+  python3 "$RENDER" --current "$PWD"
+fi
