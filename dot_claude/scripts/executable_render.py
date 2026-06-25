@@ -672,20 +672,21 @@ INDEX_HTML = r"""<!DOCTYPE html>
 <link rel="stylesheet" href="../../assets/style.css">
 </head>
 <body>
-<header>
-  <button class="hamburger" id="toggleSide" title="Toggle turns sidebar">☰</button>
-  <span class="title">Transcript</span>
-  <span class="meta" id="hmeta"></span>
-  <span class="spacer"></span>
-  <span class="nav">
-    <button id="first">⤒ First</button>
-    <button id="prev">‹ Prev</button>
-    <span class="counter" id="counter">– / –</span>
-    <button id="next">Next ›</button>
-    <button id="last">Last ⤓</button>
-  </span>
-</header>
 <aside class="side">
+  <div class="side-head">
+    <div class="side-head-top">
+      <button class="rail-btn toggle" id="toggleSide" title="Collapse sidebar ([)">☰</button>
+      <span class="title">Transcript</span>
+    </div>
+    <div class="nav">
+      <button class="rail-btn" id="first" title="First turn (Home)">⤒</button>
+      <button class="rail-btn" id="prev" title="Previous turn (←)">‹</button>
+      <span class="counter" id="counter">– / –</span>
+      <button class="rail-btn" id="next" title="Next turn (→)">›</button>
+      <button class="rail-btn" id="last" title="Last turn (End)">⤓</button>
+    </div>
+    <div class="meta" id="hmeta"></div>
+  </div>
   <div class="side-title">Turns</div>
   <div id="turnlist"></div>
 </aside>
@@ -723,30 +724,38 @@ STYLE_CSS = r"""  * { box-sizing:border-box; }
   ::-webkit-scrollbar-corner { background:transparent; }
   body {
     background:var(--bg); color:var(--fg); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-    display:grid; grid-template-columns:260px 1fr 250px; grid-template-rows:auto 1fr;
-    grid-template-areas:"top top top" "side main toc"; height:100vh; overflow:hidden;
+    display:grid; grid-template-columns:270px 1fr 250px;
+    grid-template-areas:"side main toc"; height:100vh; overflow:hidden;
     transition:grid-template-columns .15s ease;
   }
-  body.side-collapsed { grid-template-columns:0 1fr 250px; }
-  header {
-    grid-area:top; display:flex; align-items:center; gap:14px; padding:10px 16px;
-    background:var(--panel); border-bottom:1px solid var(--border); z-index:5;
-  }
-  .hamburger {
+  /* Collapsed: sidebar shrinks to a thin icon rail, not nothing. */
+  body.side-collapsed { grid-template-columns:46px 1fr 250px; }
+
+  /* Sidebar head: holds title, nav (icons), and model/meta info. */
+  .side-head { padding:10px 10px 8px; border-bottom:1px solid var(--border); }
+  .side-head-top { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+  .side-head .title { font-weight:600; font-size:13px; white-space:nowrap; }
+  .rail-btn {
     background:var(--panel2); color:var(--fg); border:1px solid var(--border); border-radius:6px;
-    padding:6px 10px; font-size:14px; cursor:pointer; line-height:1;
+    padding:5px 8px; font-size:13px; cursor:pointer; line-height:1; min-width:30px; text-align:center;
   }
-  .hamburger:hover { border-color:var(--accent); color:var(--accent); }
-  header .title { font-weight:600; font-size:14px; }
-  header .meta { color:var(--muted); font-size:12px; font-family:var(--mono); }
-  header .spacer { flex:1; }
-  .nav button {
-    background:var(--panel2); color:var(--fg); border:1px solid var(--border);
-    border-radius:6px; padding:6px 12px; font-size:13px; cursor:pointer; margin-left:6px;
-  }
-  .nav button:hover:not(:disabled) { border-color:var(--accent); color:var(--accent); }
-  .nav button:disabled { opacity:.35; cursor:default; }
-  .counter { font-family:var(--mono); font-size:13px; color:var(--muted); min-width:78px; text-align:center; }
+  .rail-btn:hover:not(:disabled) { border-color:var(--accent); color:var(--accent); }
+  .rail-btn:disabled { opacity:.3; cursor:default; }
+  .nav { display:flex; align-items:center; gap:5px; }
+  .counter { font-family:var(--mono); font-size:12px; color:var(--muted); min-width:54px; text-align:center; }
+  .meta { color:var(--muted); font-size:11px; font-family:var(--mono); margin-top:9px; line-height:1.5;
+    white-space:normal; word-break:break-word; }
+
+  /* Rail (collapsed) mode: stack icons vertically, hide text. */
+  body.side-collapsed .side-head { padding:10px 6px 8px; }
+  body.side-collapsed .side-head-top { justify-content:center; margin-bottom:8px; }
+  body.side-collapsed .title,
+  body.side-collapsed .meta,
+  body.side-collapsed .counter,
+  body.side-collapsed .side-title,
+  body.side-collapsed #turnlist { display:none; }
+  body.side-collapsed .nav { flex-direction:column; gap:6px; }
+  body.side-collapsed .rail-btn { width:34px; }
 
   main { grid-area:main; overflow-y:auto; padding:22px 28px 80px; }
   .turn-head { margin-bottom:18px; }
@@ -801,6 +810,10 @@ STYLE_CSS = r"""  * { box-sizing:border-box; }
   .sub { margin:8px 0; border:1px solid var(--border); border-radius:6px; background:var(--panel2); }
   .sub > summary { padding:7px 12px; font-size:12px; color:var(--muted); }
   .sub-body { padding:6px 12px 10px; }
+  /* Grouped consecutive Edits/Reads: members stacked inside one collapsible. */
+  .group-body { padding:8px 12px 12px; }
+  .group-body .member { margin:6px 0; background:color-mix(in srgb, var(--bg) 60%, var(--panel)); }
+  .group-body .member > summary { display:flex; align-items:center; gap:8px; color:var(--fg); }
   pre.raw { white-space:pre-wrap; word-break:break-word; font-family:var(--mono); font-size:12px;
     line-height:1.5; margin:0; color:color-mix(in srgb, var(--fg) 88%, var(--bg)); max-height:480px; overflow:auto; }
 
@@ -827,11 +840,12 @@ STYLE_CSS = r"""  * { box-sizing:border-box; }
   .recap .lbl { color:var(--accent2); font-size:10.5px; font-weight:700; letter-spacing:.08em;
     text-transform:uppercase; display:flex; align-items:center; gap:6px; margin-bottom:6px; }
 
-  /* Left sidebar: list of turns (collapsible) */
+  /* Left sidebar: fixed head + title, scrollable turn list. Collapses to a rail. */
   aside.side { grid-area:side; background:var(--panel); border-right:1px solid var(--border);
-    overflow-y:auto; overflow-x:hidden; padding:10px 8px; }
-  body.side-collapsed aside.side { display:none; }
-  .side-title { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.08em; padding:4px 8px 8px; }
+    overflow:hidden; display:flex; flex-direction:column; }
+  .side-head { flex:0 0 auto; }
+  .side-title { flex:0 0 auto; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.08em; padding:10px 10px 8px; }
+  #turnlist { flex:1 1 auto; overflow-y:auto; overflow-x:hidden; padding:0 8px 10px; }
   .trow { display:block; width:100%; text-align:left; background:none; border:1px solid transparent;
     border-radius:6px; padding:8px 9px; cursor:pointer; margin-bottom:4px; color:var(--fg); }
   .trow:hover { background:var(--panel2); }
@@ -1012,6 +1026,46 @@ function tocLabel(b, idx){
   return {kind:"text", label:"Block", sub:""};
 }
 
+// Group a consecutive run of Read/Edit tool calls that all target the SAME file
+// into one collapsible unit (e.g. read-then-edit-edit of one file). The run
+// breaks on any other tool, a Read/Edit of a different file, or a non-tool block.
+// Returns items: {type:"single", block, idx} or
+// {type:"group", badge, label, sub, members:[{block,idx}], thought}.
+function groupBlocks(blocks){
+  const fileOf = (b)=>{ const i=b.input||{}; return i.file_path||i.path||""; };
+  const isFileOp = (b)=> b && b.k==="tool" && (b.name==="Read" || b.name==="Edit");
+  const base = (p)=>{ const parts=String(p).split("/"); return parts[parts.length-1]||p; };
+  const out = [];
+  let i = 0;
+  while (i < blocks.length){
+    const b = blocks[i];
+    if (isFileOp(b) && fileOf(b)){
+      const file = fileOf(b);
+      const members = [{block:b, idx:i}];
+      let j = i + 1;
+      while (j < blocks.length && isFileOp(blocks[j]) && fileOf(blocks[j]) === file){
+        members.push({block:blocks[j], idx:j});
+        j++;
+      }
+      if (members.length > 1){
+        const nR = members.filter(m=>m.block.name==="Read").length;
+        const nE = members.filter(m=>m.block.name==="Edit").length;
+        const parts = [];
+        if (nR) parts.push(`${nR}× Read`);
+        if (nE) parts.push(`${nE}× Edit`);
+        const badge = (nR && nE) ? "READ/EDIT" : (nR ? "READ" : "EDIT");
+        out.push({type:"group", badge, label:parts.join(" · "), sub:base(file),
+                  members, thought: precededByThink(blocks, i)});
+        i = j;
+        continue;
+      }
+    }
+    out.push({type:"single", block:b, idx:i});
+    i++;
+  }
+  return out;
+}
+
 // True if the block at index i was immediately preceded by a thinking block.
 // (Thinking always directly precedes the action it reasoned about.)
 function precededByThink(blocks, i){
@@ -1043,6 +1097,32 @@ function renderBlock(b, idx, blocks){
   return "";
 }
 
+// Render a group of consecutive Edits/Reads as one collapsible unit. The anchor
+// id is the FIRST member's id (so the TOC entry + scrollspy line up).
+function renderGroup(g, blocks){
+  const aid = `b${g.members[0].idx}`;
+  const mark = g.thought ? THINK_MARK : "";
+  const badgeKind = "tool";
+  const inner = g.members.map((m)=>{
+    const b = m.block;
+    const extra = argSummary(b.input);
+    const res = (b.resultStructured!==null && b.resultStructured!==undefined) ? b.resultStructured : b.result;
+    let body = "";
+    if (b.input!==null && b.input!==undefined) body += valueBlock("Input", b.input);
+    if (res!==null && res!==undefined) body += valueBlock("Result", res);
+    if (!body) body = `<div class="muted" style="padding:6px 0">(no payload)</div>`;
+    return `<details class="sub member"><summary><span class="sum-name">${esc(b.name)}</span>`
+      + (extra?`<span class="sum-extra">${esc(extra)}</span>`:"")
+      + `</summary><div class="sub-body">${body}</div></details>`;
+  }).join("");
+  return `<details id="${aid}" class="block coll tool group scroll-target"><summary>`
+    + `<span class="badge ${badgeKind}">${esc(g.badge)}</span>`
+    + `<span class="sum-name">${esc(g.label)}</span>`
+    + (g.sub?`<span class="sum-extra">${esc(g.sub)}</span>`:"")
+    + (mark?`<span class="spacer-mark"></span>${mark}`:"")
+    + `</summary><div class="block-body group-body">${inner}</div></details>`;
+}
+
 function renderTurn(t){
   const main = $("main");
   if (!t){ main.innerHTML = `<div class="empty">No turns yet.</div>`; return; }
@@ -1051,14 +1131,17 @@ function renderTurn(t){
     html += `<div class="recap"><span class="lbl">✦ Recap</span>${esc(t.recap)}</div>`;
   }
   html += `<div class="turn-head"><div class="prompt"><span class="lbl">User · Turn ${t.n}</span>${esc(t.prompt)}</div></div>`;
-  html += t.blocks.map((b,i)=>renderBlock(b,i,t.blocks)).join("");
+  html += groupBlocks(t.blocks).map((it)=>{
+    if (it.type==="group") return renderGroup(it, t.blocks);
+    return renderBlock(it.block, it.idx, t.blocks);
+  }).join("");
   main.innerHTML = html;
   main.scrollTop = 0;
   const m = [];
   if (t.model) m.push(t.model.split("/").pop());
   if (t.branch) m.push("⌥ "+t.branch);
   if (t.ts) m.push(t.ts.replace("T"," ").replace(/\.\d+Z?$/,"").replace("Z",""));
-  $("hmeta").textContent = m.join("   ");
+  $("hmeta").innerHTML = m.map(x=>`<div>${esc(x)}</div>`).join("");
   renderToc(t);
 }
 
@@ -1066,13 +1149,22 @@ function renderTurn(t){
 function renderToc(t){
   const toc = $("toc");
   if (!t || !t.blocks.length){ toc.innerHTML = `<div class="muted" style="padding:8px;font-size:12px">No blocks.</div>`; return; }
-  toc.innerHTML = t.blocks.map((b,i)=>{
-    // Thinking blocks are never listed; instead the action they precede is marked.
-    if (b.k==="thinking") return "";
-    const {kind,label,sub} = tocLabel(b,i);
+  toc.innerHTML = groupBlocks(t.blocks).map((it)=>{
+    let kind, label, sub, aid, thought;
+    if (it.type==="group"){
+      kind = "tool"; label = it.label; sub = it.sub;
+      aid = `b${it.members[0].idx}`; thought = it.thought;
+    } else {
+      const b = it.block;
+      // Thinking blocks are never listed; the action they precede is marked.
+      if (b.k==="thinking") return "";
+      const tl = tocLabel(b, it.idx);
+      kind = tl.kind; label = tl.label; sub = tl.sub;
+      aid = `b${it.idx}`; thought = precededByThink(t.blocks, it.idx);
+    }
     const subHtml = sub? `<span class="tsub">${esc(sub)}</span>` : "";
-    const mark = precededByThink(t.blocks, i) ? `<span class="think-mark" title="preceded by thinking">✦</span>` : "";
-    return `<button class="toc-item" data-aid="b${i}"><span class="dot ${kind}"></span>`
+    const mark = thought ? `<span class="think-mark" title="preceded by thinking">✦</span>` : "";
+    return `<button class="toc-item" data-aid="${aid}"><span class="dot ${kind}"></span>`
       + `<span class="tmeta"><span class="tlabel">${esc(label)}${mark}</span>${subHtml}</span></button>`;
   }).join("");
   toc.querySelectorAll(".toc-item").forEach(el=>{
