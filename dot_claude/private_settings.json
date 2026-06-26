@@ -1,5 +1,7 @@
 {
   "respectGitignore": false,
+  "cleanupPeriodDays": 365,
+  "model": "sonnet",
   "hooks": {
     "PreToolUse": [
       {
@@ -78,6 +80,10 @@
           {
             "type": "command",
             "command": "~/.claude/hooks/wezterm_status.sh done"
+          },
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/scripts/render.py --hook"
           }
         ]
       }
@@ -109,5 +115,6 @@
       }
     }
   },
+  "effortLevel": "medium",
   "skipDangerousModePermissionPrompt": true
 }

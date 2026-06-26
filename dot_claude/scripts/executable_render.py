@@ -21,6 +21,7 @@ Pure stdlib. Run with `python3` or `uv run`.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -35,6 +36,9 @@ ROOT = HOME / ".claude" / "transcript-html"
 OUT_ROOT = ROOT / "sessions"
 ASSETS_DIR = ROOT / "assets"  # shared style.css / theme.css / app.js
 PROMPT_SNIPPET_LEN = 80
+
+# Claude mark (icons8 PNG), embedded as a data URI so it renders over file://
+CLAUDE_ICON_DATA_URI = "data:image/png;base64,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"
 
 # ---------------------------------------------------------------------------
 # Domain: turn segmentation (pure functions over parsed JSONL records)
@@ -67,15 +71,45 @@ def is_side_channel(text: str) -> bool:
     return s.startswith(_SIDE_CHANNEL_TAGS)
 
 
+def is_compaction(rec: dict) -> bool:
+    """True if this record is an auto-generated compaction summary (the message
+    injected when a session is continued after running out of context)."""
+    return rec.get("type") == "user" and bool(rec.get("isCompactSummary"))
+
+
+def is_interrupt(rec: dict) -> bool:
+    """True for the synthetic '[Request interrupted by user...]' user records.
+
+    These are not prompts and don't start a turn — they record that the user
+    stopped the assistant, and belong to the turn that was in progress."""
+    if rec.get("type") != "user" or rec.get("isMeta"):
+        return False
+    msg = rec.get("message") or {}
+    content = msg.get("content")
+    if isinstance(content, list):
+        content = " ".join(
+            b.get("text", "") for b in content
+            if isinstance(b, dict) and b.get("type") == "text"
+        )
+    if not isinstance(content, str):
+        return False
+    return content.lstrip().startswith("[Request interrupted by user")
+
+
 def is_turn_boundary(rec: dict) -> bool:
     """A 'real' user prompt that starts a new turn.
 
     Excludes meta records, tool_result-carrier user messages (those belong to
     the in-flight turn), and CLI side-channel messages (slash-command wrappers,
-    bash `!` input/output, injected system reminders).
+    bash `!` input/output, injected system reminders). A compaction summary IS
+    a boundary (handled specially by the caller), but not a typed prompt.
     """
     if rec.get("type") != "user" or rec.get("isMeta"):
         return False
+    if rec.get("isCompactSummary"):
+        return False  # caller treats compaction as its own boundary kind
+    if is_interrupt(rec):
+        return False  # interrupts attach to the in-flight turn, not new ones
     msg = rec.get("message") or {}
     content = msg.get("content")
     if isinstance(content, str):
@@ -121,6 +155,13 @@ class TurnBuf:
     cwd: str = ""
     model: str = ""
     recap: str = ""
+    is_compaction: bool = False
+    compaction: str = ""  # the full compaction summary (markdown), when is_compaction
+    # Ordered user-side messages in this turn: the primary prompt, plus any
+    # unanswered follow-ups (queued/resent prompts that got no response) and
+    # interrupts. Each: {"kind": "prompt"|"interrupt", "text": str}.
+    messages: list[dict] = field(default_factory=list)
+    has_response: bool = False  # True once any assistant block lands this turn
     blocks: list[dict] = field(default_factory=list)
     # map tool_use_id -> index into blocks, to attach results later
     _tool_index: dict[str, int] = field(default_factory=dict)
@@ -159,12 +200,21 @@ class TurnBuf:
         if rtype not in ("assistant", "user"):
             return
 
+        # Interrupts ("[Request interrupted by user...]") are recorded as a
+        # user-side message in the timeline, not as a response block.
+        if rtype == "user" and is_interrupt(rec):
+            self.messages.append({"kind": "interrupt", "text": _prompt_text(rec).strip()})
+            return
+
         # A user string message that is a CLI side-channel (bash !, reminders,
         # slash-command wrappers) contributes no blocks.
         if rtype == "user":
             content = (rec.get("message") or {}).get("content")
             if isinstance(content, str) and is_side_channel(content):
                 return
+
+        if rtype == "assistant":
+            self.has_response = True
 
         for b in _content_blocks(rec):
             bt = b.get("type")
@@ -226,6 +276,9 @@ class TurnBuf:
             "cwd": self.cwd,
             "model": self.model,
             "recap": self.recap,
+            "isCompaction": self.is_compaction,
+            "compaction": self.compaction,
+            "messages": self.messages,
             "blocks": self.blocks,
             "counts": self.counts(),
         }
@@ -305,6 +358,10 @@ def _buf_from_state(d: dict | None) -> TurnBuf | None:
     b.cwd = d.get("cwd", "")
     b.model = d.get("model", "")
     b.recap = d.get("recap", "")
+    b.is_compaction = d.get("is_compaction", False)
+    b.compaction = d.get("compaction", "")
+    b.messages = d.get("messages", [])
+    b.has_response = d.get("has_response", False)
     b.blocks = d.get("blocks", [])
     b._tool_index = d.get("_tool_index", {})
     b._structured = d.get("_structured", {})
@@ -322,6 +379,10 @@ def _buf_to_state(b: TurnBuf | None) -> dict | None:
         "cwd": b.cwd,
         "model": b.model,
         "recap": b.recap,
+        "is_compaction": b.is_compaction,
+        "compaction": b.compaction,
+        "messages": b.messages,
+        "has_response": b.has_response,
         "blocks": b.blocks,
         "_tool_index": b._tool_index,
         "_structured": b._structured,
@@ -369,18 +430,23 @@ def append_turns(out_dir: Path, objs: Iterable[dict]) -> int:
     return n
 
 
-def write_pending(out_dir: Path, open_buf: "TurnBuf | None") -> None:
-    """Overwrite pending.js with the single in-progress turn (or nothing).
+def write_pending(out_dir: Path, open_buf: "TurnBuf | None", title: str = "", sig: int = 0) -> None:
+    """Overwrite pending.js with the single in-progress turn (or nothing) plus
+    the resolved session title and a monotonic change signal.
 
     Distinct from turns.js: this file is rewritten every run, so re-running can
-    never duplicate the current turn. The viewer concatenates pending onto the
-    finalized turns."""
+    never duplicate the current turn, and the title always reflects the latest
+    /rename. The viewer concatenates pending onto the finalized turns.
+
+    `sig` is the transcript byte offset — it increases on any new data, so the
+    viewer can poll this file (re-injecting it as a <script>, which works over
+    file://) and reload when the value changes."""
     pj = out_dir / "pending.js"
-    if open_buf is None:
-        pj.write_text("window.__PENDING__ = null;\n", encoding="utf-8")
-        return
+    pending = "null" if open_buf is None else json.dumps(open_buf.to_obj(), ensure_ascii=False)
     pj.write_text(
-        "window.__PENDING__ = " + json.dumps(open_buf.to_obj(), ensure_ascii=False) + ";\n",
+        f"window.__PENDING__ = {pending};\n"
+        f"window.__TITLE__ = {json.dumps(title, ensure_ascii=False)};\n"
+        f"window.__SIG__ = {sig};\n",
         encoding="utf-8",
     )
 
@@ -399,19 +465,45 @@ def write_shared_assets() -> str:
     return scheme_name
 
 
-def ensure_scaffold(out_dir: Path, session_id: str) -> None:
+def _asset_version() -> str:
+    """Short content hash of the shared assets. Stamped onto asset URLs in
+    index.html (?v=...) so a code change forces the browser to refetch them —
+    file:// otherwise caches linked CSS/JS aggressively, serving stale viewers."""
+    h = hashlib.sha1()
+    h.update(STYLE_CSS.encode("utf-8"))
+    h.update(APP_JS.encode("utf-8"))
+    h.update(INDEX_HTML.encode("utf-8"))
+    return h.hexdigest()[:10]
+
+
+def ensure_scaffold(out_dir: Path, session_id: str, write_assets: bool = True) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
-    write_shared_assets()  # shared assets refreshed every run
+    # Shared assets are refreshed every run so CSS/JS edits propagate. The
+    # background watcher passes write_assets=False: it runs whatever (possibly
+    # stale) code it was spawned with, so rewriting assets would clobber fresh
+    # ones written by a newer `html`/Stop-hook invocation. The watcher only
+    # needs to refresh this session's data (pending.js), not the shared assets.
+    if write_assets:
+        write_shared_assets()
     tj = out_dir / "turns.js"
     if not tj.exists():
         tj.write_text("window.__TURNS__ = window.__TURNS__ || [];\n", encoding="utf-8")
     pj = out_dir / "pending.js"
     if not pj.exists():
-        pj.write_text("window.__PENDING__ = null;\n", encoding="utf-8")
+        pj.write_text("window.__PENDING__ = null;\nwindow.__TITLE__ = \"\";\nwindow.__SIG__ = 0;\n", encoding="utf-8")
+    # Skeleton holds no per-session mutable data (only the session id + links to
+    # the shared assets), so rewriting it every run is idempotent — and lets
+    # skeleton edits (title, icon, layout) propagate like the CSS/JS already do.
+    # Guarded by write_assets (same reason): a stale watcher must not stamp an
+    # old asset version into index.html. Always written if it's missing.
     idx = out_dir / "index.html"
-    if not idx.exists():
-        # Skeleton is write-once; it only references the shared assets.
-        idx.write_text(INDEX_HTML.replace("__SESSION_ID__", session_id), encoding="utf-8")
+    if write_assets or not idx.exists():
+        idx.write_text(
+            INDEX_HTML.replace("__SESSION_ID__", session_id)
+            .replace("__ICON__", CLAUDE_ICON_DATA_URI)
+            .replace("__ASSETV__", _asset_version()),
+            encoding="utf-8",
+        )
 
 
 def build_bundle(out_dir: Path, session_id: str, dest: Path) -> Path:
@@ -429,7 +521,11 @@ def build_bundle(out_dir: Path, session_id: str, dest: Path) -> Path:
         return s.replace("</", "<\\/")
 
     html = (
-        INDEX_HTML.replace("__SESSION_ID__", session_id)
+        # Bundle inlines every asset, so the cache-busting query string is moot —
+        # drop it first so the exact-match replacements below still fire.
+        INDEX_HTML.replace("?v=__ASSETV__", "")
+        .replace("__SESSION_ID__", session_id)
+        .replace("__ICON__", CLAUDE_ICON_DATA_URI)
         .replace(
             '<link rel="stylesheet" href="../../assets/theme.css">',
             f"<style>\n{theme_css}\n{STYLE_CSS}\n</style>",
@@ -452,11 +548,15 @@ def build_bundle(out_dir: Path, session_id: str, dest: Path) -> Path:
     return dest
 
 
-def process(transcript: Path, flush: bool = False) -> dict:
-    """Core incremental step. Returns a small summary dict."""
+def process(transcript: Path, flush: bool = False, write_assets: bool = True) -> dict:
+    """Core incremental step. Returns a small summary dict.
+
+    write_assets=False (used by the background watcher) skips rewriting the
+    shared CSS/JS and index.html, so a watcher running stale code can't clobber
+    assets written by a newer invocation."""
     session_id = session_id_of(transcript)
     out_dir = OUT_ROOT / session_id
-    ensure_scaffold(out_dir, session_id)
+    ensure_scaffold(out_dir, session_id, write_assets=write_assets)
     state = load_state(out_dir)
 
     records, new_offset = read_new_records(transcript, state["offset_bytes"])
@@ -465,14 +565,44 @@ def process(transcript: Path, flush: bool = False) -> dict:
     next_n = state.get("next_n", 1)
     finalized: list[dict] = []
 
+    title = state.get("title", "")
     for rec in records:
-        if is_turn_boundary(rec):
+        # Session title: custom title (set via /rename) wins over the AI title;
+        # latest occurrence wins. Captured continuously, independent of turns.
+        if rec.get("type") == "custom-title" and rec.get("customTitle"):
+            title = rec["customTitle"].strip()
+        elif rec.get("type") == "ai-title" and rec.get("aiTitle"):
+            # Only let an AI title fill an empty slot — never override a custom one.
+            # (A later /rename emits a fresh custom-title, handled above.)
+            if not title:
+                title = rec["aiTitle"].strip()
+
+        if is_compaction(rec):
+            # A compaction summary ends the prior turn and becomes its own
+            # single-purpose turn (the collapsible "conversation compacted" card).
             if open_buf is not None:
                 finalized.append(open_buf.to_obj())
             open_buf = TurnBuf(n=next_n)
             next_n += 1
-            open_buf.prompt = _prompt_text(rec)
+            open_buf.is_compaction = True
+            open_buf.compaction = _prompt_text(rec)
             open_buf.absorb(rec)
+        elif is_turn_boundary(rec):
+            ptext = _prompt_text(rec)
+            # If the open turn never got an assistant response (e.g. a queued or
+            # resent prompt, or an interrupted one), this new prompt is a
+            # follow-up to it, not a new turn — fold it in so they group as one.
+            if open_buf is not None and not open_buf.is_compaction and not open_buf.has_response:
+                open_buf.messages.append({"kind": "prompt", "text": ptext.strip()})
+                open_buf.absorb(rec)
+            else:
+                if open_buf is not None:
+                    finalized.append(open_buf.to_obj())
+                open_buf = TurnBuf(n=next_n)
+                next_n += 1
+                open_buf.prompt = ptext
+                open_buf.messages.append({"kind": "prompt", "text": ptext.strip()})
+                open_buf.absorb(rec)
         elif open_buf is not None:
             open_buf.absorb(rec)
         # records before the first real prompt (session meta) are ignored
@@ -485,12 +615,13 @@ def process(transcript: Path, flush: bool = False) -> dict:
     # several `html` invocations) can never duplicate the current turn.
     # `flush` is retained for API compatibility but no longer affects output:
     # the open turn is always shown, sourced from pending.js.
-    write_pending(out_dir, open_buf)
+    write_pending(out_dir, open_buf, title, sig=new_offset)
 
     state["offset_bytes"] = new_offset
     state["turns_emitted"] = state.get("turns_emitted", 0) + appended
     state["open_turn"] = _buf_to_state(open_buf)
     state["next_n"] = next_n
+    state["title"] = title
     save_state(out_dir, state)
 
     return {
@@ -501,6 +632,120 @@ def process(transcript: Path, flush: bool = False) -> dict:
         "turns_total": state["turns_emitted"],
         "offset": new_offset,
     }
+
+
+# ---------------------------------------------------------------------------
+# Live watcher: a short-lived, self-terminating background process.
+#
+# The recap (`away_summary`) lands in the transcript a few minutes AFTER the
+# turn ends — long after the Stop hook's render has run, so it is missed until
+# the next turn. There is no hook event for "recap written". To pick it up live
+# without a server, the Stop hook spawns this detached watcher: it polls the
+# transcript file size for a bounded window and re-runs process() whenever the
+# file grows (which rewrites pending.js and bumps __SIG__, so the browser's own
+# poller reloads). It then exits. A PID lockfile keeps a single watcher per
+# session so repeated Stop hooks don't stack processes.
+# ---------------------------------------------------------------------------
+
+WATCH_WINDOW_S = 360      # give up after this long with no growth handled
+WATCH_POLL_S = 2.0        # how often to stat the transcript
+WATCH_IDLE_EXIT_S = 330   # exit early if the file hasn't grown for this long
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _acquire_watch_lock(out_dir: Path) -> bool:
+    """Best-effort single-watcher lock. Returns True if we own it.
+
+    Stores our PID in watch.lock; if an existing lock names a live PID we back
+    off, otherwise we steal a stale lock."""
+    lock = out_dir / "watch.lock"
+    try:
+        if lock.exists():
+            try:
+                existing = int(lock.read_text().strip() or "0")
+            except (ValueError, OSError):
+                existing = 0
+            if existing and existing != os.getpid() and _pid_alive(existing):
+                return False  # another live watcher owns it
+        lock.write_text(str(os.getpid()))
+        return True
+    except OSError:
+        return False
+
+
+def _release_watch_lock(out_dir: Path) -> None:
+    lock = out_dir / "watch.lock"
+    try:
+        if lock.exists() and lock.read_text().strip() == str(os.getpid()):
+            lock.unlink()
+    except OSError:
+        pass
+
+
+def watch(transcript: Path) -> int:
+    """Poll the transcript and re-render on growth, for a bounded window."""
+    import time
+
+    session_id = session_id_of(transcript)
+    out_dir = OUT_ROOT / session_id
+    out_dir.mkdir(parents=True, exist_ok=True)
+    if not _acquire_watch_lock(out_dir):
+        return 0  # someone else is already watching this session
+
+    try:
+        try:
+            last_size = transcript.stat().st_size
+        except OSError:
+            last_size = 0
+        start = time.monotonic()
+        last_change = start
+        while True:
+            time.sleep(WATCH_POLL_S)
+            now = time.monotonic()
+            if now - start > WATCH_WINDOW_S:
+                break
+            try:
+                size = transcript.stat().st_size
+            except OSError:
+                continue
+            if size != last_size:
+                last_size = size
+                last_change = now
+                try:
+                    # write_assets=False: don't let a watcher running stale code
+                    # clobber shared CSS/JS. Only refresh this session's data.
+                    process(transcript, write_assets=False)  # rewrites pending.js, bumps __SIG__
+                except Exception:
+                    pass  # never crash the watcher on a transient parse error
+            elif now - last_change > WATCH_IDLE_EXIT_S:
+                break
+    finally:
+        _release_watch_lock(out_dir)
+    return 0
+
+
+def spawn_watcher(transcript: Path) -> None:
+    """Fire-and-forget a fully-detached `--watch` child. Never blocks the hook."""
+    import subprocess
+    try:
+        subprocess.Popen(
+            [sys.executable, os.path.abspath(__file__), "--watch", str(transcript)],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,  # detach from the hook's process group
+        )
+    except Exception:
+        pass  # spawning is best-effort; the hook must never fail
 
 
 # ---------------------------------------------------------------------------
@@ -668,37 +913,51 @@ INDEX_HTML = r"""<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Transcript · __SESSION_ID__</title>
-<link rel="stylesheet" href="../../assets/theme.css">
-<link rel="stylesheet" href="../../assets/style.css">
+<link rel="icon" type="image/png" href="__ICON__">
+<link rel="stylesheet" href="../../assets/theme.css?v=__ASSETV__">
+<link rel="stylesheet" href="../../assets/style.css?v=__ASSETV__">
 </head>
 <body>
 <aside class="side">
   <div class="side-head">
     <div class="side-head-top">
-      <button class="rail-btn toggle" id="toggleSide" title="Collapse sidebar ([)">☰</button>
-      <span class="title">Transcript</span>
+      <button class="rail-btn toggle" id="toggleSide" data-tip="Toggle turns sidebar · Alt+M" aria-label="Toggle turns sidebar">
+        <svg class="ico" viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="10" rx="2"/><line x1="6.5" y1="3.5" x2="6.5" y2="12.5"/></svg>
+      </button>
+      <img class="brand-icon" src="__ICON__" width="18" height="18" alt="" aria-hidden="true">
+      <span class="brand-label" id="sessionTitle">Claude Transcript</span>
     </div>
     <div class="nav">
-      <button class="rail-btn" id="first" title="First turn (Home)">⤒</button>
-      <button class="rail-btn" id="prev" title="Previous turn (←)">‹</button>
+      <button class="rail-btn" id="first" data-tip="First turn · Home">⤒</button>
+      <button class="rail-btn" id="prev" data-tip="Previous turn · ← or Ctrl+↑">‹</button>
       <span class="counter" id="counter">– / –</span>
-      <button class="rail-btn" id="next" title="Next turn (→)">›</button>
-      <button class="rail-btn" id="last" title="Last turn (End)">⤓</button>
+      <button class="rail-btn" id="next" data-tip="Next turn · → or Ctrl+↓">›</button>
+      <button class="rail-btn" id="last" data-tip="Last turn · End">⤓</button>
     </div>
     <div class="meta" id="hmeta"></div>
   </div>
   <div class="side-title">Turns</div>
   <div id="turnlist"></div>
+  <div class="resizer" id="sideResizer" data-tip="Drag to resize · double-click to reset"></div>
 </aside>
 <main id="main"></main>
 <aside class="toc">
-  <div class="toc-title">In this turn</div>
+  <div class="toc-head">
+    <span class="toc-title">In this turn</span>
+    <button class="rail-btn toggle" id="toggleToc" data-tip="Toggle this-turn sidebar · Alt+R" aria-label="Toggle this-turn sidebar">
+      <svg class="ico" viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="10" rx="2"/><line x1="9.5" y1="3.5" x2="9.5" y2="12.5"/></svg>
+    </button>
+  </div>
   <div id="toc"></div>
+  <div class="resizer left" id="tocResizer" data-tip="Drag to resize · double-click to reset"></div>
 </aside>
+<button class="rail-btn toggle corner-toggle" id="tocCornerToggle" data-tip="Show this-turn sidebar · Alt+R" aria-label="Show this-turn sidebar">
+  <svg class="ico" viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="10" rx="2"/><line x1="9.5" y1="3.5" x2="9.5" y2="12.5"/></svg>
+</button>
 
-<script src="turns.js"></script>
-<script src="pending.js"></script>
-<script src="../../assets/app.js"></script>
+<script src="turns.js?v=__ASSETV__"></script>
+<script src="pending.js?v=__ASSETV__"></script>
+<script src="../../assets/app.js?v=__ASSETV__"></script>
 </body>
 </html>
 """
@@ -724,17 +983,29 @@ STYLE_CSS = r"""  * { box-sizing:border-box; }
   ::-webkit-scrollbar-corner { background:transparent; }
   body {
     background:var(--bg); color:var(--fg); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-    display:grid; grid-template-columns:270px 1fr 250px;
+    --side-w:270px; --toc-w:250px;
+    display:grid; grid-template-columns:var(--side-w) 1fr var(--toc-w);
     grid-template-areas:"side main toc"; height:100vh; overflow:hidden;
     transition:grid-template-columns .15s ease;
   }
-  /* Collapsed: sidebar shrinks to a thin icon rail, not nothing. */
-  body.side-collapsed { grid-template-columns:46px 1fr 250px; }
+  /* While dragging a resizer, drop the transition so the column tracks the mouse. */
+  body.resizing { transition:none; cursor:col-resize; user-select:none; }
+  /* Collapsed left: shrinks to a thin icon rail. Collapsed right: removed
+     entirely (0 width) — a floating corner button restores it, so main reclaims
+     the full width. */
+  body.side-collapsed { grid-template-columns:44px 1fr var(--toc-w); }
+  body.toc-collapsed  { grid-template-columns:var(--side-w) 1fr 0; }
+  body.side-collapsed.toc-collapsed { grid-template-columns:44px 1fr 0; }
+  body.toc-collapsed aside.toc { display:none; }
 
   /* Sidebar head: holds title, nav (icons), and model/meta info. */
   .side-head { padding:10px 10px 8px; border-bottom:1px solid var(--border); }
-  .side-head-top { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
-  .side-head .title { font-weight:600; font-size:13px; white-space:nowrap; }
+  /* Brand row: hamburger + icon + session title (the prominent heading). */
+  .side-head-top { display:flex; align-items:flex-start; gap:9px; margin-bottom:11px; }
+  .side-head-top .toggle { flex-shrink:0; }
+  .side-head .brand-label { font-weight:650; font-size:14.5px; line-height:1.35; color:var(--fg);
+    white-space:normal; word-break:break-word; flex:1; min-width:0; align-self:center; }
+  .brand-icon { flex-shrink:0; display:block; }
   .rail-btn {
     background:var(--panel2); color:var(--fg); border:1px solid var(--border); border-radius:6px;
     padding:5px 8px; font-size:13px; cursor:pointer; line-height:1; min-width:30px; text-align:center;
@@ -743,41 +1014,87 @@ STYLE_CSS = r"""  * { box-sizing:border-box; }
   .rail-btn:disabled { opacity:.3; cursor:default; }
   .nav { display:flex; align-items:center; gap:5px; }
   .counter { font-family:var(--mono); font-size:12px; color:var(--muted); min-width:54px; text-align:center; }
-  .meta { color:var(--muted); font-size:11px; font-family:var(--mono); margin-top:9px; line-height:1.5;
-    white-space:normal; word-break:break-word; }
+  .meta { color:var(--muted); font-size:11px; font-family:var(--mono); margin-top:10px;
+    display:flex; flex-wrap:wrap; gap:5px 8px; align-items:center; }
+  .meta .mi { white-space:nowrap; }
+  .meta .mi.model { color:color-mix(in srgb, var(--accent) 70%, var(--fg)); }
 
-  /* Rail (collapsed) mode: stack icons vertically, hide text. */
-  body.side-collapsed .side-head { padding:10px 6px 8px; }
-  body.side-collapsed .side-head-top { justify-content:center; margin-bottom:8px; }
-  body.side-collapsed .title,
+  /* The toggle buttons are borderless ghost icons, not boxed rail buttons. */
+  .rail-btn.toggle { background:none; border:none; padding:4px; min-width:0; color:var(--muted);
+    display:inline-flex; align-items:center; justify-content:center; border-radius:6px; }
+  .rail-btn.toggle:hover:not(:disabled) { background:var(--panel2); color:var(--accent); }
+  .rail-btn.toggle .ico { display:block; }
+
+  /* Rail (collapsed) mode: stack nav icons vertically, hide everything else. */
+  body.side-collapsed .side-head { padding:10px 5px 8px; border-bottom:none; }
+  body.side-collapsed .side-head-top { justify-content:center; margin-bottom:10px; }
+  body.side-collapsed .brand-icon,
+  body.side-collapsed .brand-label,
   body.side-collapsed .meta,
   body.side-collapsed .counter,
   body.side-collapsed .side-title,
   body.side-collapsed #turnlist { display:none; }
-  body.side-collapsed .nav { flex-direction:column; gap:6px; }
-  body.side-collapsed .rail-btn { width:34px; }
+  body.side-collapsed .nav { flex-direction:column; gap:6px; align-items:center; }
+  body.side-collapsed .rail-btn { width:32px; }
 
-  main { grid-area:main; overflow-y:auto; padding:22px 28px 80px; }
-  .turn-head { margin-bottom:18px; }
+  main { grid-area:main; overflow-y:auto; padding:0 28px 80px; }
+  /* Pinned header: sticks to the top of the scrolling main pane. Holds the
+     recap card and the prompt card, stacked. */
+  .prompt-pin { position:sticky; top:0; z-index:20; background:var(--bg);
+    padding:16px 0 10px; margin-bottom:8px; display:flex; flex-direction:column; gap:8px; }
   .prompt {
     background:color-mix(in srgb, var(--user) 12%, var(--panel)); border:1px solid color-mix(in srgb, var(--user) 35%, var(--border));
-    border-left:3px solid var(--user); border-radius:8px; padding:14px 16px;
-    white-space:pre-wrap; word-break:break-word; font-size:14px; line-height:1.5;
+    border-left:3px solid var(--user); border-radius:8px; overflow:hidden;
+    font-size:14px; line-height:1.5;
   }
+  .prompt { cursor:pointer; }
+  .prompt-head { display:flex; align-items:center; gap:8px; padding:14px 18px 9px; }
   .prompt .lbl { color:var(--accent); font-size:11px; font-weight:600; letter-spacing:.06em;
-    text-transform:uppercase; display:block; margin-bottom:6px; }
+    text-transform:uppercase; flex:1; }
+  .prompt .pcount { color:var(--muted); font-weight:600; text-transform:none; letter-spacing:0; }
+  .prompt .chev { color:var(--muted); font-size:9px; transition:transform .12s; }
+  .prompt:not(.collapsed) .chev { transform:rotate(90deg); }
+  .pmsgs { padding:0 18px 20px; line-height:21px; }
+  .pmsg { white-space:pre-wrap; word-break:break-word; }
+  .pmsg + .pmsg { margin-top:9px; padding-top:9px; border-top:1px dashed color-mix(in srgb, var(--user) 30%, var(--border)); }
+  .pmsg.interrupt { color:var(--muted); font-style:italic; }
+  .pmsg-tag { display:inline-block; font-style:normal; font-size:10px; font-family:var(--mono);
+    color:var(--tool); border:1px solid color-mix(in srgb, var(--tool) 40%, transparent);
+    border-radius:9px; padding:0 6px; margin-right:7px; vertical-align:1px; }
+  /* Collapsed AND overflowing: clip to exactly 3 whole lines (3 × 21px = 63px).
+     overflow:hidden clips at the PADDING box, so the breathing room beneath must
+     be margin (outside the clip) — padding here would just let a 4th line peek
+     through. The margin sits between the clean 3-line cut and the card border.
+     Content that already fits keeps its normal bottom padding (no tight crop). */
+  .prompt.collapsed.overflowing .pmsgs { max-height:63px; overflow:hidden; padding-bottom:0; margin-bottom:14px; }
+  .prompt.collapsed .pmsg + .pmsg { margin-top:0; padding-top:0; border-top:none; }
+  /* "…" hint: only on the 3rd line when collapsed AND there's hidden overflow. */
+  .pmsgs-fade { display:none; }
+  .prompt.collapsed.overflowing .pmsgs-fade {
+    display:block; position:absolute; right:0; bottom:14px; height:21px; padding:0 18px 0 28px;
+    color:var(--muted); font-size:14px; line-height:21px; pointer-events:none;
+    background:linear-gradient(to right, transparent, color-mix(in srgb, var(--user) 12%, var(--panel)) 42%);
+  }
+  .prompt { position:relative; }
 
   .block { margin:12px 0; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--panel); }
   .block.text { border:none; background:none; padding:2px 2px; }
   .text-body { font-size:14px; line-height:1.62; }
-  .text-body h1,.text-body h2,.text-body h3 { margin:.7em 0 .35em; line-height:1.25; }
-  .text-body h1 { font-size:1.35em; } .text-body h2 { font-size:1.2em; } .text-body h3 { font-size:1.05em; }
+  .text-body h1,.text-body h2,.text-body h3,.text-body h4,.text-body h5,.text-body h6 {
+    margin:.7em 0 .35em; line-height:1.25; color:var(--accent2); font-weight:650; }
+  .text-body h1 { font-size:1.35em; color:var(--accent); }
+  .text-body h2 { font-size:1.2em; } .text-body h3 { font-size:1.05em; }
+  .text-body h4,.text-body h5,.text-body h6 { font-size:1em; }
   .text-body p { margin:.5em 0; } .text-body ul,.text-body ol { margin:.4em 0 .4em 1.4em; }
   .text-body li { margin:.2em 0; }
   .text-body a { color:var(--accent); }
   .text-body code { background:var(--panel2); padding:.12em .4em; border-radius:4px; font-family:var(--mono); font-size:.88em; }
   .text-body pre { background:color-mix(in srgb, var(--bg) 80%, #000); border:1px solid var(--border); border-radius:8px; padding:12px 14px;
     overflow-x:auto; } .text-body pre code { background:none; padding:0; }
+  .text-body table { border-collapse:collapse; margin:.6em 0; font-size:13px; display:block; overflow-x:auto; max-width:100%; }
+  .text-body th,.text-body td { border:1px solid var(--border); padding:6px 11px; text-align:left; vertical-align:top; }
+  .text-body th { background:var(--panel2); font-weight:600; }
+  .text-body tbody tr:nth-child(even) { background:color-mix(in srgb, var(--fg) 3%, transparent); }
 
   details.coll { border-radius:8px; }
   details.coll > summary {
@@ -831,14 +1148,32 @@ STYLE_CSS = r"""  * { box-sizing:border-box; }
   .jt .b { color:var(--json-bool); }
   .jt .muted { color:var(--muted); }
 
-  /* Recap box */
-  .recap {
-    background:color-mix(in srgb, var(--accent2) 9%, var(--panel)); border:1px solid color-mix(in srgb, var(--accent2) 35%, var(--border));
-    border-left:3px solid var(--accent2); border-radius:8px; padding:12px 15px; margin-bottom:16px;
-    font-size:13.5px; line-height:1.55; color:color-mix(in srgb, var(--accent2) 25%, var(--fg));
-  }
-  .recap .lbl { color:var(--accent2); font-size:10.5px; font-weight:700; letter-spacing:.08em;
-    text-transform:uppercase; display:flex; align-items:center; gap:6px; margin-bottom:6px; }
+  /* Recap card: the recap as a pin-card, tinted green to distinguish it from
+     the (user-blue) prompt card. */
+  #recapBox { background:color-mix(in srgb, var(--accent2) 9%, var(--panel));
+    border:1px solid color-mix(in srgb, var(--accent2) 35%, var(--border)); border-left:3px solid var(--accent2); }
+  #recapBox .recap-lbl { color:var(--accent2); }
+  #recapBox.overflowing .pmsgs-fade {
+    background:linear-gradient(to right, transparent, color-mix(in srgb, var(--accent2) 9%, var(--panel)) 42%); }
+  .recap-body { font-size:13.5px; line-height:21px; color:color-mix(in srgb, var(--accent2) 22%, var(--fg)); }
+  .recap-body p { margin:0; line-height:21px; }
+  .recap-body p + p { margin-top:10px; }
+
+  /* Compaction card: marks where the conversation was auto-summarized. */
+  .compaction { border:1px solid color-mix(in srgb, var(--think) 35%, var(--border)); border-radius:8px;
+    background:color-mix(in srgb, var(--think) 7%, var(--panel)); overflow:hidden; margin:4px 0 8px; }
+  .compaction > summary { list-style:none; cursor:pointer; padding:13px 16px; display:flex; align-items:center; gap:10px;
+    font-size:13.5px; user-select:none; }
+  .compaction > summary::-webkit-details-marker { display:none; }
+  .compaction > summary::before { content:"▶"; font-size:9px; color:var(--muted); transition:transform .12s; display:inline-block; }
+  .compaction[open] > summary::before { transform:rotate(90deg); }
+  .compaction .clbl { font-weight:700; color:var(--think); letter-spacing:.02em; }
+  .compaction .cnote { color:var(--muted); font-size:12px; }
+  .compaction .cbody { padding:6px 18px 18px; border-top:1px solid color-mix(in srgb, var(--think) 20%, var(--border)); }
+
+  /* Compaction marker in the turn list (left sidebar). */
+  .trow.compaction-row { border-color:color-mix(in srgb, var(--think) 30%, var(--border)); }
+  .trow.compaction-row .mn { color:var(--think); }
 
   /* Left sidebar: fixed head + title, scrollable turn list. Collapses to a rail. */
   aside.side { grid-area:side; background:var(--panel); border-right:1px solid var(--border);
@@ -850,16 +1185,33 @@ STYLE_CSS = r"""  * { box-sizing:border-box; }
     border-radius:6px; padding:8px 9px; cursor:pointer; margin-bottom:4px; color:var(--fg); }
   .trow:hover { background:var(--panel2); }
   .trow.active { background:color-mix(in srgb, var(--accent) 16%, var(--panel)); border-color:color-mix(in srgb, var(--accent) 45%, var(--border)); }
-  .trow .mn { font-family:var(--mono); font-size:11px; color:var(--accent); }
-  .trow .msnip { font-size:11.5px; color:var(--muted); margin:3px 0 5px; line-height:1.35;
+  /* Header line: turn number on the left, the tool/think/text counts on the right. */
+  .trow-head { display:flex; align-items:center; gap:8px; }
+  .trow .mn { font-family:var(--mono); font-size:11px; color:var(--accent); flex-shrink:0; }
+  .trow .msnip { font-size:11.5px; color:var(--muted); margin:4px 0 0; line-height:1.35;
     display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
-  .trow .micons { display:flex; gap:8px; font-size:10px; font-family:var(--mono); color:var(--muted); }
+  .trow .micons { display:flex; gap:8px; font-size:10px; font-family:var(--mono); color:var(--muted);
+    margin-left:auto; }
   .trow .micons .i { display:inline-flex; align-items:center; gap:2px; }
+  .trow .micons .i.think { color:color-mix(in srgb, var(--think) 60%, var(--muted)); }
+  /* Follow-up prompts / interrupts grouped under the turn's primary snippet. */
+  .trow .msubs { margin:0 0 5px; padding-left:7px; border-left:1px solid color-mix(in srgb, var(--user) 35%, var(--border)); }
+  .trow .msub { font-size:10.5px; color:var(--muted); line-height:1.3; margin:2px 0;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .trow .msub.interrupt { color:color-mix(in srgb, var(--tool) 55%, var(--muted)); font-style:italic; }
 
   /* Right: table of contents WITHIN the current turn */
   aside.toc { grid-area:toc; background:var(--panel); border-left:1px solid var(--border);
-    overflow-y:auto; padding:10px 8px; }
-  .toc-title { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.08em; padding:4px 8px 8px; }
+    overflow-y:auto; padding:10px 8px; display:flex; flex-direction:column; }
+  .toc-head { display:flex; align-items:center; gap:6px; padding:0 4px 8px; }
+  .toc-title { flex:1; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.08em; }
+  #toc { overflow-y:auto; }
+  /* When the TOC is collapsed the whole column is gone; a single floating button
+     in the top-right corner brings it back. Hidden while the TOC is open. */
+  .corner-toggle { display:none; position:fixed; top:10px; right:12px; z-index:40;
+    background:var(--panel2); border:1px solid var(--border); padding:5px; }
+  .corner-toggle:hover { background:var(--panel2); border-color:var(--accent); color:var(--accent); }
+  body.toc-collapsed .corner-toggle { display:inline-flex; }
   .toc-item { display:flex; align-items:center; gap:8px; width:100%; text-align:left; background:none;
     border:none; border-left:2px solid transparent; border-radius:0 4px 4px 0; padding:6px 8px;
     cursor:pointer; color:var(--muted); font-size:12px; }
@@ -874,7 +1226,34 @@ STYLE_CSS = r"""  * { box-sizing:border-box; }
   .toc-item .tlabel { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:var(--mono); font-size:11.5px; color:var(--fg); }
   .toc-item .tsub { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10.5px; color:var(--muted); }
   .empty { color:var(--muted); padding:40px; text-align:center; font-size:14px; }
-  .scroll-target { scroll-margin-top:14px; }
+  .scroll-target { scroll-margin-top:84px; }  /* clear the sticky prompt header */
+
+  /* Drag-to-resize handles, pinned to each sidebar's inner edge. */
+  aside.side, aside.toc { position:relative; }
+  .resizer { position:absolute; top:0; bottom:0; width:7px; cursor:col-resize; z-index:30; }
+  .resizer { right:-4px; }          /* left sidebar: handle on its right edge */
+  .resizer.left { left:-4px; right:auto; }  /* right sidebar: handle on its left edge */
+  .resizer::after { content:""; position:absolute; top:0; bottom:0; left:50%; width:1px;
+    background:transparent; transition:background .12s; }
+  .resizer:hover::after, body.resizing .resizer::after { background:var(--accent); }
+  /* A collapsed sidebar can't be resized — hide its handle. */
+  body.side-collapsed #sideResizer, body.toc-collapsed #tocResizer { display:none; }
+
+  /* Live-refresh pill: shown when new content arrives while browsing history. */
+  .newpill { display:none; position:fixed; bottom:18px; left:50%; transform:translateX(-50%);
+    z-index:50; background:var(--accent); color:var(--bg); border:none; border-radius:20px;
+    padding:9px 16px; font-size:12.5px; font-weight:600; cursor:pointer;
+    box-shadow:0 4px 16px color-mix(in srgb, var(--bg) 40%, #000); }
+  .newpill:hover { filter:brightness(1.08); }
+
+  /* Custom tooltip: shows instantly (no native title delay). A single shared
+     element is positioned by JS near the hovered [data-tip] target. */
+  #tooltip { position:fixed; z-index:200; pointer-events:none; opacity:0;
+    background:var(--panel2); color:var(--fg); border:1px solid var(--border);
+    border-radius:6px; padding:5px 9px; font-size:11.5px; line-height:1.3; white-space:nowrap;
+    box-shadow:0 4px 14px color-mix(in srgb, var(--bg) 50%, #000); transition:opacity .08s; }
+  #tooltip.show { opacity:1; }
+  #tooltip .tip-key { color:var(--accent); font-family:var(--mono); font-size:11px; }
 """
 
 # Viewer logic: shared across all sessions, rewritten each run.
@@ -886,6 +1265,46 @@ if (window.__PENDING__ && !TURNS.some(t => t.n === window.__PENDING__.n)) {
 }
 let cur = 0;
 const $ = (id) => document.getElementById(id);
+
+// ---- layout persistence (localStorage, works over file://) ----
+// Collapse states + resized widths survive a refresh. Restored synchronously
+// here (app.js runs at end of <body>, so <body> exists) to avoid a flash.
+const LS_KEY = "transcript-viewer-layout";
+function loadLayout(){
+  try { return JSON.parse(localStorage.getItem(LS_KEY) || "{}") || {}; }
+  catch(e){ return {}; }
+}
+function saveLayout(patch){
+  try {
+    const cur = loadLayout();
+    localStorage.setItem(LS_KEY, JSON.stringify(Object.assign(cur, patch)));
+  } catch(e){}
+}
+(function restoreLayout(){
+  const L = loadLayout();
+  document.body.classList.toggle("side-collapsed", !!L.sideCollapsed);
+  document.body.classList.toggle("toc-collapsed", !!L.tocCollapsed);
+  if (L.sideW) document.body.style.setProperty("--side-w", L.sideW);
+  if (L.tocW)  document.body.style.setProperty("--toc-w", L.tocW);
+})();
+function toggleSideCollapsed(){
+  const on = document.body.classList.toggle("side-collapsed");
+  saveLayout({sideCollapsed:on});
+}
+function toggleTocCollapsed(){
+  const on = document.body.classList.toggle("toc-collapsed");
+  saveLayout({tocCollapsed:on});
+}
+
+// Session title (from /rename custom title, else the AI-generated title).
+// It IS the heading next to the icon, replacing the "Claude Transcript" label;
+// falls back to "Claude Transcript" when the session has no title.
+const TITLE = (window.__TITLE__ || "").trim();
+(function setTitle(){
+  const el = $("sessionTitle");
+  if (TITLE && el) el.textContent = TITLE;
+  document.title = TITLE ? (TITLE + " · Claude Transcript") : "Claude Transcript";
+})();
 
 // ---- escaping ----
 const esc = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -915,6 +1334,27 @@ function markdown(src){
     }
     const h = ln.match(/^(#{1,6})\s+(.*)$/);
     if (h){ const lv=h[1].length; out.push(`<h${lv}>${inline(h[2])}</h${lv}>`); i++; continue; }
+    // GFM table: a header row containing a pipe, followed by a separator row
+    // (only -, :, |, spaces, with at least one dash and one pipe).
+    if (ln.indexOf("|")>=0 && i+1<lines.length
+        && lines[i+1].indexOf("|")>=0 && /^[\s:|-]*-[\s:|-]*$/.test(lines[i+1])){
+      const splitRow = (r)=>{
+        let s = r.trim();
+        if (s.startsWith("|")) s = s.slice(1);
+        if (s.endsWith("|")) s = s.slice(0,-1);
+        return s.split("|").map(c=>c.trim());
+      };
+      const headers = splitRow(ln);
+      i += 2; // consume header + separator
+      const rows = [];
+      while (i<lines.length && lines[i].indexOf("|")>=0 && lines[i].trim()!==""){
+        rows.push(splitRow(lines[i])); i++;
+      }
+      const thead = `<thead><tr>${headers.map(c=>`<th>${inline(c)}</th>`).join("")}</tr></thead>`;
+      const tbody = `<tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${inline(c)}</td>`).join("")}</tr>`).join("")}</tbody>`;
+      out.push(`<table>${thead}${tbody}</table>`);
+      continue;
+    }
     // unordered list
     if (/^\s*[-*]\s+/.test(ln)){
       let items=[];
@@ -1123,31 +1563,136 @@ function renderGroup(g, blocks){
     + `</summary><div class="block-body group-body">${inner}</div></details>`;
 }
 
+// A collapsible "pin card": a label header + a body that's capped to 3 lines
+// when collapsed, with a "…" overflow hint and click-to-expand. Shared by the
+// prompt header and the recap so they look and behave identically.
+// `bodyId` lets wirePinCards() find the body to measure overflow; `extraCls`
+// lets the body opt into markdown styling (text-body) for the recap.
+function pinCard(opts){
+  const {label, bodyHtml, bodyId, boxId, extraCls=""} = opts;
+  return `<div class="prompt collapsed pin-card" id="${boxId}" data-tip="Expand / collapse · p">`
+    + `<div class="prompt-head">`
+    + `<span class="lbl">${label}</span><span class="chev">▶</span></div>`
+    + `<div class="pmsgs ${extraCls}" id="${bodyId}">${bodyHtml}</div>`
+    + `<div class="pmsgs-fade" aria-hidden="true">…</div></div>`;
+}
+
+// The pinned header: the turn's recap (if any) plus the user message(s), both
+// sticky at the top of the main pane as collapsible cards. `messages` carries
+// the primary prompt plus any folded-in follow-ups and interrupts; falls back
+// to the legacy single `prompt` field.
+function promptHeader(t){
+  const msgs = (t.messages && t.messages.length)
+    ? t.messages
+    : [{kind:"prompt", text:t.prompt||""}];
+  const rows = msgs.map(m=>{
+    if (m.kind==="interrupt")
+      return `<div class="pmsg interrupt"><span class="pmsg-tag">⎋ interrupted</span></div>`;
+    return `<div class="pmsg">${esc(m.text||"")}</div>`;
+  }).join("");
+  const extra = msgs.length>1 ? ` <span class="pcount">+${msgs.length-1} more</span>` : "";
+
+  let html = `<div class="prompt-pin" id="promptPin">`;
+  if (t.recap){
+    html += pinCard({
+      label: `<span class="recap-lbl">✦ Recap</span>`,
+      bodyHtml: markdown(t.recap),
+      bodyId: "recapBody", boxId: "recapBox", extraCls: "text-body recap-body",
+    });
+  }
+  html += pinCard({
+    label: `User · Turn ${t.n}${extra}`,
+    bodyHtml: rows, bodyId: "pmsgs", boxId: "promptBox",
+  });
+  html += `</div>`;
+  return html;
+}
+
+function wireCollapsible(box){
+  if (!box) return;
+  const body = box.querySelector(".pmsgs");
+  // Mark as overflowing when the content is taller than the 3-line collapsed cap
+  // (63px). This drives the clamp + the "…" hint. Measured against the cap
+  // directly (not clientHeight) since the clamp itself is gated on this class.
+  if (body && body.scrollHeight > 63 + 2) box.classList.add("overflowing");
+  box.onclick = (e)=>{
+    if (e.target.closest("a")) return;
+    const sel = window.getSelection && window.getSelection();
+    if (sel && String(sel).length) return;  // user is selecting text, not toggling
+    box.classList.toggle("collapsed");
+  };
+}
+
+function wirePromptHeader(){
+  document.querySelectorAll(".prompt-pin .pin-card").forEach(wireCollapsible);
+}
+
 function renderTurn(t){
   const main = $("main");
   if (!t){ main.innerHTML = `<div class="empty">No turns yet.</div>`; return; }
-  let html = "";
-  if (t.recap){
-    html += `<div class="recap"><span class="lbl">✦ Recap</span>${esc(t.recap)}</div>`;
+  // A compaction turn is a single collapsible card holding the summary that the
+  // CLI injected when the conversation was continued past its context window.
+  if (t.isCompaction){
+    main.innerHTML =
+      `<details id="b0" class="compaction scroll-target" open><summary>`
+      + `<span class="clbl">✦ Conversation compacted</span>`
+      + `<span class="cnote">— summary of the earlier conversation</span>`
+      + `</summary><div class="cbody text-body">${markdown(t.compaction||t.prompt||"")}</div></details>`;
+    main.scrollTop = 0;
+    setMeta(t);
+    renderToc(t);
+    return;
   }
-  html += `<div class="turn-head"><div class="prompt"><span class="lbl">User · Turn ${t.n}</span>${esc(t.prompt)}</div></div>`;
+  let html = "";
+  // Pinned, collapsible header. Sticks to the top of the main pane: the turn's
+  // recap (if any) and the user message(s), each collapsed to 3 lines with
+  // click-to-expand.
+  html += promptHeader(t);
   html += groupBlocks(t.blocks).map((it)=>{
     if (it.type==="group") return renderGroup(it, t.blocks);
     return renderBlock(it.block, it.idx, t.blocks);
   }).join("");
   main.innerHTML = html;
+  wirePromptHeader();
   main.scrollTop = 0;
-  const m = [];
-  if (t.model) m.push(t.model.split("/").pop());
-  if (t.branch) m.push("⌥ "+t.branch);
-  if (t.ts) m.push(t.ts.replace("T"," ").replace(/\.\d+Z?$/,"").replace("Z",""));
-  $("hmeta").innerHTML = m.map(x=>`<div>${esc(x)}</div>`).join("");
+  setMeta(t);
   renderToc(t);
+}
+
+// Compact one-line-ish meta: clean model name · short date; branch only if it's
+// a real branch (not a detached "HEAD").
+function cleanModel(s){
+  if (!s) return "";
+  let m = String(s).split("/").pop();              // drop bedrock/vertex path
+  m = m.replace(/^(us|eu|apac)\./,"")              // region prefix
+       .replace(/^anthropic\./,"")                 // provider prefix
+       .replace(/^@[a-z0-9-]+\//,"");              // @gateway/ prefix
+  return m;
+}
+function fmtTs(s){
+  if (!s) return "";
+  return String(s).replace("T"," ").replace(/\.\d+Z?$/,"").replace("Z","").replace(/:\d{2}$/,"");
+}
+function setMeta(t){
+  const bits = [];
+  const model = cleanModel(t.model);
+  if (model) bits.push(`<span class="mi model">${esc(model)}</span>`);
+  if (t.branch && t.branch!=="HEAD") bits.push(`<span class="mi">⌥ ${esc(t.branch)}</span>`);
+  if (t.ts) bits.push(`<span class="mi">${esc(fmtTs(t.ts))}</span>`);
+  $("hmeta").innerHTML = bits.join("");
 }
 
 // Right column: a table of contents of the blocks WITHIN the current turn.
 function renderToc(t){
   const toc = $("toc");
+  if (t && t.isCompaction){
+    toc.innerHTML = `<button class="toc-item active" data-aid="b0"><span class="dot think"></span>`
+      + `<span class="tmeta"><span class="tlabel">Compaction</span><span class="tsub">summary</span></span></button>`;
+    toc.querySelector(".toc-item").addEventListener("click", ()=>{
+      const el = $("b0"); if (el){ el.open = true; el.scrollIntoView({behavior:"smooth", block:"start"}); }
+    });
+    return;
+  }
   if (!t || !t.blocks.length){ toc.innerHTML = `<div class="muted" style="padding:8px;font-size:12px">No blocks.</div>`; return; }
   toc.innerHTML = groupBlocks(t.blocks).map((it)=>{
     let kind, label, sub, aid, thought;
@@ -1185,22 +1730,57 @@ function syncTocActive(){
   if (!blocks.length) return;
   const top = main.scrollTop;
   let activeAid = blocks[0].id;
-  blocks.forEach((el)=>{ if (el.offsetTop - 18 <= top) activeAid = el.id; });
-  $("toc").querySelectorAll(".toc-item").forEach((el)=>el.classList.toggle("active", el.dataset.aid===activeAid));
+  blocks.forEach((el)=>{ if (el.offsetTop - 88 <= top) activeAid = el.id; });  // offset for sticky header
+  const toc = $("toc");
+  let activeEl = null;
+  toc.querySelectorAll(".toc-item").forEach((el)=>{
+    const on = el.dataset.aid===activeAid;
+    el.classList.toggle("active", on);
+    if (on) activeEl = el;
+  });
+  // Keep the highlighted TOC entry visible when it scrolls out of the column.
+  // The SCROLL CONTAINER is the <aside class="toc"> wrapper (it has overflow-y),
+  // not the inner #toc div — so adjust the wrapper's scrollTop. Compare against
+  // the wrapper's viewport rect.
+  if (activeEl){
+    const sc = toc.closest("aside.toc") || toc.parentElement || toc;
+    const r = activeEl.getBoundingClientRect(), pr = sc.getBoundingClientRect();
+    if (r.top < pr.top) sc.scrollTop -= (pr.top - r.top) + 8;
+    else if (r.bottom > pr.bottom) sc.scrollTop += (r.bottom - pr.bottom) + 8;
+  }
 }
 
 function renderTurnList(){
   const list = $("turnlist");
   list.innerHTML = TURNS.map((t,idx)=>{
+    if (t.isCompaction){
+      return `<button class="trow compaction-row ${idx===cur?'active':''}" data-i="${idx}">`
+        + `<span class="mn">✦ #${t.n}</span>`
+        + `<div class="msnip">Conversation compacted</div></button>`;
+    }
     const c = t.counts||{};
     const icons = [];
-    if (c.thinking) icons.push(`<span class="i">🧠 ${c.thinking}</span>`);
-    if (c.tool)     icons.push(`<span class="i">🔧 ${c.tool}</span>`);
-    if (c.text)     icons.push(`<span class="i">¶ ${c.text}</span>`);
+    // Tool use first (far left), then thinking (muted ✦), then text responses.
+    if (c.tool)     icons.push(`<span class="i" title="${c.tool} tool use${c.tool>1?'s':''}">🔧 ${c.tool}</span>`);
+    if (c.thinking) icons.push(`<span class="i think" title="${c.thinking} thinking block${c.thinking>1?'s':''}">✦ ${c.thinking}</span>`);
+    if (c.text)     icons.push(`<span class="i" title="${c.text} response block${c.text>1?'s':''}">¶ ${c.text}</span>`);
+    // Follow-up prompts / interrupts that share this turn are listed beneath the
+    // primary snippet, so a grouped turn reads as one unit in the sidebar.
+    const msgs = t.messages||[];
+    let sub = "";
+    if (msgs.length>1){
+      sub = `<div class="msubs">` + msgs.slice(1).map(m=>{
+        if (m.kind==="interrupt") return `<div class="msub interrupt">⎋ interrupted</div>`;
+        const snip = (m.text||"").replace(/\s+/g," ").slice(0,46);
+        return `<div class="msub">↳ ${esc(snip)}</div>`;
+      }).join("") + `</div>`;
+    }
     return `<button class="trow ${idx===cur?'active':''}" data-i="${idx}">`
-      + `<span class="mn">#${t.n}</span>`
+      + `<div class="trow-head"><span class="mn">#${t.n}</span>`
+      + `<div class="micons">${icons.join("")}</div></div>`
       + `<div class="msnip">${esc(t.snippet||'')}</div>`
-      + `<div class="micons">${icons.join("")}</div></button>`;
+      + sub
+      + `</button>`;
   }).join("");
   list.querySelectorAll(".trow").forEach(el=>{
     el.addEventListener("click", ()=>{ go(parseInt(el.dataset.i,10)); });
@@ -1228,19 +1808,153 @@ $("first").onclick = ()=>go(0);
 $("prev").onclick  = ()=>go(cur-1);
 $("next").onclick  = ()=>go(cur+1);
 $("last").onclick  = ()=>go(TURNS.length-1);
-$("toggleSide").onclick = ()=>document.body.classList.toggle("side-collapsed");
+$("toggleSide").onclick = toggleSideCollapsed;
+$("toggleToc").onclick = toggleTocCollapsed;
+$("tocCornerToggle").onclick = toggleTocCollapsed;
+
+// Drag-to-resize the sidebars. Each handle drives a CSS var on <body>; the grid
+// columns read those vars. `edge` is which screen edge the sidebar is anchored
+// to: "left" sidebar grows as the mouse moves right, "right" as it moves left.
+function makeResizer(handle, cssVar, edge, min, max, lsKey){
+  if (!handle) return;
+  handle.addEventListener("mousedown", (e)=>{
+    e.preventDefault();
+    document.body.classList.add("resizing");
+    let last = null;
+    const move = (ev)=>{
+      const w = edge==="left" ? ev.clientX : (window.innerWidth - ev.clientX);
+      const clamped = Math.max(min, Math.min(max, w));
+      last = clamped + "px";
+      document.body.style.setProperty(cssVar, last);
+    };
+    const up = ()=>{
+      document.body.classList.remove("resizing");
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      if (last) saveLayout({[lsKey]: last});  // persist the final width
+    };
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  });
+  // Double-click resets to the default width (and clears the saved override).
+  handle.addEventListener("dblclick", ()=>{
+    document.body.style.removeProperty(cssVar);
+    saveLayout({[lsKey]: null});
+  });
+}
+makeResizer($("sideResizer"), "--side-w", "left", 160, 560, "sideW");
+makeResizer($("tocResizer"), "--toc-w", "right", 150, 520, "tocW");
+
+// Custom tooltips: instant, no native-title delay. One shared element follows
+// the hovered [data-tip] target, clamped to the viewport. Event-delegated so it
+// covers dynamically-rendered elements (prompt cards) too.
+(function tooltips(){
+  const tip = document.createElement("div");
+  tip.id = "tooltip"; document.body.appendChild(tip);
+  let cur = null;
+  function place(el){
+    const txt = el.getAttribute("data-tip"); if (!txt) return;
+    // Text after a "·" separator is the hotkey — color it distinctly.
+    const sep = txt.indexOf("·");
+    if (sep >= 0){
+      tip.innerHTML = esc(txt.slice(0, sep).trim())
+        + ` <span class="tip-key">${esc(txt.slice(sep+1).trim())}</span>`;
+    } else {
+      tip.textContent = txt;
+    }
+    tip.classList.add("show");
+    const r = el.getBoundingClientRect();
+    const tr = tip.getBoundingClientRect();
+    let top = r.bottom + 6, left = r.left + r.width/2 - tr.width/2;
+    if (top + tr.height > window.innerHeight - 4) top = r.top - tr.height - 6;  // flip above
+    left = Math.max(6, Math.min(left, window.innerWidth - tr.width - 6));        // clamp x
+    tip.style.top = top + "px"; tip.style.left = left + "px";
+  }
+  document.addEventListener("mouseover",(e)=>{
+    const el = e.target.closest("[data-tip]");
+    if (el===cur) return;
+    cur = el;
+    if (el) place(el); else tip.classList.remove("show");
+  });
+  document.addEventListener("mouseout",(e)=>{
+    if (cur && !e.relatedTarget?.closest?.("[data-tip]")){ cur=null; tip.classList.remove("show"); }
+  });
+  // Hide on click/scroll so a stale tip doesn't linger after the layout shifts.
+  document.addEventListener("click",()=>{ cur=null; tip.classList.remove("show"); }, true);
+  window.addEventListener("scroll",()=>{ cur=null; tip.classList.remove("show"); }, true);
+})();
+
 $("main").addEventListener("scroll", syncTocActive, {passive:true});
 document.addEventListener("keydown",(e)=>{
   if (e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA") return;
+  // Modifier hotkeys: Alt+M / Alt+R toggle the sidebars, Ctrl+↑/↓ navigate turns.
+  // Use e.code (physical key) for the Alt combos — on macOS, Alt+letter mutates
+  // e.key into a special character ("µ" for Alt+M), so e.key checks never match.
+  if (e.altKey && !e.ctrlKey && !e.metaKey && e.code==="KeyM"){
+    e.preventDefault(); toggleSideCollapsed(); return;
+  }
+  if (e.altKey && !e.ctrlKey && !e.metaKey && e.code==="KeyR"){
+    e.preventDefault(); toggleTocCollapsed(); return;
+  }
+  if (e.ctrlKey && !e.altKey && !e.metaKey && (e.key==="ArrowUp"||e.key==="ArrowDown")){
+    e.preventDefault(); go(cur + (e.key==="ArrowDown" ? 1 : -1)); return;
+  }
+  if (e.altKey || e.ctrlKey || e.metaKey) return;  // leave other modified keys alone
   if (e.key==="ArrowLeft"){ go(cur-1); }
   else if (e.key==="ArrowRight"){ go(cur+1); }
   else if (e.key==="Home"){ go(0); }
   else if (e.key==="End"){ go(TURNS.length-1); }
-  else if (e.key==="["){ document.body.classList.toggle("side-collapsed"); }
+  else if (e.key==="["){ toggleSideCollapsed(); }
+  else if (e.key==="]"){ toggleTocCollapsed(); }
+  else if (e.key==="p"){ const b=$("promptBox"); if (b) b.classList.toggle("collapsed"); }
 });
 
 renderTurnList();
 go(TURNS.length ? TURNS.length-1 : 0);  // open on latest turn
+
+// ---- live auto-refresh (file:// friendly, no server) ----
+// fetch() is blocked under file://, but injecting a <script> is not — the page
+// already loads pending.js that way. We periodically re-inject a cache-busted
+// pending.js and watch window.__SIG__ (the transcript byte offset, which only
+// grows). When it advances: if you're viewing the LATEST turn, reload to follow
+// (tail -f style); otherwise show a dismissible pill so history browsing isn't
+// interrupted. Skipped for bundled snapshots (data is inlined, no sibling file).
+(function liveRefresh(){
+  const linked = !!document.querySelector('script[src="pending.js"]');
+  if (!linked) return;                       // bundled/standalone — nothing to poll
+  const POLL_MS = 2500;
+  let lastSig = (typeof window.__SIG__ === "number") ? window.__SIG__ : 0;
+  let busy = false;
+
+  function pill(){
+    let el = document.getElementById("newpill");
+    if (el) return el;
+    el = document.createElement("button");
+    el.id = "newpill"; el.className = "newpill"; el.textContent = "↑ New content — click to update";
+    el.onclick = ()=>location.reload();
+    document.body.appendChild(el);
+    return el;
+  }
+  function onSig(sig){
+    if (sig === lastSig) return;
+    lastSig = sig;
+    // Follow only when parked on the latest turn AND scrolled near its end,
+    // so an in-progress turn you're reading isn't yanked out from under you.
+    const onLatest = (cur >= TURNS.length - 1);
+    if (onLatest) location.reload();
+    else pill().style.display = "block";
+  }
+  function poll(){
+    if (busy) return; busy = true;
+    const s = document.createElement("script");
+    s.src = "pending.js?_=" + Date.now();
+    s.onload = ()=>{ busy = false; s.remove();
+      onSig((typeof window.__SIG__ === "number") ? window.__SIG__ : lastSig); };
+    s.onerror = ()=>{ busy = false; s.remove(); };
+    document.head.appendChild(s);
+  }
+  setInterval(poll, POLL_MS);
+})();
 """
 
 
@@ -1264,6 +1978,16 @@ def main(argv: list[str]) -> int:
         print(summary["index"])
         return 0
 
+    if args[0] == "--watch":
+        # Detached background child spawned by the Stop hook. Picks up the recap
+        # (and any other late-arriving records) a few minutes after the turn.
+        if len(args) < 2:
+            return 0
+        try:
+            return watch(Path(args[1]).expanduser())
+        except Exception:
+            return 0  # never let the watcher surface an error
+
     if args[0] == "--hook":
         raw = sys.stdin.read()
         try:
@@ -1273,11 +1997,15 @@ def main(argv: list[str]) -> int:
         tp = payload.get("transcript_path")
         if not tp:
             return 0  # nothing to do; never block the hook
+        transcript = Path(tp).expanduser()
         try:
-            summary = process(Path(tp).expanduser())
+            summary = process(transcript)
             print(json.dumps(summary))
         except Exception as e:  # never fail a Stop hook
             print(f"transcript-html: {e}", file=sys.stderr)
+        # Spawn a detached watcher so the recap (which lands minutes later) is
+        # picked up live. Singleton-locked, self-terminating — not a server.
+        spawn_watcher(transcript)
         return 0
 
     flush = False
