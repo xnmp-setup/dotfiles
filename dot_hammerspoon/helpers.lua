@@ -291,8 +291,71 @@ function helpers.resizeWindow(direction)
   end)
 end
 
-helpers.growWindow = helpers.resizeWindow(1)
-helpers.shrinkWindow = helpers.resizeWindow(-1)
+-- Width steps for the top-center position (fraction of screen width).
+-- Includes both default top-center widths (0.50 wide-screen, 0.75 otherwise).
+local TOP_CENTER_WIDTHS = { 0.50, 0.625, 0.75, 0.875, 1.0 }
+
+-- Is the window in a top-center layout? Top-aligned, ~80% height, horizontally
+-- centered. Width-agnostic on purpose so a widened top-center window still
+-- qualifies (used for both resize dispatch and auto-hide detection).
+helpers.isTopCentered = withFocusedWindow(function(win)
+  local f = win:frame()
+  local sf = win:screen():frame()
+  local topAligned = math.abs(f.y - sf.y) <= TOLERANCE
+  local heightMatch = math.abs(f.h - sf.h * 0.80) <= TOLERANCE
+  local winCenter = f.x + (f.w / 2)
+  local screenCenter = sf.x + (sf.w / 2)
+  local centered = math.abs(winCenter - screenCenter) <= TOLERANCE
+  return topAligned and heightMatch and centered
+end)
+
+local function findClosestWidthIndex(ratio)
+  local closest = 1
+  local minDiff = math.abs(ratio - TOP_CENTER_WIDTHS[1])
+  for i, r in ipairs(TOP_CENTER_WIDTHS) do
+    local diff = math.abs(ratio - r)
+    if diff < minDiff then
+      minDiff = diff
+      closest = i
+    end
+  end
+  return closest
+end
+
+-- Step the width of a top-center window, keeping it centered and top-aligned.
+-- direction: 1 to grow, -1 to shrink.
+function helpers.resizeTopCenter(direction)
+  return withFocusedWindow(function(win)
+    local sf = win:screen():frame()
+    local idx = findClosestWidthIndex(helpers.getWindowSizeRatio(win))
+    local newIdx = math.max(1, math.min(#TOP_CENTER_WIDTHS, idx + direction))
+    local w = sf.w * TOP_CENTER_WIDTHS[newIdx]
+    win:setFrame({
+      x = sf.x + (sf.w - w) / 2,
+      y = sf.y,
+      w = w,
+      h = sf.h * 0.80,
+    })
+  end)
+end
+
+-- Top-center windows resize centered; everything else keeps the edge-flush
+-- cycling behaviour.
+function helpers.growWindow()
+  if helpers.isTopCentered() then
+    helpers.resizeTopCenter(1)()
+  else
+    helpers.resizeWindow(1)()
+  end
+end
+
+function helpers.shrinkWindow()
+  if helpers.isTopCentered() then
+    helpers.resizeTopCenter(-1)()
+  else
+    helpers.resizeWindow(-1)()
+  end
+end
 
 -- Detect current window state
 helpers.getCurrentState = withFocusedWindow(function(win)
@@ -454,6 +517,10 @@ helpers.moveRight = withFocusedWindow(function(win)
   end
 end)
 
+-- Pre-move frames saved when a window is sent to top-center, keyed by window id.
+-- Lets ctrl+down restore the window to wherever it was before ctrl+up.
+helpers.preTopCenterFrames = {}
+
 -- "Win+Up": toggle between top-center and maximized
 helpers.toggleTopCenterMaximize = withFocusedWindow(function(win)
   local centerFrame = helpers.getTopCenterFrame(win)
@@ -471,7 +538,19 @@ helpers.toggleTopCenterMaximize = withFocusedWindow(function(win)
   if isTopCenter then
     win:maximize()
   else
+    -- Moving into top-center: remember where the window was so ctrl+down
+    -- can put it back.
+    helpers.preTopCenterFrames[win:id()] = f
     win:setFrame(centerFrame)
+  end
+end)
+
+-- "Win+Down": restore a window to its pre-top-center frame, if one was saved.
+helpers.restorePreTopCenter = withFocusedWindow(function(win)
+  local saved = helpers.preTopCenterFrames[win:id()]
+  if saved then
+    win:setFrame(saved)
+    helpers.preTopCenterFrames[win:id()] = nil
   end
 end)
 

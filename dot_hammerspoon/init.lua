@@ -42,7 +42,7 @@ local quadrantActions = {
 
 local singleArrowActions = {
   Up    = helpers.toggleTopCenterMaximize,
-  Down  = function() end,  -- no single-Down action
+  Down  = helpers.restorePreTopCenter,  -- restore pre-top-center frame
   Left  = helpers.moveWindowLeft,
   Right = helpers.moveWindowRight,
 }
@@ -98,8 +98,7 @@ hs.hotkey.bind({ "cmd", "ctrl" }, "Right", function() handleArrow("Right") end)
 topCenterAutoHide = hs.window.filter.new(true)
 topCenterAutoHide:subscribe(hs.window.filter.windowUnfocused, function(win)
   if not win then return end
-  local centerFrame = helpers.getTopCenterFrame(win)
-  if centerFrame and helpers.framesEqual(win:frame(), centerFrame) then
+  if helpers.isTopCentered(win) then
     local app = win:application()
     if app then app:hide() end
   end
