@@ -972,6 +972,7 @@ INDEX_HTML = r"""<!DOCTYPE html>
       <button class="rail-btn toggle" id="toggleSide" data-tip="Toggle turns sidebar · Alt+M" aria-label="Toggle turns sidebar">
         <svg class="ico" viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="10" rx="2"/><line x1="6.5" y1="3.5" x2="6.5" y2="12.5"/></svg>
       </button>
+      <button class="rail-btn" id="backToLanding" style="display:none" data-tip="Back to sessions" aria-label="Back to sessions">←</button>
       <img class="brand-icon" src="__ICON__" width="18" height="18" alt="" aria-hidden="true">
       <span class="brand-label" id="sessionTitle">Claude Transcript</span>
     </div>
@@ -2457,7 +2458,14 @@ go(_startIdx !== null ? _startIdx : (TURNS.length ? TURNS.length-1 : 0));
     ws.onclose = ()=>{ streaming = false; hideSpinner(); setComposerBusy(false); };
   }
 
+  // Back-to-landing button (chat mode only) — returns to the session list.
+  function wireBack(){
+    const el = document.getElementById("backToLanding");
+    if (el){ el.style.display = ""; el.onclick = ()=>{ location.href = "/?token=" + encodeURIComponent(token); }; }
+  }
+
   document.body.classList.add("chat-enabled");
+  wireBack();
   wireComposer();
   connect();
 })();
