@@ -1003,6 +1003,17 @@ INDEX_HTML = r"""<!DOCTYPE html>
   <svg class="ico" viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="10" rx="2"/><line x1="9.5" y1="3.5" x2="9.5" y2="12.5"/></svg>
 </button>
 
+<!-- Composer: shown only in interactive (chat) mode; the chat client adds
+     .chat-enabled to <body>, which reveals it via CSS. -->
+<div id="composer" class="composer">
+  <div id="perms" class="perms"></div>
+  <div class="composer-row">
+    <textarea id="composerInput" class="composer-input" rows="1" placeholder="Message Claude Code…"></textarea>
+    <button id="composerStop" class="composer-stop" style="display:none" title="Interrupt">■</button>
+    <button id="composerSend" class="composer-send" title="Send · Enter">Send</button>
+  </div>
+</div>
+
 <script src="turns.js?v=__ASSETV__"></script>
 <script src="pending.js?v=__ASSETV__"></script>
 <script src="../../assets/app.js?v=__ASSETV__"></script>
@@ -1329,6 +1340,41 @@ STYLE_CSS = r"""  * { box-sizing:border-box; }
     padding:9px 16px; font-size:12.5px; font-weight:600; cursor:pointer;
     box-shadow:0 4px 16px color-mix(in srgb, var(--bg) 40%, #000); }
   .newpill:hover { filter:brightness(1.08); }
+
+  /* Composer (interactive chat mode only). Hidden unless <body class="chat-enabled">.
+     Pinned to the bottom of the main column; main gets bottom padding so the last
+     turn content isn't hidden behind it. */
+  .composer { display:none; }
+  body.chat-enabled .composer {
+    display:block; position:fixed; bottom:0; z-index:40;
+    left:var(--side-w); right:var(--toc-w);
+    background:linear-gradient(to top, var(--bg) 78%, transparent);
+    padding:10px 28px 14px;
+  }
+  body.chat-enabled.side-collapsed .composer { left:var(--rail-w, 48px); }
+  body.chat-enabled.toc-collapsed .composer { right:0; }
+  body.chat-enabled main { padding-bottom:120px; }
+  .composer-row { display:flex; align-items:flex-end; gap:8px; max-width:900px; margin:0 auto;
+    background:var(--panel); border:1px solid color-mix(in srgb, var(--user) 35%, var(--border));
+    border-radius:12px; padding:8px 8px 8px 14px; }
+  .composer-input { flex:1; resize:none; border:none; outline:none; background:transparent;
+    color:var(--fg); font:inherit; font-size:15px; line-height:1.5; max-height:200px; padding:4px 0; }
+  .composer-input::placeholder { color:var(--muted); }
+  .composer-send { flex:0 0 auto; border:none; border-radius:8px; cursor:pointer;
+    background:var(--accent); color:var(--bg); font-weight:600; font-size:13px; padding:8px 16px; }
+  .composer-send:disabled { opacity:.5; cursor:default; }
+  .composer-stop { flex:0 0 auto; border:1px solid var(--border); border-radius:8px; cursor:pointer;
+    background:var(--panel2); color:var(--fg); font-size:12px; padding:8px 12px; }
+
+  /* Permission approve/deny cards — stacked above the input, reuse .aq-card. */
+  .perms { max-width:900px; margin:0 auto; display:flex; flex-direction:column; gap:8px; }
+  .perm-card { margin-bottom:6px; }
+  .perm-input { font-family:var(--mono); font-size:12px; color:var(--muted); white-space:pre-wrap;
+    word-break:break-word; margin:4px 0 10px; max-height:120px; overflow:auto; }
+  .perm-actions { display:flex; gap:8px; justify-content:flex-end; }
+  .perm-btn { border:none; border-radius:7px; cursor:pointer; font-size:12.5px; font-weight:600; padding:6px 16px; }
+  .perm-btn.allow { background:var(--accent); color:var(--bg); }
+  .perm-btn.deny { background:var(--panel2); color:var(--fg); border:1px solid var(--border); }
 
   /* Custom tooltip: shows instantly (no native title delay). A single shared
      element is positioned by JS near the hovered [data-tip] target. */
@@ -2151,6 +2197,10 @@ go(_startIdx !== null ? _startIdx : (TURNS.length ? TURNS.length-1 : 0));
   function onSig(sig){
     if (sig === lastSig) return;
     lastSig = sig;
+    // When the interactive chat client is driving updates over the WebSocket,
+    // it owns rendering — don't also reload from the polled file (that would
+    // yank a live-streaming turn out from under the user).
+    if (window.__CHAT_ACTIVE__) return;
     // Follow only when parked on the latest turn AND scrolled near its end,
     // so an in-progress turn you're reading isn't yanked out from under you.
     const onLatest = (cur >= TURNS.length - 1);
@@ -2172,6 +2222,185 @@ go(_startIdx !== null ? _startIdx : (TURNS.length ? TURNS.length-1 : 0));
     document.head.appendChild(s);
   }
   setInterval(poll, POLL_MS);
+})();
+
+// ---- interactive chat client (only active when served by claude-code-web) ---
+// Detected by a ?token= query param. Connects a WebSocket to the local server,
+// sends typed messages, and streams the assistant's reply token-by-token into a
+// live turn. The live turn uses the SAME block shape as finalized turns, so it
+// renders through the existing renderTurn/renderBlock/renderToc — no new
+// block-rendering code. When chat is active, the file-poll auto-reload is
+// suppressed (the WS drives updates instead).
+(function chat(){
+  const params = new URLSearchParams(location.search);
+  const token = params.get("token");
+  if (!token) return;  // static/offline viewer — no chat
+  // sessionId from the path: /sessions/<sid>/index.html
+  const m = location.pathname.match(/\/sessions\/([^/]+)\//);
+  const sessionId = m ? m[1] : null;
+  if (!sessionId) return;
+  window.__CHAT_ACTIVE__ = true;   // liveRefresh checks this to skip auto-reload
+
+  // A live, mutable turn whose `blocks` mirror what AssistantTurn produces
+  // server-side. Mapped from WS events; rendered via the existing renderTurn.
+  function newLiveTurn(promptText){
+    return {
+      n: (TURNS.length ? TURNS[TURNS.length-1].n + 1 : 1),
+      ts: "", prompt: promptText, snippet: promptText.slice(0,80),
+      branch: "", cwd: "", model: "", recap: "",
+      isCompaction: false, compaction: "",
+      messages: [{kind:"prompt", text:promptText}],
+      blocks: [], counts: {thinking:0, tool:0, text:0},
+      _toolIndex: {}, _live: true,
+    };
+  }
+  function recount(t){
+    const c = {thinking:0, tool:0, text:0};
+    for (const b of t.blocks) if (b.k in c) c[b.k]++;
+    t.counts = c;
+  }
+  function lastBlock(t){ return t.blocks.length ? t.blocks[t.blocks.length-1] : null; }
+
+  // Apply one WS event to the live turn's blocks (mirrors AssistantTurn.process).
+  function applyEvent(t, ev){
+    switch(ev.type){
+      case "text_block_start": t.blocks.push({k:"text", md:""}); break;
+      case "text_delta": {
+        const b = lastBlock(t);
+        if (b && b.k==="text") b.md += ev.text; else t.blocks.push({k:"text", md:ev.text});
+        break;
+      }
+      case "assistant_text": t.blocks.push({k:"text", md:ev.text}); break;
+      case "thinking_block_start": t.blocks.push({k:"thinking", text:""}); break;
+      case "thinking_delta": {
+        const b = lastBlock(t);
+        if (b && b.k==="thinking") b.text += ev.thinking; else t.blocks.push({k:"thinking", text:ev.thinking});
+        break;
+      }
+      case "thinking": t.blocks.push({k:"thinking", text:ev.thinking}); break;
+      case "tool_use": {
+        t._toolIndex[ev.id] = t.blocks.length;
+        t.blocks.push({k:"tool", name:ev.name, input:{}, result:null, resultStructured:null});
+        break;
+      }
+      case "tool_input": {
+        const i = t._toolIndex[ev.tool_use_id];
+        if (i!=null && t.blocks[i]) t.blocks[i].input = ev.input || {};
+        break;
+      }
+      case "tool_result": {
+        const i = t._toolIndex[ev.tool_use_id];
+        if (i!=null && t.blocks[i]) t.blocks[i].result = ev.content;
+        break;
+      }
+      case "result": t.model = t.model || ""; break;
+    }
+    recount(t);
+  }
+
+  // Throttle re-renders to one per animation frame while deltas stream in.
+  let pendingRender = false;
+  function scheduleRender(){
+    if (pendingRender) return;
+    pendingRender = true;
+    requestAnimationFrame(()=>{
+      pendingRender = false;
+      if (cur === TURNS.length - 1) renderTurn(TURNS[cur]);  // only if viewing the live turn
+    });
+  }
+
+  let live = null;       // the in-flight live turn (also the last element of TURNS)
+  let streaming = false;
+  let ws = null;
+
+  function send(text){
+    if (!text.trim() || streaming || !ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({type:"user_message", content:text}));
+  }
+
+  function onEvent(ev){
+    switch(ev.type){
+      case "user_echo": {
+        live = newLiveTurn(ev.content);
+        TURNS.push(live);
+        streaming = true;
+        renderTurnList();
+        go(TURNS.length - 1);
+        setComposerBusy(true);
+        break;
+      }
+      case "permission_request": showPermission(ev); break;
+      case "turn_complete":
+      case "error": {
+        if (ev.type === "error") console.error("chat error:", ev.message);
+        streaming = false;
+        if (live){ delete live._live; live = null; }
+        setComposerBusy(false);
+        scheduleRender();
+        break;
+      }
+      default:
+        if (live){ applyEvent(live, ev); scheduleRender(); }
+    }
+  }
+
+  // -- permission approve/deny card (reuses .aq card styling) ----------------
+  function showPermission(ev){
+    const host = document.getElementById("perms");
+    if (!host) return;
+    const card = document.createElement("div");
+    card.className = "perm-card aq-card";
+    const inputPreview = (()=>{
+      try { return JSON.stringify(ev.input); } catch(e){ return String(ev.input); }
+    })().slice(0, 300);
+    card.innerHTML =
+      `<div class="aq-header">Permission · ${esc(ev.tool)}</div>`
+      + `<div class="perm-input">${esc(inputPreview)}</div>`
+      + `<div class="perm-actions">`
+      + `<button class="perm-btn deny">Deny</button>`
+      + `<button class="perm-btn allow">Allow</button></div>`;
+    const answer = (allow)=>{
+      if (ws && ws.readyState === WebSocket.OPEN)
+        ws.send(JSON.stringify({type:"permission_answer", id:ev.id, allow}));
+      card.remove();
+    };
+    card.querySelector(".allow").onclick = ()=>answer(true);
+    card.querySelector(".deny").onclick = ()=>answer(false);
+    host.appendChild(card);
+  }
+
+  // -- composer --------------------------------------------------------------
+  function setComposerBusy(busy){
+    const ta = document.getElementById("composerInput");
+    const btn = document.getElementById("composerSend");
+    if (ta) ta.disabled = busy;
+    if (btn) btn.disabled = busy;
+    const stop = document.getElementById("composerStop");
+    if (stop) stop.style.display = busy ? "" : "none";
+    if (!busy && ta){ ta.value = ""; ta.focus(); }
+  }
+  function wireComposer(){
+    const ta = document.getElementById("composerInput");
+    const btn = document.getElementById("composerSend");
+    const stop = document.getElementById("composerStop");
+    if (!ta || !btn) return;
+    btn.onclick = ()=>send(ta.value);
+    ta.addEventListener("keydown", (e)=>{
+      if (e.key === "Enter" && !e.shiftKey){ e.preventDefault(); send(ta.value); }
+    });
+    if (stop) stop.onclick = ()=>{ if (ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify({type:"interrupt"})); };
+  }
+
+  function connect(){
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    ws = new WebSocket(`${proto}//${location.host}/api/ws/${sessionId}?token=${encodeURIComponent(token)}`);
+    ws.onmessage = (e)=>{ try { onEvent(JSON.parse(e.data)); } catch(err){ console.error(err); } };
+    ws.onclose = ()=>{ streaming = false; setComposerBusy(false); };
+  }
+
+  document.body.classList.add("chat-enabled");
+  wireComposer();
+  connect();
 })();
 """
 
