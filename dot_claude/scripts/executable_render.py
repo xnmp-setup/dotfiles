@@ -988,7 +988,7 @@ INDEX_HTML = r"""<!DOCTYPE html>
   <div id="turnlist"></div>
   <div class="resizer" id="sideResizer" data-tip="Drag to resize · double-click to reset"></div>
 </aside>
-<main id="main"></main>
+<main id="main" tabindex="-1"></main>
 <aside class="toc">
   <div class="toc-head">
     <span class="toc-title">In this turn</span>
@@ -1086,6 +1086,7 @@ STYLE_CSS = r"""  * { box-sizing:border-box; }
   body.side-collapsed .rail-btn { width:32px; }
 
   main { grid-area:main; overflow-y:auto; padding:0 28px 80px; }
+  main:focus { outline:none; }  /* programmatically focused for keyboard scroll; no ring */
   /* Pinned header: sticks to the top of the scrolling main pane. Holds the
      recap card and the prompt card, stacked. */
   .prompt-pin { position:sticky; top:0; z-index:20; background:var(--bg);
@@ -2007,6 +2008,11 @@ function go(i){
   syncNav();
   syncTocActive();
   syncUrl();
+  // Move focus to the scroll container so Up/Down/PageUp/PageDown scroll the
+  // turn body immediately — without this, after arrow-key turn nav the keyboard
+  // focus stays on <body> and those keys do nothing until you click main.
+  // preventScroll: we've already reset scrollTop in renderTurn.
+  $("main").focus({preventScroll:true});
 }
 
 $("first").onclick = ()=>go(0);
