@@ -14,6 +14,7 @@ Entrypoints
 -----------
   render.py <sessionId|path>      incremental build/refresh (on-demand CLI)
   render.py --flush <session>     also emit the in-progress (latest) turn
+  render.py --rebuild <session>   discard turns.js + state, re-render from 0
   render.py --hook                read hook JSON from stdin (Stop hook)
   render.py --open <session>      print path to index.html (for opening)
 
@@ -62,6 +63,7 @@ _SIDE_CHANNEL_TAGS = (
     "<bash-input>", "<bash-stdout>", "<bash-stderr>",
     "<system-reminder>", "<command-message>", "<command-name>",
     "<command-args>", "<local-command-stdout>", "<local-command-caveat>",
+    "<task-notification>",
 )
 
 
@@ -69,6 +71,24 @@ def is_side_channel(text: str) -> bool:
     """True if a user string message is a CLI side-channel, not a typed prompt."""
     s = text.lstrip()
     return s.startswith(_SIDE_CHANNEL_TAGS)
+
+
+def queued_prompt_text(rec: dict) -> str:
+    """Text of a message the user typed while the assistant was still working.
+
+    The CLI does NOT re-emit such a message as a `user` record — its only trace
+    is a `queue-operation`/`enqueue` record carrying the typed text in `content`.
+    Returns the text for a real typed enqueue, or '' for anything else (the
+    `popAll`/`remove` lifecycle records, or harness-injected enqueues like a
+    `<task-notification>` side-channel)."""
+    if rec.get("type") != "queue-operation" or rec.get("operation") != "enqueue":
+        return ""
+    content = rec.get("content")
+    if not isinstance(content, str) or not content.strip():
+        return ""
+    if is_side_channel(content):
+        return ""
+    return content
 
 
 def is_compaction(rec: dict) -> bool:
@@ -548,14 +568,25 @@ def build_bundle(out_dir: Path, session_id: str, dest: Path) -> Path:
     return dest
 
 
-def process(transcript: Path, flush: bool = False, write_assets: bool = True) -> dict:
+def process(transcript: Path, flush: bool = False, write_assets: bool = True,
+            rebuild: bool = False) -> dict:
     """Core incremental step. Returns a small summary dict.
 
     write_assets=False (used by the background watcher) skips rewriting the
     shared CSS/JS and index.html, so a watcher running stale code can't clobber
-    assets written by a newer invocation."""
+    assets written by a newer invocation.
+
+    rebuild=True discards this session's accumulated output (turns.js + state)
+    and regenerates every turn from byte 0. Needed because the normal path is
+    append-only: a code change to the turn shape only affects turns rendered
+    after it, so old sessions need a full re-render to pick it up."""
     session_id = session_id_of(transcript)
     out_dir = OUT_ROOT / session_id
+    if rebuild:
+        # Drop the append-only turn log and the incremental cursor so the
+        # scaffold below recreates an empty turns.js and we re-read from 0.
+        for stale in ("turns.js", "state.json"):
+            (out_dir / stale).unlink(missing_ok=True)
     ensure_scaffold(out_dir, session_id, write_assets=write_assets)
     state = load_state(out_dir)
 
@@ -576,6 +607,23 @@ def process(transcript: Path, flush: bool = False, write_assets: bool = True) ->
             # (A later /rename emits a fresh custom-title, handled above.)
             if not title:
                 title = rec["aiTitle"].strip()
+
+        qtext = queued_prompt_text(rec)
+        if qtext:
+            # A message the user typed while the assistant was working. It is
+            # answered within the in-flight turn, so it belongs to that turn —
+            # not as a new turn. (No `user` record is ever emitted for it; the
+            # enqueue record is its only trace.)
+            if open_buf is not None and not open_buf.is_compaction:
+                # Sidebar entry: lists the follow-up under the turn's snippet.
+                open_buf.messages.append(
+                    {"kind": "prompt", "text": qtext.strip(), "queued": True}
+                )
+                # Inline block: render it in the main stream at the point it was
+                # injected (between the work before and after), so it reads in
+                # chronological order rather than only in the pinned header.
+                open_buf.blocks.append({"k": "queued", "text": qtext.strip()})
+            continue
 
         if is_compaction(rec):
             # A compaction summary ends the prior turn and becomes its own
@@ -1079,6 +1127,16 @@ STYLE_CSS = r"""  * { box-sizing:border-box; }
 
   .block { margin:12px 0; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--panel); }
   .block.text { border:none; background:none; padding:2px 2px; }
+  /* A message the user queued mid-turn, shown inline at its injection point.
+     User-tinted (like the prompt card) so it reads as the user speaking, with
+     an accent ⏳ tag. */
+  .block.queued-block { border-color:color-mix(in srgb, var(--user) 35%, var(--border));
+    border-left:3px solid var(--user); background:color-mix(in srgb, var(--user) 10%, var(--panel));
+    padding:12px 16px; }
+  .block.queued-block > .pmsg-tag { color:var(--accent);
+    border:1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+    display:inline-block; font-size:10px; font-family:var(--mono); border-radius:9px;
+    padding:0 6px; margin-bottom:8px; }
   .text-body { font-size:14px; line-height:1.62; }
   .text-body h1,.text-body h2,.text-body h3,.text-body h4,.text-body h5,.text-body h6 {
     margin:.7em 0 .35em; line-height:1.25; color:var(--accent2); font-weight:650; }
@@ -1199,6 +1257,7 @@ STYLE_CSS = r"""  * { box-sizing:border-box; }
   .trow .msub { font-size:10.5px; color:var(--muted); line-height:1.3; margin:2px 0;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .trow .msub.interrupt { color:color-mix(in srgb, var(--tool) 55%, var(--muted)); font-style:italic; }
+  .trow .msub.queued { color:color-mix(in srgb, var(--accent) 55%, var(--muted)); }
 
   /* Right: table of contents WITHIN the current turn */
   aside.toc { grid-area:toc; background:var(--panel); border-left:1px solid var(--border);
@@ -1221,6 +1280,7 @@ STYLE_CSS = r"""  * { box-sizing:border-box; }
   .toc-item .dot.think { background:var(--think); }
   .toc-item .dot.tool { background:var(--tool); }
   .toc-item .dot.text { background:var(--accent); }
+  .toc-item .dot.queued { background:var(--user); }
   .toc-item { align-items:flex-start; }
   .tmeta { display:flex; flex-direction:column; gap:1px; overflow:hidden; }
   .toc-item .tlabel { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:var(--mono); font-size:11.5px; color:var(--fg); }
@@ -1463,6 +1523,7 @@ function tocLabel(b, idx){
   if (b.k==="text") return {kind:"text", label:"Response", sub:""};
   if (b.k==="thinking") return {kind:"think", label:"Thinking", sub:""};
   if (b.k==="tool") return {kind:"tool", label:b.name||"Tool", sub:toolAnnotation(b)};
+  if (b.k==="queued") return {kind:"queued", label:"Queued msg", sub:(b.text||"").replace(/\s+/g," ").slice(0,40)};
   return {kind:"text", label:"Block", sub:""};
 }
 
@@ -1518,6 +1579,10 @@ function renderBlock(b, idx, blocks){
   // Thinking blocks are not rendered in the main section at all; their presence
   // is surfaced as a marker on the action that follows.
   if (b.k==="thinking") return "";
+  // A message the user queued mid-turn — rendered inline at its injection point
+  // as a user bubble, distinct from assistant blocks.
+  if (b.k==="queued") return `<div id="${aid}" class="block queued-block scroll-target">`
+    + `<span class="pmsg-tag">⏳ queued</span><div class="text-body">${markdown(b.text||"")}</div></div>`;
   const thought = precededByThink(blocks, idx);
   const mark = thought ? THINK_MARK : "";
   if (b.k==="text") return `<div id="${aid}" class="block text scroll-target${thought?" thought":""}">${mark}<div class="text-body">${markdown(b.md)}</div></div>`;
@@ -1528,8 +1593,8 @@ function renderBlock(b, idx, blocks){
     if (b.input!==null && b.input!==undefined) body += valueBlock("Input", b.input);
     if (res!==null && res!==undefined) body += valueBlock("Result", res);
     if (!body) body = `<div class="muted" style="padding:6px 0">(no payload)</div>`;
-    return `<details id="${aid}" class="block coll tool scroll-target"><summary><span class="badge tool">TOOL</span>`
-      + `<span class="sum-name">${esc(b.name)}</span>`
+    // The tool name IS the badge — no separate "TOOL" label (we know it's a tool).
+    return `<details id="${aid}" class="block coll tool scroll-target"><summary><span class="badge tool">${esc(b.name)}</span>`
       + (extra?`<span class="sum-extra">${esc(extra)}</span>`:"")
       + (mark?`<span class="spacer-mark"></span>${mark}`:"")
       + `</summary><div class="block-body">${body}</div></details>`;
@@ -1569,8 +1634,8 @@ function renderGroup(g, blocks){
 // `bodyId` lets wirePinCards() find the body to measure overflow; `extraCls`
 // lets the body opt into markdown styling (text-body) for the recap.
 function pinCard(opts){
-  const {label, bodyHtml, bodyId, boxId, extraCls=""} = opts;
-  return `<div class="prompt collapsed pin-card" id="${boxId}" data-tip="Expand / collapse · p">`
+  const {label, bodyHtml, bodyId, boxId, extraCls="", collapsed=true} = opts;
+  return `<div class="prompt${collapsed?" collapsed":""} pin-card" id="${boxId}" data-tip="Expand / collapse · p">`
     + `<div class="prompt-head">`
     + `<span class="lbl">${label}</span><span class="chev">▶</span></div>`
     + `<div class="pmsgs ${extraCls}" id="${bodyId}">${bodyHtml}</div>`
@@ -1582,9 +1647,12 @@ function pinCard(opts){
 // the primary prompt plus any folded-in follow-ups and interrupts; falls back
 // to the legacy single `prompt` field.
 function promptHeader(t){
-  const msgs = (t.messages && t.messages.length)
+  const all = (t.messages && t.messages.length)
     ? t.messages
     : [{kind:"prompt", text:t.prompt||""}];
+  // Queued messages are rendered inline in the block stream at their injection
+  // point, not in this pinned header — exclude them here to avoid duplication.
+  const msgs = all.filter(m=>!m.queued);
   const rows = msgs.map(m=>{
     if (m.kind==="interrupt")
       return `<div class="pmsg interrupt"><span class="pmsg-tag">⎋ interrupted</span></div>`;
@@ -1603,6 +1671,10 @@ function promptHeader(t){
   html += pinCard({
     label: `User · Turn ${t.n}${extra}`,
     bodyHtml: rows, bodyId: "pmsgs", boxId: "promptBox",
+    // Start expanded when the header holds more than the primary prompt (e.g.
+    // interrupts or resent prompts), so they aren't hidden under the 3-line
+    // collapse. Queued msgs render inline, so they don't count here.
+    collapsed: msgs.length <= 1,
   });
   html += `</div>`;
   return html;
@@ -1772,7 +1844,8 @@ function renderTurnList(){
       sub = `<div class="msubs">` + msgs.slice(1).map(m=>{
         if (m.kind==="interrupt") return `<div class="msub interrupt">⎋ interrupted</div>`;
         const snip = (m.text||"").replace(/\s+/g," ").slice(0,46);
-        return `<div class="msub">↳ ${esc(snip)}</div>`;
+        const mark = m.queued ? "⏳" : "↳";
+        return `<div class="msub${m.queued?' queued':''}">${mark} ${esc(snip)}</div>`;
       }).join("") + `</div>`;
     }
     return `<button class="trow ${idx===cur?'active':''}" data-i="${idx}">`
@@ -2010,6 +2083,7 @@ def main(argv: list[str]) -> int:
 
     flush = False
     open_only = False
+    rebuild = False
     bundle_dest: str | None = None
     rest = []
     skip = set()
@@ -2020,6 +2094,8 @@ def main(argv: list[str]) -> int:
             flush = True
         elif a == "--open":
             open_only = True
+        elif a in ("--rebuild", "-r"):
+            rebuild = True
         elif a == "--bundle":
             bundle_dest = ""  # signal: bundle, dest decided below
             # optional next arg is the destination path (if it isn't a flag)
@@ -2030,11 +2106,12 @@ def main(argv: list[str]) -> int:
             rest.append(a)
 
     if not rest:
-        print("usage: render.py <sessionId|path> [--flush] [--open] [--bundle [dest.html]]", file=sys.stderr)
+        print("usage: render.py <sessionId|path> [--flush] [--open] [--rebuild] [--bundle [dest.html]]", file=sys.stderr)
         return 2
 
     transcript = resolve_transcript(rest[0])
-    summary = process(transcript, flush=True if bundle_dest is not None else flush)
+    summary = process(transcript, flush=True if bundle_dest is not None else flush,
+                      rebuild=rebuild)
 
     if bundle_dest is not None:
         session_id = summary["session_id"]
