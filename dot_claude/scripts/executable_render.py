@@ -1376,6 +1376,16 @@ STYLE_CSS = r"""  * { box-sizing:border-box; }
   .perm-btn.allow { background:var(--accent); color:var(--bg); }
   .perm-btn.deny { background:var(--panel2); color:var(--fg); border:1px solid var(--border); }
 
+  /* Working spinner — shown under the live turn while the assistant streams
+     (covers the gap when only hidden thinking blocks exist so far). */
+  .chat-spinner { display:flex; align-items:center; gap:9px; margin:14px 2px; color:var(--muted);
+    font-size:14px; }
+  .chat-spinner .spin-dot { width:11px; height:11px; border-radius:50%;
+    border:2px solid color-mix(in srgb, var(--accent) 35%, transparent);
+    border-top-color:var(--accent); animation:chat-spin .7s linear infinite; }
+  .chat-spinner .spin-label { font-style:italic; }
+  @keyframes chat-spin { to { transform:rotate(360deg); } }
+
   /* Custom tooltip: shows instantly (no native title delay). A single shared
      element is positioned by JS near the hovered [data-tip] target. */
   #tooltip { position:fixed; z-index:200; pointer-events:none; opacity:0;
@@ -2143,10 +2153,11 @@ makeResizer($("tocResizer"), "--toc-w", "right", 150, 520, "tocW");
 
 $("main").addEventListener("scroll", syncTocActive, {passive:true});
 document.addEventListener("keydown",(e)=>{
-  if (e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA") return;
-  // Modifier hotkeys: Alt+M / Alt+R toggle the sidebars, Ctrl+↑/↓ navigate turns.
-  // Use e.code (physical key) for the Alt combos — on macOS, Alt+letter mutates
-  // e.key into a special character ("µ" for Alt+M), so e.key checks never match.
+  // Modifier hotkeys work everywhere, including while the composer is focused
+  // (they don't interfere with typing): Alt+M / Alt+R toggle the sidebars,
+  // Ctrl+↑/↓ navigate turns. Use e.code (physical key) for the Alt combos —
+  // on macOS, Alt+letter mutates e.key into a special character ("µ" for
+  // Alt+M), so e.key checks never match.
   if (e.altKey && !e.ctrlKey && !e.metaKey && e.code==="KeyM"){
     e.preventDefault(); toggleSideCollapsed(); return;
   }
@@ -2156,6 +2167,9 @@ document.addEventListener("keydown",(e)=>{
   if (e.ctrlKey && !e.altKey && !e.metaKey && (e.key==="ArrowUp"||e.key==="ArrowDown")){
     e.preventDefault(); go(cur + (e.key==="ArrowDown" ? 1 : -1)); return;
   }
+  // Bare-key shortcuts (arrows, [, ], p) would clobber typing — skip them when
+  // an input/textarea is focused.
+  if (e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA") return;
   if (e.altKey || e.ctrlKey || e.metaKey) return;  // leave other modified keys alone
   if (e.key==="ArrowLeft"){ go(cur-1); }
   else if (e.key==="ArrowRight"){ go(cur+1); }
@@ -2298,6 +2312,35 @@ go(_startIdx !== null ? _startIdx : (TURNS.length ? TURNS.length-1 : 0));
     recount(t);
   }
 
+  // Working spinner. renderBlock hides thinking blocks, so a turn that is only
+  // thinking (no text/tool yet) would show blank — the spinner fills that gap
+  // and signals progress. Shown while streaming; removed when the turn ends.
+  const _SPIN_WORDS = ["Clauding", "Combobulating", "Thinking", "Cogitating", "Ruminating", "Pondering"];
+  let _spinWord = 0, _spinTimer = null;
+  function showSpinner(){
+    if (cur !== TURNS.length - 1) return;   // only under the live turn
+    const main = document.getElementById("main");
+    if (!main) return;
+    let el = document.getElementById("chat-spinner");
+    if (!el){
+      el = document.createElement("div");
+      el.id = "chat-spinner"; el.className = "chat-spinner";
+      el.innerHTML = `<span class="spin-dot"></span><span class="spin-label"></span>`;
+      _spinTimer = setInterval(()=>{
+        _spinWord = (_spinWord + 1) % _SPIN_WORDS.length;
+        const lbl = document.querySelector("#chat-spinner .spin-label");
+        if (lbl) lbl.textContent = _SPIN_WORDS[_spinWord] + "…";
+      }, 2200);
+    }
+    el.querySelector(".spin-label").textContent = _SPIN_WORDS[_spinWord] + "…";
+    main.appendChild(el);   // keep it last, after the streamed blocks
+  }
+  function hideSpinner(){
+    if (_spinTimer){ clearInterval(_spinTimer); _spinTimer = null; }
+    const el = document.getElementById("chat-spinner");
+    if (el) el.remove();
+  }
+
   // Throttle re-renders to one per animation frame while deltas stream in.
   let pendingRender = false;
   function scheduleRender(){
@@ -2305,7 +2348,10 @@ go(_startIdx !== null ? _startIdx : (TURNS.length ? TURNS.length-1 : 0));
     pendingRender = true;
     requestAnimationFrame(()=>{
       pendingRender = false;
-      if (cur === TURNS.length - 1) renderTurn(TURNS[cur]);  // only if viewing the live turn
+      if (cur === TURNS.length - 1){
+        renderTurn(TURNS[cur]);            // only if viewing the live turn
+        if (streaming) showSpinner();      // renderTurn rebuilds main, so re-add
+      }
     });
   }
 
@@ -2316,6 +2362,15 @@ go(_startIdx !== null ? _startIdx : (TURNS.length ? TURNS.length-1 : 0));
   function send(text){
     if (!text.trim() || streaming || !ws || ws.readyState !== WebSocket.OPEN) return;
     ws.send(JSON.stringify({type:"user_message", content:text}));
+    const ta = document.getElementById("composerInput");
+    if (ta){ ta.value = ""; autoGrow(ta); }   // reset box immediately on send
+  }
+
+  // Grow the textarea with its content, capped so it never eats the viewport.
+  function autoGrow(ta){
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = Math.min(ta.scrollHeight, 200) + "px";
   }
 
   function onEvent(ev){
@@ -2326,6 +2381,7 @@ go(_startIdx !== null ? _startIdx : (TURNS.length ? TURNS.length-1 : 0));
         streaming = true;
         renderTurnList();
         go(TURNS.length - 1);
+        showSpinner();
         setComposerBusy(true);
         break;
       }
@@ -2334,6 +2390,7 @@ go(_startIdx !== null ? _startIdx : (TURNS.length ? TURNS.length-1 : 0));
       case "error": {
         if (ev.type === "error") console.error("chat error:", ev.message);
         streaming = false;
+        hideSpinner();
         if (live){ delete live._live; live = null; }
         setComposerBusy(false);
         scheduleRender();
@@ -2377,7 +2434,7 @@ go(_startIdx !== null ? _startIdx : (TURNS.length ? TURNS.length-1 : 0));
     if (btn) btn.disabled = busy;
     const stop = document.getElementById("composerStop");
     if (stop) stop.style.display = busy ? "" : "none";
-    if (!busy && ta){ ta.value = ""; ta.focus(); }
+    if (!busy && ta) ta.focus();   // value already cleared on send()
   }
   function wireComposer(){
     const ta = document.getElementById("composerInput");
@@ -2385,9 +2442,11 @@ go(_startIdx !== null ? _startIdx : (TURNS.length ? TURNS.length-1 : 0));
     const stop = document.getElementById("composerStop");
     if (!ta || !btn) return;
     btn.onclick = ()=>send(ta.value);
+    ta.addEventListener("input", ()=>autoGrow(ta));
     ta.addEventListener("keydown", (e)=>{
       if (e.key === "Enter" && !e.shiftKey){ e.preventDefault(); send(ta.value); }
     });
+    autoGrow(ta);
     if (stop) stop.onclick = ()=>{ if (ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify({type:"interrupt"})); };
   }
 
@@ -2395,7 +2454,7 @@ go(_startIdx !== null ? _startIdx : (TURNS.length ? TURNS.length-1 : 0));
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
     ws = new WebSocket(`${proto}//${location.host}/api/ws/${sessionId}?token=${encodeURIComponent(token)}`);
     ws.onmessage = (e)=>{ try { onEvent(JSON.parse(e.data)); } catch(err){ console.error(err); } };
-    ws.onclose = ()=>{ streaming = false; setComposerBusy(false); };
+    ws.onclose = ()=>{ streaming = false; hideSpinner(); setComposerBusy(false); };
   }
 
   document.body.classList.add("chat-enabled");
