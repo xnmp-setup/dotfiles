@@ -1094,7 +1094,7 @@ STYLE_CSS = r"""  * { box-sizing:border-box; }
   .prompt {
     background:color-mix(in srgb, var(--user) 12%, var(--panel)); border:1px solid color-mix(in srgb, var(--user) 35%, var(--border));
     border-left:3px solid var(--user); border-radius:8px; overflow:hidden;
-    font-size:15px; line-height:1.5;
+    font-size:16px; line-height:1.5;
   }
   .prompt { cursor:pointer; }
   .prompt-head { display:flex; align-items:center; gap:8px; padding:14px 18px 9px; }
@@ -1138,7 +1138,7 @@ STYLE_CSS = r"""  * { box-sizing:border-box; }
     border:1px solid color-mix(in srgb, var(--accent) 40%, transparent);
     display:inline-block; font-size:10px; font-family:var(--mono); border-radius:9px;
     padding:0 6px; margin-bottom:8px; }
-  .text-body { font-size:15px; line-height:1.62; }
+  .text-body { font-size:16px; line-height:1.62; }
   .text-body h1,.text-body h2,.text-body h3,.text-body h4,.text-body h5,.text-body h6 {
     margin:.7em 0 .35em; line-height:1.25; color:var(--accent2); font-weight:650; }
   .text-body h1 { font-size:1.35em; color:var(--accent); }
@@ -1261,7 +1261,7 @@ STYLE_CSS = r"""  * { box-sizing:border-box; }
   aside.side { grid-area:side; background:var(--panel); border-right:1px solid var(--border);
     overflow:hidden; display:flex; flex-direction:column; }
   .side-head { flex:0 0 auto; }
-  .side-title { flex:0 0 auto; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.08em; padding:10px 10px 8px; }
+  .side-title { flex:0 0 auto; color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.08em; padding:10px 10px 8px; }
   #turnlist { flex:1 1 auto; overflow-y:auto; overflow-x:hidden; padding:0 8px 10px; }
   .trow { display:block; width:100%; text-align:left; background:none; border:1px solid transparent;
     border-radius:6px; padding:8px 9px; cursor:pointer; margin-bottom:4px; color:var(--fg); }
@@ -1269,16 +1269,16 @@ STYLE_CSS = r"""  * { box-sizing:border-box; }
   .trow.active { background:color-mix(in srgb, var(--accent) 16%, var(--panel)); border-color:color-mix(in srgb, var(--accent) 45%, var(--border)); }
   /* Header line: turn number on the left, the tool/think/text counts on the right. */
   .trow-head { display:flex; align-items:center; gap:8px; }
-  .trow .mn { font-family:var(--mono); font-size:11px; color:var(--accent); flex-shrink:0; }
-  .trow .msnip { font-size:11.5px; color:var(--muted); margin:4px 0 0; line-height:1.35;
+  .trow .mn { font-family:var(--mono); font-size:12.5px; color:var(--accent); flex-shrink:0; }
+  .trow .msnip { font-size:13px; color:var(--muted); margin:4px 0 0; line-height:1.35;
     display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
-  .trow .micons { display:flex; gap:8px; font-size:10px; font-family:var(--mono); color:var(--muted);
+  .trow .micons { display:flex; gap:8px; font-size:11px; font-family:var(--mono); color:var(--muted);
     margin-left:auto; }
   .trow .micons .i { display:inline-flex; align-items:center; gap:2px; }
   .trow .micons .i.think { color:color-mix(in srgb, var(--think) 60%, var(--muted)); }
   /* Follow-up prompts / interrupts grouped under the turn's primary snippet. */
   .trow .msubs { margin:0 0 5px; padding-left:7px; border-left:1px solid color-mix(in srgb, var(--user) 35%, var(--border)); }
-  .trow .msub { font-size:10.5px; color:var(--muted); line-height:1.3; margin:2px 0;
+  .trow .msub { font-size:12px; color:var(--muted); line-height:1.3; margin:2px 0;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .trow .msub.interrupt { color:color-mix(in srgb, var(--tool) 55%, var(--muted)); font-style:italic; }
   .trow .msub.queued { color:color-mix(in srgb, var(--accent) 55%, var(--muted)); }
@@ -1287,7 +1287,7 @@ STYLE_CSS = r"""  * { box-sizing:border-box; }
   aside.toc { grid-area:toc; background:var(--panel); border-left:1px solid var(--border);
     overflow-y:auto; padding:10px 8px; display:flex; flex-direction:column; }
   .toc-head { display:flex; align-items:center; gap:6px; padding:0 4px 8px; }
-  .toc-title { flex:1; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.08em; }
+  .toc-title { flex:1; color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.08em; }
   #toc { overflow-y:auto; }
   /* When the TOC is collapsed the whole column is gone; a single floating button
      in the top-right corner brings it back. Hidden while the TOC is open. */
@@ -1307,8 +1307,8 @@ STYLE_CSS = r"""  * { box-sizing:border-box; }
   .toc-item .dot.queued { background:var(--user); }
   .toc-item { align-items:flex-start; }
   .tmeta { display:flex; flex-direction:column; gap:1px; overflow:hidden; }
-  .toc-item .tlabel { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:var(--mono); font-size:11.5px; color:var(--fg); }
-  .toc-item .tsub { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10.5px; color:var(--muted); }
+  .toc-item .tlabel { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:var(--mono); font-size:13px; color:var(--fg); }
+  .toc-item .tsub { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; color:var(--muted); }
   .empty { color:var(--muted); padding:40px; text-align:center; font-size:14px; }
   .scroll-target { scroll-margin-top:84px; }  /* clear the sticky prompt header */
 
