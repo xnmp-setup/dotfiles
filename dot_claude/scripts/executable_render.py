@@ -1146,6 +1146,7 @@ STYLE_CSS = r"""  * { box-sizing:border-box; }
   .text-body p { margin:.5em 0; } .text-body ul,.text-body ol { margin:.4em 0 .4em 1.4em; }
   .text-body li { margin:.2em 0; }
   .text-body a { color:var(--accent); }
+  .text-body hr { border:none; border-top:1px solid var(--border); margin:1.1em 0; }
   .text-body code { background:var(--panel2); padding:.12em .4em; border-radius:4px; font-family:var(--mono); font-size:.88em; }
   .text-body pre { background:color-mix(in srgb, var(--bg) 80%, #000); border:1px solid var(--border); border-radius:8px; padding:12px 14px;
     overflow-x:auto; } .text-body pre code { background:none; padding:0; }
@@ -1181,6 +1182,28 @@ STYLE_CSS = r"""  * { box-sizing:border-box; }
   details.tool  { background:color-mix(in srgb, var(--tool) 5%, transparent); border-color:color-mix(in srgb, var(--tool) 22%, transparent); }
   .block-body { padding:4px 14px 14px; }
   .think-text { white-space:pre-wrap; font-family:var(--mono); font-size:12.5px; line-height:1.55; color:color-mix(in srgb, var(--think) 55%, var(--fg)); }
+
+  /* AskUserQuestion: a readable Q&A view — question, options (chosen one
+     highlighted), and the user's actual answer. */
+  .aq { display:flex; flex-direction:column; gap:14px; padding:4px 0; }
+  .aq-card { border:1px solid var(--border); border-radius:8px; padding:12px 14px; background:var(--panel2); }
+  .aq-header { font-size:10px; font-weight:600; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--tool); margin-bottom:5px; }
+  .aq-question { font-size:14px; font-weight:600; line-height:1.4; margin-bottom:10px; }
+  .aq-opts { display:flex; flex-direction:column; gap:6px; margin-bottom:11px; }
+  .aq-opt { border:1px solid var(--border); border-radius:6px; padding:7px 10px; background:var(--panel); }
+  .aq-opt.chosen { border-color:color-mix(in srgb, var(--accent) 55%, var(--border));
+    background:color-mix(in srgb, var(--accent) 12%, var(--panel)); }
+  .aq-opt-label { font-size:12.5px; font-weight:600; color:var(--muted); }
+  .aq-opt.chosen .aq-opt-label { color:var(--accent); }
+  .aq-opt-desc { font-size:11.5px; color:var(--muted); line-height:1.4; margin-top:2px; }
+  .aq-answer { font-size:13.5px; line-height:1.45; padding:8px 11px; border-radius:6px;
+    background:color-mix(in srgb, var(--user) 12%, var(--panel));
+    border-left:3px solid var(--user); white-space:pre-wrap; word-break:break-word; }
+  .aq-answer.none { background:var(--panel); border-left-color:var(--muted); color:var(--muted); font-style:italic; }
+  .aq-answer-lbl { display:inline-block; font-size:10px; font-weight:600; letter-spacing:.05em;
+    text-transform:uppercase; color:var(--user); margin-right:8px; font-style:normal; vertical-align:1px; }
+  .aq-answer.none .aq-answer-lbl { color:var(--muted); }
 
   .sub { margin:8px 0; border:1px solid var(--border); border-radius:6px; background:var(--panel2); }
   .sub > summary { padding:7px 12px; font-size:12px; color:var(--muted); }
@@ -1394,6 +1417,9 @@ function markdown(src){
     }
     const h = ln.match(/^(#{1,6})\s+(.*)$/);
     if (h){ const lv=h[1].length; out.push(`<h${lv}>${inline(h[2])}</h${lv}>`); i++; continue; }
+    // Thematic break: a line of 3+ -, *, or _ (optionally spaced), nothing else.
+    // Checked before lists so a bare "---" becomes a rule, not a list/paragraph.
+    if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(ln)){ out.push("<hr>"); i++; continue; }
     // GFM table: a header row containing a pipe, followed by a separator row
     // (only -, :, |, spaces, with at least one dash and one pipe).
     if (ln.indexOf("|")>=0 && i+1<lines.length
@@ -1430,7 +1456,8 @@ function markdown(src){
     if (ln.trim()===""){ i++; continue; }
     // paragraph (gather consecutive non-empty, non-special lines)
     let para=[ln]; i++;
-    while (i<lines.length && lines[i].trim()!=="" && !/^(#{1,6}\s|```|\s*[-*]\s|\s*\d+\.\s)/.test(lines[i])){ para.push(lines[i]); i++; }
+    while (i<lines.length && lines[i].trim()!=="" && !/^(#{1,6}\s|```|\s*[-*]\s|\s*\d+\.\s)/.test(lines[i])
+           && !/^\s*([-*_])(\s*\1){2,}\s*$/.test(lines[i])){ para.push(lines[i]); i++; }
     out.push(`<p>${inline(para.join(" "))}</p>`);
   }
   return out.join("\n");
@@ -1512,7 +1539,12 @@ function toolAnnotation(b){
     case "TaskCreate": return inp.subject || "";
     case "TaskUpdate": return (inp.status? inp.status : "") + (inp.taskId? ` #${inp.taskId}` : "");
     case "AskUserQuestion": {
-      const qs=inp.questions; if(Array.isArray(qs)&&qs.length) return qs[0].header || qs[0].question || `${qs.length} question(s)`; return "";
+      const qs=inp.questions;
+      if(Array.isArray(qs)&&qs.length){
+        const head = qs[0].header || qs[0].question || "";
+        return qs.length>1 ? `${head} +${qs.length-1} more` : head;
+      }
+      return "";
     }
     default: return inp.description || inp.title || "";
   }
@@ -1574,6 +1606,77 @@ function precededByThink(blocks, i){
 }
 const THINK_MARK = `<span class="think-mark" title="preceded by thinking">✦</span>`;
 
+// Pull {question: answer} pairs out of the AskUserQuestion tool result. Three
+// observed result shapes:
+//   - answered:  'Your questions have been answered: "Q1"="A1", "Q2"="A2"'
+//   - clarify/rejected: a prose blob listing 'Questions asked:' with no answers
+//   - raw array/other: handled by the caller's fallback.
+// Returns a Map(question -> answer|null), or null if the string isn't parseable.
+function parseAskAnswers(res){
+  // Preferred shape: the structured result object carries an `answers` map
+  // {question: answer} directly — no string parsing needed.
+  if (res && typeof res==="object" && !Array.isArray(res) && res.answers && typeof res.answers==="object"){
+    const m = new Map();
+    for (const k of Object.keys(res.answers)) m.set(k, res.answers[k]);
+    return m.size ? m : null;
+  }
+  let s = res;
+  if (Array.isArray(res)) s = res.map(p=> (p && p.text) ? p.text : (typeof p==="string"?p:"")).join("\n");
+  if (typeof s !== "string") return null;
+  const out = new Map();
+  if (s.includes("have been answered")){
+    // Match each "..."="..." pair (answers may contain commas/escaped quotes).
+    const re = /"((?:[^"\\]|\\.)*)"\s*=\s*"((?:[^"\\]|\\.)*)"/g;
+    let m;
+    while ((m = re.exec(s)) !== null){
+      out.set(m[1].replace(/\\"/g,'"'), m[2].replace(/\\"/g,'"'));
+    }
+    return out.size ? out : null;
+  }
+  if (s.includes("Questions asked:")){
+    // Clarify/reject path: '- "Question"\n  (No answer provided)'
+    const re = /-\s+"((?:[^"\\]|\\.)*)"/g;
+    let m;
+    while ((m = re.exec(s)) !== null) out.set(m[1].replace(/\\"/g,'"'), null);
+    return out.size ? out : null;
+  }
+  return null;
+}
+
+// Render an AskUserQuestion call as readable Q&A: each question, the options
+// offered (the chosen one highlighted), and the user's actual answer.
+function renderAskQuestion(b){
+  const qs = (b.input && Array.isArray(b.input.questions)) ? b.input.questions : [];
+  const answers = parseAskAnswers(
+    (b.resultStructured!==null && b.resultStructured!==undefined) ? b.resultStructured : b.result
+  );
+  const ansFor = (q)=> answers ? (answers.has(q.question) ? answers.get(q.question) : null) : null;
+  const cards = qs.map(q=>{
+    const ans = ansFor(q);
+    const opts = Array.isArray(q.options) ? q.options : [];
+    // Mark the option whose label the user's answer matches (best-effort).
+    const norm = (x)=> String(x||"").trim().toLowerCase();
+    const chosen = ans ? opts.find(o=> norm(o.label)===norm(ans) || norm(ans).includes(norm(o.label))) : null;
+    const optHtml = opts.map(o=>{
+      const on = chosen && o===chosen;
+      return `<div class="aq-opt${on?" chosen":""}">`
+        + `<div class="aq-opt-label">${on?"✓ ":""}${esc(o.label||"")}</div>`
+        + (o.description?`<div class="aq-opt-desc">${esc(o.description)}</div>`:"")
+        + `</div>`;
+    }).join("");
+    const ansHtml = (ans!==null && ans!==undefined)
+      ? `<div class="aq-answer"><span class="aq-answer-lbl">Answer</span>${esc(ans)}</div>`
+      : `<div class="aq-answer none"><span class="aq-answer-lbl">No answer</span>(clarified or cancelled)</div>`;
+    return `<div class="aq-card">`
+      + (q.header?`<div class="aq-header">${esc(q.header)}</div>`:"")
+      + `<div class="aq-question">${esc(q.question||"")}</div>`
+      + (optHtml?`<div class="aq-opts">${optHtml}</div>`:"")
+      + ansHtml
+      + `</div>`;
+  }).join("");
+  return cards || `<div class="muted" style="padding:6px 0">(no questions)</div>`;
+}
+
 function renderBlock(b, idx, blocks){
   const aid = `b${idx}`;
   // Thinking blocks are not rendered in the main section at all; their presence
@@ -1587,12 +1690,19 @@ function renderBlock(b, idx, blocks){
   const mark = thought ? THINK_MARK : "";
   if (b.k==="text") return `<div id="${aid}" class="block text scroll-target${thought?" thought":""}">${mark}<div class="text-body">${markdown(b.md)}</div></div>`;
   if (b.k==="tool"){
-    const extra = argSummary(b.input);
+    // Collapsed summary uses the semantic annotation (e.g. Bash → its
+    // description, not the raw command), matching the TOC label.
+    const extra = toolAnnotation(b) || argSummary(b.input);
     const res = (b.resultStructured!==null && b.resultStructured!==undefined) ? b.resultStructured : b.result;
     let body = "";
-    if (b.input!==null && b.input!==undefined) body += valueBlock("Input", b.input);
-    if (res!==null && res!==undefined) body += valueBlock("Result", res);
-    if (!body) body = `<div class="muted" style="padding:6px 0">(no payload)</div>`;
+    if (b.name==="AskUserQuestion"){
+      // Purpose-built Q&A view instead of raw input/result JSON.
+      body = `<div class="aq">${renderAskQuestion(b)}</div>`;
+    } else {
+      if (b.input!==null && b.input!==undefined) body += valueBlock("Input", b.input);
+      if (res!==null && res!==undefined) body += valueBlock("Result", res);
+      if (!body) body = `<div class="muted" style="padding:6px 0">(no payload)</div>`;
+    }
     // The tool name IS the badge — no separate "TOOL" label (we know it's a tool).
     return `<details id="${aid}" class="block coll tool scroll-target"><summary><span class="badge tool">${esc(b.name)}</span>`
       + (extra?`<span class="sum-extra">${esc(extra)}</span>`:"")
