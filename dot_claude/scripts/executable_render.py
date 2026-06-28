@@ -1151,7 +1151,7 @@ STYLE_CSS = r"""  * { box-sizing:border-box; }
   .text-body code { background:var(--panel2); padding:.12em .4em; border-radius:4px; font-family:var(--mono); font-size:.88em; }
   .text-body pre { background:color-mix(in srgb, var(--bg) 80%, #000); border:1px solid var(--border); border-radius:8px; padding:12px 14px;
     overflow-x:auto; } .text-body pre code { background:none; padding:0; }
-  .text-body table { border-collapse:collapse; margin:.6em 0; font-size:13px; display:block; overflow-x:auto; max-width:100%; }
+  .text-body table { border-collapse:collapse; margin:.6em 0; font-size:15px; display:block; overflow-x:auto; max-width:100%; }
   .text-body th,.text-body td { border:1px solid var(--border); padding:6px 11px; text-align:left; vertical-align:top; }
   .text-body th { background:var(--panel2); font-weight:600; }
   .text-body tbody tr:nth-child(even) { background:color-mix(in srgb, var(--fg) 3%, transparent); }
