@@ -1978,6 +1978,27 @@ function syncNav(){
   $("last").disabled = $("next").disabled = (cur>=TURNS.length-1);
 }
 
+// URL <-> turn sync. The query param `page` carries the TURN NUMBER (t.n, the
+// "#21" shown in the UI), not the array index, so links are stable and human.
+function turnIndexForPage(){
+  try {
+    const raw = new URLSearchParams(location.search).get("page");
+    if (raw === null) return null;
+    const n = parseInt(raw, 10);
+    if (!Number.isFinite(n)) return null;
+    const idx = TURNS.findIndex(t => t.n === n);
+    return idx >= 0 ? idx : null;
+  } catch(e){ return null; }
+}
+function syncUrl(){
+  if (!TURNS.length || !TURNS[cur]) return;
+  try {
+    const url = new URL(location.href);
+    url.searchParams.set("page", TURNS[cur].n);
+    history.replaceState(null, "", url);  // replace (not push) so arrow-nav doesn't flood history
+  } catch(e){}  // file:// can reject history API in some browsers — nav still works
+}
+
 function go(i){
   if (!TURNS.length) { renderTurn(null); renderToc(null); syncNav(); return; }
   cur = Math.max(0, Math.min(TURNS.length-1, i));
@@ -1985,6 +2006,7 @@ function go(i){
   renderTurnList();
   syncNav();
   syncTocActive();
+  syncUrl();
 }
 
 $("first").onclick = ()=>go(0);
@@ -2093,7 +2115,9 @@ document.addEventListener("keydown",(e)=>{
 });
 
 renderTurnList();
-go(TURNS.length ? TURNS.length-1 : 0);  // open on latest turn
+// Open the turn named by ?page=<turn-number>, else the latest turn.
+const _startIdx = turnIndexForPage();
+go(_startIdx !== null ? _startIdx : (TURNS.length ? TURNS.length-1 : 0));
 
 // ---- live auto-refresh (file:// friendly, no server) ----
 // fetch() is blocked under file://, but injecting a <script> is not — the page
@@ -2124,7 +2148,12 @@ go(TURNS.length ? TURNS.length-1 : 0);  // open on latest turn
     // Follow only when parked on the latest turn AND scrolled near its end,
     // so an in-progress turn you're reading isn't yanked out from under you.
     const onLatest = (cur >= TURNS.length - 1);
-    if (onLatest) location.reload();
+    if (onLatest){
+      // Drop ?page= so we land on the NEW latest turn after reload (a fresh
+      // turn may have been appended), rather than pinning to the old one.
+      try { const u=new URL(location.href); u.searchParams.delete("page"); history.replaceState(null,"",u); } catch(e){}
+      location.reload();
+    }
     else pill().style.display = "block";
   }
   function poll(){
