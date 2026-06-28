@@ -1094,7 +1094,7 @@ STYLE_CSS = r"""  * { box-sizing:border-box; }
   .prompt {
     background:color-mix(in srgb, var(--user) 12%, var(--panel)); border:1px solid color-mix(in srgb, var(--user) 35%, var(--border));
     border-left:3px solid var(--user); border-radius:8px; overflow:hidden;
-    font-size:14px; line-height:1.5;
+    font-size:15px; line-height:1.5;
   }
   .prompt { cursor:pointer; }
   .prompt-head { display:flex; align-items:center; gap:8px; padding:14px 18px 9px; }
@@ -1138,7 +1138,7 @@ STYLE_CSS = r"""  * { box-sizing:border-box; }
     border:1px solid color-mix(in srgb, var(--accent) 40%, transparent);
     display:inline-block; font-size:10px; font-family:var(--mono); border-radius:9px;
     padding:0 6px; margin-bottom:8px; }
-  .text-body { font-size:14px; line-height:1.62; }
+  .text-body { font-size:15px; line-height:1.62; }
   .text-body h1,.text-body h2,.text-body h3,.text-body h4,.text-body h5,.text-body h6 {
     margin:.7em 0 .35em; line-height:1.25; color:var(--accent2); font-weight:650; }
   .text-body h1 { font-size:1.35em; color:var(--accent); }
