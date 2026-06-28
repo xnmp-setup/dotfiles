@@ -1457,6 +1457,11 @@ function inline(s){
   s = s.replace(/\*\*([^*]+)\*\*/g, (_,c)=>`<strong>${c}</strong>`);
   s = s.replace(/(?<![*])\*([^*\n]+)\*(?![*])/g, (_,c)=>`<em>${c}</em>`);
   s = s.replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, (_,t,u)=>`<a href="${u}" target="_blank" rel="noopener">${t}</a>`);
+  // Autolink bare URLs — but not ones already inside an href="..." from the
+  // markdown-link rule above (negative lookbehind for `="` / `">`-ish context).
+  s = s.replace(/(^|[\s(])(https?:\/\/[^\s<)]+[^\s<).,;:!?'"])/g, (m,pre,u)=>{
+    return `${pre}<a href="${u}" target="_blank" rel="noopener">${u}</a>`;
+  });
   return s;
 }
 function markdown(src){
