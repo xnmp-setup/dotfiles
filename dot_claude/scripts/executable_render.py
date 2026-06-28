@@ -327,9 +327,10 @@ def session_id_of(transcript: Path) -> str:
 
 
 def encode_project_dir(cwd: Path) -> str:
-    """Claude stores transcripts under ~/.claude/projects/<encoded-cwd>/, where the
-    cwd path has every '/' (and '.') replaced by '-'."""
-    return str(cwd).replace("/", "-").replace(".", "-")
+    """Claude stores transcripts under ~/.claude/projects/<encoded-cwd>/, where
+    the cwd path has '/', '.' and '_' all replaced by '-' (case is preserved).
+    e.g. /Users/me/fs_sql_weaver -> -Users-me-fs-sql-weaver."""
+    return str(cwd).replace("/", "-").replace(".", "-").replace("_", "-")
 
 
 def newest_transcript_for_cwd(cwd: Path) -> Path:
