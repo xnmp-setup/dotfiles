@@ -168,10 +168,10 @@ config.color_schemes = {
     brights = { '#304b66', '#fc644d', '#7afde1', '#fff09b', '#6c9bf5', '#ff4fa1', '#64e0ff', '#ffffff' },
   },
 }
--- config.color_scheme = 'Ayu Mirage'
+-- config.color_scheme = 'Horizon Dark (Gogh)'
 config.color_scheme = 'Horizon Dark (Gogh)'
 config.font_size = 16 -- matches Ghostty's font-size = 16
-config.window_background_opacity = 0.95
+config.window_background_opacity = 0.92
 config.window_padding = { left = 10, right = 10, top = 6, bottom = 6 }
 
 -- Ghostty: macos-titlebar-style = tabs + hidden window buttons.
@@ -375,6 +375,17 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
   end
 
   local is_claude = proc:find('claude') ~= nil
+
+  -- On exit Claude blanks its pane title (renders as a lone "_") for a frame
+  -- before the shell repaints. proc still reads "claude" that frame, so the
+  -- overlay guard above misses it (it requires no proc) and we'd flash an
+  -- orange "_" tab. Treat a blank title while proc is still "claude" as the
+  -- teardown frame and render it as a normal shell tab (cwd, black bg) right
+  -- away, instead of holding the orange claude styling until the shell repaints.
+  if is_claude and (title == '' or title == '_') then
+    is_claude = false
+    proc = ''  -- so the branch below takes the plain-cwd path, not "cwd: _"
+  end
 
   -- For non-claude tabs, show "cwd" or "cwd: command" if a process is running
   if not is_claude then
