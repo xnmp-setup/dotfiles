@@ -188,7 +188,7 @@ end
 if running_under_hyprland() then
   config.window_decorations = 'NONE'
 end
-config.use_fancy_tab_bar = false
+config.use_fancy_tab_bar = true
 config.show_new_tab_button_in_tab_bar = false -- drop the "+" new-tab button
 config.show_close_tab_button_in_tabs = false  -- drop the per-tab "x" (it overlapped the title)
 config.tab_max_width = 32
@@ -197,7 +197,7 @@ local scheme = config.color_schemes[config.color_scheme]
   or { background = '#0e1330' }
 config.window_frame = {
   font = wezterm.font('Inter', { weight = 'Medium' }),
-  font_size = 12,
+  font_size = 15,
   active_titlebar_bg = scheme.background,
   inactive_titlebar_bg = scheme.background,
   border_left_width = '1px',
@@ -215,6 +215,14 @@ config.colors = {
   split = '#FFBF00',
   tab_bar = {
     background = scheme.background,
+    -- Fancy tab bar fills each button from these static colors (per-tab bg in
+    -- format-tab-title only paints behind the text). Active tab a touch
+    -- lighter than the bar; inactive matches the bar; hover between.
+    active_tab   = { bg_color = '#2a3352', fg_color = '#ffffff' },
+    inactive_tab = { bg_color = scheme.background, fg_color = '#aaaaaa' },
+    inactive_tab_hover = { bg_color = '#1c2340', fg_color = '#dddddd' },
+    new_tab = { bg_color = scheme.background, fg_color = '#888888' },
+    new_tab_hover = { bg_color = '#1c2340', fg_color = '#dddddd' },
   },
 }
 
@@ -428,52 +436,55 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
     title = title .. ' (' .. pane_count .. ')'
   end
 
+  -- Fancy tab bar renders each tab as its own rounded button and only fills the
+  -- whole button from the static config.colors.tab_bar.* palette — a per-tab
+  -- Background here paints just a rectangle behind the text, not the tab. So
+  -- instead of tinting the tab bg, we lead with a colored status dot: claude
+  -- tabs get an orange dot (or the working/attention status color), plain tabs
+  -- get none. Underline marks the active tab; the button bg stays uniform.
   local intensity = is_active and 'Normal' or 'Half'
   local underline = is_active and 'Single' or 'None'
-  local sep_color = is_active and '#555555' or '#333333'
 
-  local result
-  local sep_left = {
+  -- Truncate the title with an ellipsis when it would overflow the tab. Reserve
+  -- cells for the surrounding padding, status dot, and trailing separator so the
+  -- '…' lands inside the button rather than getting clipped by it.
+  local reserved = is_claude and 8 or 4  -- '  ⬤  ' + '  ' + '▕'  vs  '  ' + '  ' + '▕'
+  local budget = math.max(4, (max_width or 32) - reserved)
+  if #title > budget then
+    title = wezterm.truncate_right(title, budget - 1) .. '…'
+  end
+
+  -- Trailing separator drawn on every tab so the boundary between buttons is
+  -- obvious (fancy bar's own divider is faint). Brighter on the active tab.
+  local sep = {
     { Attribute = { Underline = 'None' } },
     { Attribute = { Intensity = 'Normal' } },
-    { Background = { Color = scheme.background } },
-    { Foreground = { Color = sep_color } },
-    { Text = '▎' },
+    { Foreground = { Color = is_active and '#8890b0' or '#4a5270' } },
+    { Text = '▕' },
   }
+
+  local result
   if is_claude then
-    local fg = is_active and '#ffffff' or '#bbbbbb'
     local status = (pane_info.user_vars or {}).claude_status
     local style = status and STATUS_STYLE[status]
-    if style then
-      local bg = is_active and style.active_bg or style.inactive_bg
-      local prefix = style.glyph ~= '' and (' ' .. style.glyph) or ''
-      result = {
-        sep_left[1], sep_left[2], sep_left[3], sep_left[4], sep_left[5],
-        { Attribute = { Intensity = intensity } },
-        { Attribute = { Underline = underline } },
-        { Background = { Color = bg } },
-        { Foreground = { Color = fg } },
-        { Text = prefix .. ' ' .. title .. ' ' },
-      }
-    else
-      local bg = is_active and '#C0623A' or '#7A3D24'
-      result = {
-        sep_left[1], sep_left[2], sep_left[3], sep_left[4], sep_left[5],
-        { Attribute = { Intensity = intensity } },
-        { Attribute = { Underline = underline } },
-        { Background = { Color = bg } },
-        { Foreground = { Color = fg } },
-        { Text = ' ' .. title .. ' ' },
-      }
-    end
-  else
-    local fg = is_active and '#ffffff' or '#aaaaaa'
+    -- Dot color: status active_bg if a status is set, else claude orange.
+    local dot_color = style and style.active_bg or '#C0623A'
     result = {
-      sep_left[1], sep_left[2], sep_left[3], sep_left[4], sep_left[5],
       { Attribute = { Intensity = intensity } },
       { Attribute = { Underline = underline } },
-      { Foreground = { Color = fg } },
-      { Text = ' ' .. title .. ' ' },
+      { Foreground = { Color = dot_color } },
+      { Text = '  ⬤  ' },
+      { Foreground = { Color = is_active and '#ffffff' or '#bbbbbb' } },
+      { Text = title .. '  ' },
+      sep[1], sep[2], sep[3], sep[4],
+    }
+  else
+    result = {
+      { Attribute = { Intensity = intensity } },
+      { Attribute = { Underline = underline } },
+      { Foreground = { Color = is_active and '#ffffff' or '#aaaaaa' } },
+      { Text = '  ' .. title .. '  ' },
+      sep[1], sep[2], sep[3], sep[4],
     }
   end
 
