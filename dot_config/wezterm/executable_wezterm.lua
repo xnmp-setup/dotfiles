@@ -548,10 +548,12 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
       marker = SPINNER_FRAMES[fi]
       marker_fg = SPINNER_COLORS[((fi - 1) % #SPINNER_COLORS) + 1]
     elseif status == 'attention' then
-      -- Red warning sign. VS15 forces text presentation so it takes our red
-      -- (bare ⚠ would be a yellow emoji that ignores the color).
-      marker = '⚠\u{FE0E}'
-      marker_fg = style and style.active_bg or '#E5252B'
+      -- Needs input: loud red, and a CHUNKIER star than idle — ✹ (U+2739, twelve-
+      -- pointed filled black star) is denser/bolder than the idle ❋ outline, so a
+      -- tab awaiting input stands out. VS15 forces text presentation so it takes
+      -- our red (bare emoji stars are font-colored and ignore it).
+      marker = '✹\u{FE0E}'
+      marker_fg = '#FF3B30'
     else
       -- done / idle: chunky orange claude-style star ❋ (U+274B). Can't reuse the
       -- emoji ✳ — emoji are font-colored (green), not tintable.
