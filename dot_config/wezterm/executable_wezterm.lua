@@ -114,6 +114,38 @@ local last_tab_title = {}
 -- (before any focus event) → treated as focused so nothing dims on first paint.
 local window_focus = {}
 
+-- Per-pane Claude status, keyed by pane-id. This is the SOURCE OF TRUTH the tab
+-- bar reads — NOT the raw claude_status user var — because the var gets stuck.
+--
+-- The claude_status OSC var is set by ~/.claude/hooks/wezterm_status.sh on hook
+-- events (working / attention / done). But a user INTERRUPT (Esc mid-response)
+-- fires no Claude Code hook, so the var stays "working" forever and the spinner
+-- animates on a tab that's actually idle. We can't fix that from the hook side.
+--
+-- Instead: the user-var-changed handler mirrors every var write into this table
+-- (so normal hook-driven transitions, including working again on the next
+-- prompt, flow through unchanged), AND the Esc keybind writes 'done' here
+-- directly. That gives interrupt a path the hooks can't provide, while a fresh
+-- prompt's 'working' write immediately overrides it back — no stuck state, no
+-- background watchdog. Keyed by pane_id; nil → fall back to the var / no status.
+local pane_status = {}
+
+-- Resolve a pane's effective Claude status: the table (source of truth) wins,
+-- else the raw user var (covers panes that set the var before this session's
+-- user-var-changed handler had seen them, e.g. a config reload mid-session).
+local function claude_status_of(pane_id, user_vars)
+  return pane_status[pane_id] or (user_vars or {}).claude_status
+end
+
+-- Mirror every claude_status var write into pane_status. Fires on each OSC
+-- SetUserVar receipt, so a fresh 'working' on the next prompt overrides an
+-- Esc-set 'done' automatically.
+wezterm.on('user-var-changed', function(window, pane, name, value)
+  if name == 'claude_status' then
+    pane_status[pane:pane_id()] = value
+  end
+end)
+
 -- ---------- Default shell ----------
 -- Default new tabs/windows to the WSL distro, but only on Windows: this domain
 -- doesn't exist on Mac/Linux and setting it there errors at config load. There
@@ -276,6 +308,20 @@ config.keys = {
         end),
       }, pane)
     end
+  end) },
+  -- Esc: interrupt handling. A user interrupt (Esc mid-response) fires no Claude
+  -- Code hook, so the claude_status var stays stuck on 'working' and the tab
+  -- keeps spinning. Intercept Esc here: if the pane is running claude, mark it
+  -- 'done' in pane_status (the tab bar's source of truth) so it drops to idle
+  -- immediately. Always forward the Esc to the app afterwards, so this is purely
+  -- additive — Claude still receives the interrupt and does whatever it normally
+  -- would. A fresh prompt's 'working' var write overrides 'done' right back.
+  { key = 'Escape', mods = 'NONE', action = wezterm.action_callback(function(window, pane)
+    local proc = pane:get_foreground_process_name() or ''
+    if proc:find('claude') then
+      pane_status[pane:pane_id()] = 'done'
+    end
+    window:perform_action(act.SendKey { key = 'Escape' }, pane)
   end) },
   { key = 't', mods = 'CTRL', action = spawn_tab_next('CurrentPaneDomain') },
   -- new PowerShell (pwsh) tab in the local Windows domain (default domain is WSL).
@@ -539,7 +585,7 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
   -- we know how many cells it consumes before deciding how much title fits.
   local marker, marker_fg, title_fg
   if is_claude then
-    local status = (pane_info.user_vars or {}).claude_status
+    local status = claude_status_of(pane_info.pane_id, pane_info.user_vars)
     local style = status and STATUS_STYLE[status]
     if status == 'working' then
       -- Animate Claude's growing star with a synced cyan shimmer — both glyph and
@@ -659,7 +705,7 @@ wezterm.on('update-status', function(window, pane)
   for _, w in ipairs(wezterm.mux.all_windows()) do
     for _, tab in ipairs(w:tabs()) do
       for _, p in ipairs(tab:panes()) do
-        local st = (p:get_user_vars() or {}).claude_status
+        local st = claude_status_of(p:pane_id(), p:get_user_vars())
         if st == 'working' then any_working = true; break end
       end
       if any_working then break end
