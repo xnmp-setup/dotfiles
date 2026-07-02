@@ -553,14 +553,21 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
       -- tab awaiting input stands out. VS15 forces text presentation so it takes
       -- our red (bare emoji stars are font-colored and ignore it).
       marker = '✹\u{FE0E}'
-      marker_fg = '#FF3B30'
+      marker_fg = '#F26D64'
     else
       -- done / idle: chunky orange claude-style star ❋ (U+274B). Can't reuse the
       -- emoji ✳ — emoji are font-colored (green), not tintable.
       marker = '❋\u{FE0E}'
       marker_fg = style and style.active_bg or '#C0623A'
     end
-    title_fg = is_active and '#ffffff' or '#bbbbbb'
+    -- Attention also reddens the title text (not just the star) so the whole
+    -- label shouts. Fancy bar blocks per-tab *background* color but per-item
+    -- *foreground* is fine, so red text works here.
+    if status == 'attention' then
+      title_fg = '#F58A82'
+    else
+      title_fg = is_active and '#ffffff' or '#bbbbbb'
+    end
   else
     -- Non-claude tabs: a terminal prompt glyph (❯ U+276F, text-presentation so it
     -- needs no Nerd Font), dimmed so it reads as a marker not part of the name.
