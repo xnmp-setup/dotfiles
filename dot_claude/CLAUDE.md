@@ -28,6 +28,9 @@
 - When unsure, ask clarifying questions rather than guessing.
 - Fix root causes, not symptoms. Avoid band-aid fixes like stopPropagation to mask duplicate handlers, setTimeout to paper over race conditions, or flags to suppress unwanted side effects. If a fix feels like a workaround, step back and address the underlying design issue.
 
+## Cost & Delegation
+- Fable tokens are very expensive. When the main model is Fable, delegate work to Sonnet or Haiku subagents wherever possible (searching, reading, exploration, routine edits, test runs). Reserve Fable for the high-level reasoning and synthesis that actually needs it.
+
 ## Misc
 - When testing whether hooks work, don't pipe text to the shell scripts. Instead run actual commands that would trigger the hooks.
 
