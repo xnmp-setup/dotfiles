@@ -409,7 +409,17 @@ local SPINNER_RAMP = {
 local SPINNER_FRAMES = {}
 for i = 1, #SPINNER_RAMP do SPINNER_FRAMES[#SPINNER_FRAMES + 1] = SPINNER_RAMP[i] end
 for i = #SPINNER_RAMP - 1, 2, -1 do SPINNER_FRAMES[#SPINNER_FRAMES + 1] = SPINNER_RAMP[i] end
-local SPINNER_COLOR = '#C0623A'  -- claude orange, constant across frames
+
+-- Working spinner color: a CYAN/BLUE shimmer, deliberately different from the
+-- orange done/idle star so an in-progress tab is unmistakable at a glance. The
+-- color brightens toward the peak glyph and dims on the way back, in lockstep
+-- with the grow/shrink, giving a shimmer. Built ping-pong the same way as the
+-- glyphs so frame N's color matches frame N's star size. Ramp runs muted teal →
+-- bright cyan-white.
+local SPINNER_COLOR_RAMP = { '#3a6b7a', '#4fa9c0', '#7ad6e8', '#b6f0ff' }
+local SPINNER_COLORS = {}
+for i = 1, #SPINNER_COLOR_RAMP do SPINNER_COLORS[#SPINNER_COLORS + 1] = SPINNER_COLOR_RAMP[i] end
+for i = #SPINNER_COLOR_RAMP - 1, 2, -1 do SPINNER_COLORS[#SPINNER_COLORS + 1] = SPINNER_COLOR_RAMP[i] end
 local spinner_frame = 1
 
 wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
@@ -531,9 +541,12 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
     local status = (pane_info.user_vars or {}).claude_status
     local style = status and STATUS_STYLE[status]
     if status == 'working' then
-      -- Animate Claude's growing star (ping-pong frame, constant orange).
-      marker = SPINNER_FRAMES[((spinner_frame - 1) % #SPINNER_FRAMES) + 1]
-      marker_fg = SPINNER_COLOR
+      -- Animate Claude's growing star with a synced cyan shimmer — both glyph and
+      -- color come from the current ping-pong frame, so the star brightens as it
+      -- grows. Cyan (not orange) marks in-progress apart from the idle star.
+      local fi = ((spinner_frame - 1) % #SPINNER_FRAMES) + 1
+      marker = SPINNER_FRAMES[fi]
+      marker_fg = SPINNER_COLORS[((fi - 1) % #SPINNER_COLORS) + 1]
     elseif status == 'attention' then
       -- Red warning sign. VS15 forces text presentation so it takes our red
       -- (bare ⚠ would be a yellow emoji that ignores the color).
