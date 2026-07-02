@@ -192,6 +192,10 @@ config.use_fancy_tab_bar = true
 config.show_new_tab_button_in_tab_bar = false -- drop the "+" new-tab button
 config.show_close_tab_button_in_tabs = false  -- drop the per-tab "x" (it overlapped the title)
 config.tab_max_width = 32
+-- Drives the update-status timer cadence = spinner animation frame rate. The
+-- handler repaints via set_right_status (cheap, no config reload), so a fast
+-- cadence is fine here. 200ms = 5fps — a lively star grow/shrink.
+config.status_update_interval = 200
 local scheme = config.color_schemes[config.color_scheme]
   or wezterm.color.get_builtin_schemes()[config.color_scheme]
   or { background = '#0e1330' }
@@ -362,6 +366,45 @@ local STATUS_STYLE = {
   attention = { glyph = '', active_bg = '#E5252B', inactive_bg = '#8A1418' },
 }
 
+-- Spinner animation for "working" tabs. format-tab-title normally renders a
+-- static ⬤ dot; while a claude pane reports status=working we twinkle Claude's
+-- own star glyph in its place — the shape grows/shrinks (· → ✦ → ✳ → ✷ → …) and
+-- the color pulses dim→bright, so it reads as a blinking Claude icon rather than
+-- a generic spinner. WezTerm only repaints the tab bar on an invalidation (not a
+-- timer), so the update-status handler advances spinner_frame and forces a
+-- repaint each tick — ONLY while working, so idle tabs don't churn repaints.
+--
+-- Claude Code's own "working" spinner, replicated. Claude cycles a GROWING STAR
+-- (not a rotation or color pulse): it eases up from a dot to a big asterisk and
+-- back, ping-pong, over a 2000ms period with cosine timing. Glyphs (from the
+-- Claude Code binary): · U+00B7, ✢ U+2722, ✳ U+2733, ✶ U+2736, ✻ U+273B,
+-- ✽ U+273D. We list the forward ramp and mirror it in code for the ping-pong.
+--
+-- Each glyph carries a trailing \u{FE0E} (VARIATION SELECTOR-15) to force TEXT
+-- presentation — bare ✳ would render as a green emoji that ignores our color.
+-- With VS15 they're monochrome and obey the orange Foreground below.
+--
+-- Claude's TUI is monospace so its star can change width freely; our fancy tab
+-- bar is proportional (Inter), so differing glyph widths would shift the title.
+-- The marker is therefore rendered in a fixed-width wrapper (see format below).
+-- Claude's ramp starts with · (U+00B7 middle dot), but in the proportional tab
+-- font the dot is far narrower than the stars and its frame visibly shifted the
+-- title. Dropped it: the remaining star-family glyphs are near-equal width, so
+-- the grow/shrink still reads while the text barely moves.
+--
+-- Also dropped ✳ (U+2733): it has EMOJI presentation by default and our VS15
+-- override doesn't stick in this wezterm build, so that one frame rendered as a
+-- big green emoji star. The remaining glyphs are text-default and stay orange.
+local SPINNER_RAMP = {
+  '✢\u{FE0E}', '✶\u{FE0E}', '✻\u{FE0E}', '✽\u{FE0E}',
+}
+-- Ping-pong: 1..6 then 5..2 → 10 frames, smooth grow/shrink with no repeated peak.
+local SPINNER_FRAMES = {}
+for i = 1, #SPINNER_RAMP do SPINNER_FRAMES[#SPINNER_FRAMES + 1] = SPINNER_RAMP[i] end
+for i = #SPINNER_RAMP - 1, 2, -1 do SPINNER_FRAMES[#SPINNER_FRAMES + 1] = SPINNER_RAMP[i] end
+local SPINNER_COLOR = '#C0623A'  -- claude orange, constant across frames
+local spinner_frame = 1
+
 wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
   local pane_info = tab.active_pane
   local title = pane_info.title or ''
@@ -442,49 +485,91 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
   -- instead of tinting the tab bg, we lead with a colored status dot: claude
   -- tabs get an orange dot (or the working/attention status color), plain tabs
   -- get none. Underline marks the active tab; the button bg stays uniform.
-  local intensity = is_active and 'Normal' or 'Half'
+  -- Keep intensity CONSTANT across focus. Previously active=Normal / inactive=Half:
+  -- bold (Normal) glyphs are wider, so the same title rendered wider when focused,
+  -- changing the visible length and clipping the '…' on the active tab. Fixing the
+  -- weight makes width focus-independent; active tabs are still distinguished by
+  -- underline, brighter fg, and the active_tab bg color.
+  local intensity = 'Normal'
   local underline = is_active and 'Single' or 'None'
 
+  -- Claude Code prefixes its pane title with its own animated spinner — a glyph
+  -- (star ✳/✻/✽ or braille ⠐⠓⠋…) that lives in the U+2xxx range = 3-byte UTF-8
+  -- starting 0xE2 — sometimes preceded by a "N: " tool/step count. We render our
+  -- own marker, so strip both, otherwise two spinners compete. Loop so "3: ⠐ x"
+  -- collapses to "x" in one pass.
+  if is_claude then
+    local changed = true
+    while changed do
+      changed = false
+      -- Leading "N: " count prefix.
+      local t = title:gsub('^%s*%d+:%s+', '')
+      if t ~= title then title = t; changed = true end
+      -- Leading 3-byte-glyph spinner token (0xE2 ...) + trailing space.
+      t = title:gsub('^%s*\226[\128-\191][\128-\191]%s+', '')
+      if t ~= title then title = t; changed = true end
+    end
+  end
+
   -- Truncate the title with an ellipsis when it would overflow the tab. Reserve
-  -- cells for the surrounding padding, status dot, and trailing separator so the
-  -- '…' lands inside the button rather than getting clipped by it.
-  local reserved = is_claude and 8 or 4  -- '  ⬤  ' + '  ' + '▕'  vs  '  ' + '  ' + '▕'
+  -- cells for the surrounding padding, status marker, and separator so the '…'
+  -- lands inside the button rather than getting clipped by it. Budget is a fixed
+  -- character count (independent of focus — see the intensity note below), so a
+  -- title truncates to the same length whether or not the tab is active.
+  local reserved = is_claude and 8 or 6  -- claude: marker + pad  vs  plain: '  ❯ ' + pad
   local budget = math.max(4, (max_width or 32) - reserved)
   if #title > budget then
     title = wezterm.truncate_right(title, budget - 1) .. '…'
   end
 
-  -- Trailing separator drawn on every tab so the boundary between buttons is
-  -- obvious (fancy bar's own divider is faint). Brighter on the active tab.
-  local sep = {
-    { Attribute = { Underline = 'None' } },
-    { Attribute = { Intensity = 'Normal' } },
-    { Foreground = { Color = is_active and '#8890b0' or '#4a5270' } },
-    { Text = '▕' },
-  }
-
+  -- No custom separator glyph: fancy bar draws its own faint divider between
+  -- buttons, and any glyph we add lands *inside* the button (a second, offset
+  -- bar). Tab separation instead comes from distinct button bg colors set in
+  -- config.colors.tab_bar.* (active vs inactive contrast).
   local result
   if is_claude then
     local status = (pane_info.user_vars or {}).claude_status
     local style = status and STATUS_STYLE[status]
-    -- Dot color: status active_bg if a status is set, else claude orange.
-    local dot_color = style and style.active_bg or '#C0623A'
+    -- Marker: while working, animate Claude's growing star (glyph from the
+    -- current ping-pong frame, constant orange). Otherwise a static ⬤ dot tinted
+    -- by status (done+idle claude-orange / attention red).
+    local marker, dot_color
+    if status == 'working' then
+      marker = SPINNER_FRAMES[((spinner_frame - 1) % #SPINNER_FRAMES) + 1]
+      dot_color = SPINNER_COLOR
+    elseif status == 'attention' then
+      -- Red warning sign instead of a plain dot. VS15 forces text presentation
+      -- so it renders monochrome and takes our red (bare ⚠ would be a yellow
+      -- emoji that ignores the color).
+      marker = '⚠\u{FE0E}'
+      dot_color = style and style.active_bg or '#E5252B'
+    else
+      -- done / idle: a big orange claude-style star. ❋ (U+274B, heavy 8-pointed
+      -- teardrop-spoked asterisk) is the chunkiest text-presentation star, so it
+      -- best matches the emoji working star's size while still taking our orange.
+      -- Can't reuse the emoji ✳ — emoji are font-colored (green), not tintable.
+      marker = '❋\u{FE0E}'
+      dot_color = style and style.active_bg or '#C0623A'
+    end
     result = {
       { Attribute = { Intensity = intensity } },
       { Attribute = { Underline = underline } },
       { Foreground = { Color = dot_color } },
-      { Text = '  ⬤  ' },
+      { Text = '  ' .. marker .. '  ' },
       { Foreground = { Color = is_active and '#ffffff' or '#bbbbbb' } },
       { Text = title .. '  ' },
-      sep[1], sep[2], sep[3], sep[4],
     }
   else
+    -- Non-claude tabs get a terminal prompt glyph (❯ U+276F, text-presentation
+    -- so it takes our color and needs no Nerd Font), dimmed relative to the
+    -- title so it reads as a marker not a character of the name.
     result = {
       { Attribute = { Intensity = intensity } },
       { Attribute = { Underline = underline } },
+      { Foreground = { Color = is_active and '#7aadcc' or '#4a5a6a' } },
+      { Text = '  ❯ ' },
       { Foreground = { Color = is_active and '#ffffff' or '#aaaaaa' } },
-      { Text = '  ' .. title .. '  ' },
-      sep[1], sep[2], sep[3], sep[4],
+      { Text = title .. '  ' },
     }
   end
 
@@ -521,9 +606,55 @@ wezterm.on('window-focus-changed', function(window, pane)
   local focused = window:is_focused()
   window_focus[window:window_id()] = focused
 
+  -- Flip the (inert) interval by 1ms to force a tab-bar repaint. Stay at the
+  -- 200ms base so we don't change the spinner clock. See long note above re: why
+  -- this specific override is the cheapest invalidation trigger.
   local overrides = window:get_config_overrides() or {}
-  overrides.status_update_interval = focused and 1000 or 1001
+  overrides.status_update_interval = focused and 200 or 201
   window:set_config_overrides(overrides)
+end)
+
+-- ---------- Working spinner animation ----------
+-- Fires every status_update_interval ms. If any pane in any window reports
+-- claude_status=working, advance the braille spinner frame and force a tab-bar
+-- repaint so format-tab-title re-renders the new frame.
+--
+-- CRITICAL: the repaint is done with set_right_status, NOT set_config_overrides.
+-- The override trick used by window-focus-changed forces a full CONFIG RELOAD
+-- (~135ms) every call — fine for an occasional focus change, but at animation
+-- cadence it made tab switches visibly laggy. set_right_status is WezTerm's
+-- intended per-frame update path: it invalidates and repaints the tab bar (which
+-- re-runs format-tab-title) cheaply, with no reload. We stash the frame in a
+-- module global and write an (empty) right status purely to trigger the repaint.
+wezterm.on('update-status', function(window, pane)
+  local any_working = false
+  for _, w in ipairs(wezterm.mux.all_windows()) do
+    for _, tab in ipairs(w:tabs()) do
+      for _, p in ipairs(tab:panes()) do
+        local st = (p:get_user_vars() or {}).claude_status
+        if st == 'working' then any_working = true; break end
+      end
+      if any_working then break end
+    end
+    if any_working then break end
+  end
+
+  if not any_working then
+    -- Keep a constant zero-width payload even when idle: toggling between empty
+    -- and non-empty adds/removes the right-status region and reflows the tab bar
+    -- vertically (a 1-2px jitter every frame). Always-present, always zero-width
+    -- = stable layout.
+    window:set_right_status(wezterm.format({ { Text = '\u{200b}' } }))
+    return
+  end
+
+  spinner_frame = (spinner_frame % #SPINNER_FRAMES) + 1
+  -- Alternate between two DIFFERENT zero-width chars (ZWSP U+200B / ZWNBSP
+  -- U+FEFF) so the value changes each tick — an unchanged right status is a
+  -- no-op and wouldn't repaint. Both are zero-width, so the region's size never
+  -- changes and the tab bar doesn't shift. The chars are never visibly rendered;
+  -- they exist only to invalidate the tab bar so format-tab-title re-runs.
+  window:set_right_status(wezterm.format({ { Text = (spinner_frame % 2 == 0) and '\u{200b}' or '\u{feff}' } }))
 end)
 
 -- ---------- Command palette: Set Theme ----------
