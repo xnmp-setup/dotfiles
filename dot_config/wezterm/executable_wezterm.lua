@@ -410,17 +410,18 @@ local SPINNER_FRAMES = {}
 for i = 1, #SPINNER_RAMP do SPINNER_FRAMES[#SPINNER_FRAMES + 1] = SPINNER_RAMP[i] end
 for i = #SPINNER_RAMP - 1, 2, -1 do SPINNER_FRAMES[#SPINNER_FRAMES + 1] = SPINNER_RAMP[i] end
 
--- Working spinner color: a CYAN/BLUE shimmer, deliberately different from the
--- orange done/idle star so an in-progress tab is unmistakable at a glance. The
--- color brightens toward the peak glyph and dims on the way back, in lockstep
--- with the grow/shrink, giving a shimmer. Built ping-pong the same way as the
--- glyphs so frame N's color matches frame N's star size. Ramp runs muted teal →
--- bright cyan-white.
-local SPINNER_COLOR_RAMP = { '#3a6b7a', '#4fa9c0', '#7ad6e8', '#b6f0ff' }
+-- Working spinner color: a HUE CYCLE sweeping blue → teal → green and back,
+-- deliberately different from the orange done/idle star so an in-progress tab is
+-- unmistakable. The hue ramp is ping-ponged (blue→green then green→blue) for a
+-- seamless loop, and indexed on its OWN counter (spinner_color_frame) rather than
+-- the glyph frame — the two lists differ in length, so color drifts against size
+-- instead of locking to it, giving a livelier shimmer.
+local SPINNER_COLOR_RAMP = { '#4a7fd6', '#4aa6c8', '#3fb8a8', '#4fc785', '#63d46b' }
 local SPINNER_COLORS = {}
 for i = 1, #SPINNER_COLOR_RAMP do SPINNER_COLORS[#SPINNER_COLORS + 1] = SPINNER_COLOR_RAMP[i] end
 for i = #SPINNER_COLOR_RAMP - 1, 2, -1 do SPINNER_COLORS[#SPINNER_COLORS + 1] = SPINNER_COLOR_RAMP[i] end
 local spinner_frame = 1
+local spinner_color_frame = 1
 
 wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
   local pane_info = tab.active_pane
@@ -544,9 +545,8 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
       -- Animate Claude's growing star with a synced cyan shimmer — both glyph and
       -- color come from the current ping-pong frame, so the star brightens as it
       -- grows. Cyan (not orange) marks in-progress apart from the idle star.
-      local fi = ((spinner_frame - 1) % #SPINNER_FRAMES) + 1
-      marker = SPINNER_FRAMES[fi]
-      marker_fg = SPINNER_COLORS[((fi - 1) % #SPINNER_COLORS) + 1]
+      marker = SPINNER_FRAMES[((spinner_frame - 1) % #SPINNER_FRAMES) + 1]
+      marker_fg = SPINNER_COLORS[((spinner_color_frame - 1) % #SPINNER_COLORS) + 1]
     elseif status == 'attention' then
       -- Needs input: loud red, and a CHUNKIER star than idle — ✹ (U+2739, twelve-
       -- pointed filled black star) is denser/bolder than the idle ❋ outline, so a
@@ -677,6 +677,7 @@ wezterm.on('update-status', function(window, pane)
   end
 
   spinner_frame = (spinner_frame % #SPINNER_FRAMES) + 1
+  spinner_color_frame = (spinner_color_frame % #SPINNER_COLORS) + 1
   -- Alternate between two DIFFERENT zero-width chars (ZWSP U+200B / ZWNBSP
   -- U+FEFF) so the value changes each tick — an unchanged right status is a
   -- no-op and wouldn't repaint. Both are zero-width, so the region's size never
