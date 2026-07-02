@@ -5,6 +5,10 @@ local wezterm = require 'wezterm'
 local act = wezterm.action
 local config = wezterm.config_builder()
 
+-- Pure, unit-tested tab-title truncation lives in tabtitle.lua (beside this
+-- file, which wezterm puts on package.path). See tabtitle.test.lua for tests.
+local compute_tab_title = require('tabtitle').compute_tab_title
+
 -- Navigate panes within the current tab in book order (top-to-bottom, then
 -- left-to-right). Only cross to the next/prev tab when already at the
 -- last/first pane in that order.
@@ -191,6 +195,9 @@ end
 config.use_fancy_tab_bar = true
 config.show_new_tab_button_in_tab_bar = false -- drop the "+" new-tab button
 config.show_close_tab_button_in_tabs = false  -- drop the per-tab "x" (it overlapped the title)
+-- Note: tab_max_width is ignored in fancy tab bar mode (tabs are sized by the
+-- native widget / available width). Kept for the retro-bar fallback only. Our
+-- own truncation in format-tab-title uses the per-tab max_width passed there.
 config.tab_max_width = 32
 -- Drives the update-status timer cadence = spinner animation frame rate. The
 -- handler repaints via set_right_status (cheap, no config reload), so a fast
@@ -409,6 +416,7 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
   local pane_info = tab.active_pane
   local title = pane_info.title or ''
   local proc = pane_info.foreground_process_name or ''
+
   -- An active tab in an unfocused window should look inactive: fold the window's
   -- focus state into is_active so all the styling below (intensity, underline,
   -- bg tint) dims to match the greyed-out window contents. focus default is nil
@@ -511,67 +519,65 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
     end
   end
 
-  -- Truncate the title with an ellipsis when it would overflow the tab. Reserve
-  -- cells for the surrounding padding, status marker, and separator so the '…'
-  -- lands inside the button rather than getting clipped by it. Budget is a fixed
-  -- character count (independent of focus — see the intensity note below), so a
-  -- title truncates to the same length whether or not the tab is active.
-  local reserved = is_claude and 8 or 6  -- claude: marker + pad  vs  plain: '  ❯ ' + pad
-  local budget = math.max(4, (max_width or 32) - reserved)
-  if #title > budget then
-    title = wezterm.truncate_right(title, budget - 1) .. '…'
-  end
-
   -- No custom separator glyph: fancy bar draws its own faint divider between
   -- buttons, and any glyph we add lands *inside* the button (a second, offset
   -- bar). Tab separation instead comes from distinct button bg colors set in
   -- config.colors.tab_bar.* (active vs inactive contrast).
-  local result
+  --
+  -- Resolve the leading marker glyph + its color for the current state first, so
+  -- we know how many cells it consumes before deciding how much title fits.
+  local marker, marker_fg, title_fg
   if is_claude then
     local status = (pane_info.user_vars or {}).claude_status
     local style = status and STATUS_STYLE[status]
-    -- Marker: while working, animate Claude's growing star (glyph from the
-    -- current ping-pong frame, constant orange). Otherwise a static ⬤ dot tinted
-    -- by status (done+idle claude-orange / attention red).
-    local marker, dot_color
     if status == 'working' then
+      -- Animate Claude's growing star (ping-pong frame, constant orange).
       marker = SPINNER_FRAMES[((spinner_frame - 1) % #SPINNER_FRAMES) + 1]
-      dot_color = SPINNER_COLOR
+      marker_fg = SPINNER_COLOR
     elseif status == 'attention' then
-      -- Red warning sign instead of a plain dot. VS15 forces text presentation
-      -- so it renders monochrome and takes our red (bare ⚠ would be a yellow
-      -- emoji that ignores the color).
+      -- Red warning sign. VS15 forces text presentation so it takes our red
+      -- (bare ⚠ would be a yellow emoji that ignores the color).
       marker = '⚠\u{FE0E}'
-      dot_color = style and style.active_bg or '#E5252B'
+      marker_fg = style and style.active_bg or '#E5252B'
     else
-      -- done / idle: a big orange claude-style star. ❋ (U+274B, heavy 8-pointed
-      -- teardrop-spoked asterisk) is the chunkiest text-presentation star, so it
-      -- best matches the emoji working star's size while still taking our orange.
-      -- Can't reuse the emoji ✳ — emoji are font-colored (green), not tintable.
+      -- done / idle: chunky orange claude-style star ❋ (U+274B). Can't reuse the
+      -- emoji ✳ — emoji are font-colored (green), not tintable.
       marker = '❋\u{FE0E}'
-      dot_color = style and style.active_bg or '#C0623A'
+      marker_fg = style and style.active_bg or '#C0623A'
     end
-    result = {
-      { Attribute = { Intensity = intensity } },
-      { Attribute = { Underline = underline } },
-      { Foreground = { Color = dot_color } },
-      { Text = '  ' .. marker .. '  ' },
-      { Foreground = { Color = is_active and '#ffffff' or '#bbbbbb' } },
-      { Text = title .. '  ' },
-    }
+    title_fg = is_active and '#ffffff' or '#bbbbbb'
   else
-    -- Non-claude tabs get a terminal prompt glyph (❯ U+276F, text-presentation
-    -- so it takes our color and needs no Nerd Font), dimmed relative to the
-    -- title so it reads as a marker not a character of the name.
-    result = {
-      { Attribute = { Intensity = intensity } },
-      { Attribute = { Underline = underline } },
-      { Foreground = { Color = is_active and '#7aadcc' or '#4a5a6a' } },
-      { Text = '  ❯ ' },
-      { Foreground = { Color = is_active and '#ffffff' or '#aaaaaa' } },
-      { Text = title .. '  ' },
-    }
+    -- Non-claude tabs: a terminal prompt glyph (❯ U+276F, text-presentation so it
+    -- needs no Nerd Font), dimmed so it reads as a marker not part of the name.
+    marker = '❯'
+    marker_fg = is_active and '#7aadcc' or '#4a5a6a'
+    title_fg = is_active and '#ffffff' or '#aaaaaa'
   end
+
+  -- Truncate via the pure helper. window_cols comes from the mux (a stable input)
+  -- — NOT the content-driven max_width param, which feeds back on itself. See the
+  -- long note on compute_tab_title above.
+  local mux_win = wezterm.mux.get_window(tab.window_id)
+  local window_cols = mux_win and mux_win:active_tab():get_size().cols or 200
+  title = compute_tab_title {
+    title = title,
+    marker = marker,
+    ntabs = #tabs,
+    window_cols = window_cols,
+    max_chars = 24,
+    marker_pad = 3,  -- '  ' before + ' ' after the marker
+    width = wezterm.column_width,
+    truncate = wezterm.truncate_right,
+  }
+
+  local result = {
+    { Attribute = { Intensity = intensity } },
+    { Attribute = { Underline = underline } },
+    { Foreground = { Color = marker_fg } },
+    { Text = '  ' .. marker .. ' ' },
+    { Foreground = { Color = title_fg } },
+    { Text = title .. ' ' },
+  }
 
   last_tab_title[tostring(tab.tab_id)] = result
   return result
