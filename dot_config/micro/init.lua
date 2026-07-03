@@ -1,6 +1,14 @@
 local micro = import("micro")
 local buffer = import("micro/buffer")
 
+function toggleWrap(bp)
+    local on = not bp.Buf.Settings["softwrap"]
+    bp.Buf:SetOptionNative("softwrap", on)
+    bp.Buf:SetOptionNative("wordwrap", on)
+    micro.InfoBar():Message("word wrap: " .. (on and "on" or "off"))
+    return true
+end
+
 local snippets = {
     python = {
         qq = "# %% ━━━━━━━━  ━━━━━━━━",

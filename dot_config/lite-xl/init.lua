@@ -196,6 +196,7 @@ keymap.add({
   ["ctrl+="]           = "scale:increase",
   ["ctrl+-"]           = "scale:decrease",
   ["ctrl+0"]           = "scale:reset",
+  ["ctrl+alt+w"]       = "line-wrapping:toggle",
 }, true)
 
 -- Use add_direct to bypass macOS ctrl→cmd auto-conversion

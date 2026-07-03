@@ -140,6 +140,9 @@
             // fold toggle — overrides editor::ShowEditPrediction (alt-\)
             "alt-\\": "editor::ToggleFold",
 
+            // soft/word wrap toggle (VS Code alt+z equivalent)
+            "ctrl-alt-w": "editor::ToggleSoftWrap",
+
             // maximize editor
             "alt-o": "workspace::ToggleZoom",
 
