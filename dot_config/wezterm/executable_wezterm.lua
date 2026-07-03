@@ -439,11 +439,11 @@ local APP_ICONS = {
   micro = '\u{eae9}',  nano = '\u{eae9}',  vim = '\u{e62b}',  nvim = '\u{e62b}',  vi = '\u{e62b}',
   hx = '\u{f0e7}',  helix = '\u{f0e7}',  emacs = '\u{e632}',
   -- git / version control (keifu is the user's `gg` git TUI)
-  keifu = '\u{e702}',  git = '\u{e702}',  lazygit = '\u{e702}',  gitui = '\u{e702}',  tig = '\u{e702}',
+  keifu = '\u{e725}',  git = '\u{e702}',  lazygit = '\u{e702}',  gitui = '\u{e702}',  tig = '\u{e702}',
   -- file managers
   yazi = '\u{f07c}',  ranger = '\u{f07c}',  nnn = '\u{f07c}',  lf = '\u{f07c}',  broot = '\u{f07c}',
   -- multiplexers / sessions
-  zellij = '\u{ebc7}',  tmux = '\u{ebc7}',  screen = '\u{ebc7}',
+  zellij = '\u{f489}',  tmux = '\u{ebc7}',  screen = '\u{ebc7}',
   -- containers / infra
   docker = '\u{f308}',  ['docker-compose'] = '\u{f308}',  kubectl = '\u{f10fe}',  k9s = '\u{f10fe}',
   -- languages / runtimes
