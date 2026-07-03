@@ -469,6 +469,39 @@ for i = #SPINNER_COLOR_RAMP - 1, 2, -1 do SPINNER_COLORS[#SPINNER_COLORS + 1] = 
 local spinner_frame = 1
 local spinner_color_frame = 1
 
+-- Title-text shimmer for "working" tabs. Claude Code shimmers its status text
+-- (combobulating/lollygagging/…) with a bright band that sweeps across the
+-- letters; we replicate it on the tab title. Each character is emitted as its
+-- own colored run whose lightness is a cosine of (char_index - shimmer_phase),
+-- so the peak (a bright grey) travels left→right while the rest sits a shade
+-- dimmer. shimmer_phase advances once per update-status tick, but ONLY while a
+-- pane is working, so idle tabs render a flat title and don't churn repaints.
+-- The band stays within the bright greys (dim floor well above black) so the
+-- title never loses legibility — this is a subtle sheen, not a blink.
+local shimmer_phase = 0
+
+-- Grey between dim `lo` and bright `hi` (both 0..255) by t in [0,1].
+local function shimmer_grey(lo, hi, t)
+  local v = math.floor(lo + (hi - lo) * t + 0.5)
+  return string.format('#%02x%02x%02x', v, v, v)
+end
+
+-- Per-character colored runs for a shimmering title. Active tabs sweep brighter
+-- (dimmer band is still legible); inactive/unfocused tabs use a lower ceiling so
+-- they read as backgrounded, matching the rest of the dulled styling.
+local function shimmer_runs(title, phase, is_active)
+  local lo, hi = is_active and 0xcc or 0x8e, is_active and 0xff or 0xbe
+  local runs = {}
+  local i = 0
+  for _, cp in utf8.codes(title) do
+    local wave = (math.cos((i - phase) * 0.5) + 1) / 2  -- 0..1
+    runs[#runs + 1] = { Foreground = { Color = shimmer_grey(lo, hi, wave) } }
+    runs[#runs + 1] = { Text = utf8.char(cp) }
+    i = i + 1
+  end
+  return runs
+end
+
 wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
   local pane_info = tab.active_pane
   local title = pane_info.title or ''
@@ -584,10 +617,12 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
   -- Resolve the leading marker glyph + its color for the current state first, so
   -- we know how many cells it consumes before deciding how much title fits.
   local marker, marker_fg, title_fg
+  local is_working = false
   if is_claude then
     local status = claude_status_of(pane_info.pane_id, pane_info.user_vars)
     local style = status and STATUS_STYLE[status]
     if status == 'working' then
+      is_working = true
       -- Animate Claude's growing star with a synced cyan shimmer — both glyph and
       -- color come from the current ping-pong frame, so the star brightens as it
       -- grows. Cyan (not orange) marks in-progress apart from the idle star.
@@ -643,9 +678,17 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
     { Attribute = { Underline = underline } },
     { Foreground = { Color = marker_fg } },
     { Text = '  ' .. marker .. ' ' },
-    { Foreground = { Color = title_fg } },
-    { Text = title .. ' ' },
   }
+  if is_working then
+    -- Shimmering title: one colored run per char, bright band sweeps L→R.
+    for _, run in ipairs(shimmer_runs(title, shimmer_phase, is_active)) do
+      result[#result + 1] = run
+    end
+    result[#result + 1] = { Text = ' ' }
+  else
+    result[#result + 1] = { Foreground = { Color = title_fg } }
+    result[#result + 1] = { Text = title .. ' ' }
+  end
 
   last_tab_title[tostring(tab.tab_id)] = result
   return result
@@ -724,6 +767,9 @@ wezterm.on('update-status', function(window, pane)
 
   spinner_frame = (spinner_frame % #SPINNER_FRAMES) + 1
   spinner_color_frame = (spinner_color_frame % #SPINNER_COLORS) + 1
+  -- Advance the title shimmer band one step per tick. Kept as a plain counter
+  -- (cosine in shimmer_runs is periodic) so it never needs wrapping.
+  shimmer_phase = shimmer_phase + 1
   -- Alternate between two DIFFERENT zero-width chars (ZWSP U+200B / ZWNBSP
   -- U+FEFF) so the value changes each tick — an unchanged right status is a
   -- no-op and wouldn't repaint. Both are zero-width, so the region's size never
