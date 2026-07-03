@@ -436,7 +436,7 @@ local STATUS_STYLE = {
 -- Hack Nerd Font (the window_frame fallback).
 local APP_ICONS = {
   -- editors
-  micro = '\u{f040}',  nano = '\u{f040}',  vim = '\u{e62b}',  nvim = '\u{e62b}',  vi = '\u{e62b}',
+  micro = '\u{eae9}',  nano = '\u{eae9}',  vim = '\u{e62b}',  nvim = '\u{e62b}',  vi = '\u{e62b}',
   hx = '\u{f0e7}',  helix = '\u{f0e7}',  emacs = '\u{e632}',
   -- git / version control (keifu is the user's `gg` git TUI)
   keifu = '\u{e702}',  git = '\u{e702}',  lazygit = '\u{e702}',  gitui = '\u{e702}',  tig = '\u{e702}',
