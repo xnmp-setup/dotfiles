@@ -480,22 +480,36 @@ local spinner_color_frame = 1
 -- title never loses legibility — this is a subtle sheen, not a blink.
 local shimmer_phase = 0
 
--- Grey between dim `lo` and bright `hi` (both 0..255) by t in [0,1].
-local function shimmer_grey(lo, hi, t)
+-- Grey between dim `lo` and bright `hi` (both 0..255) by t in [0,1]. `dither`
+-- nudges the blue channel by ±0 (visually nothing) purely so that two adjacent
+-- characters NEVER emit the exact same color string — see shimmer_runs.
+local function shimmer_grey(lo, hi, t, dither)
   local v = math.floor(lo + (hi - lo) * t + 0.5)
-  return string.format('#%02x%02x%02x', v, v, v)
+  -- Subtract (never add): v can reach the 255 ceiling at the peak where adding
+  -- would clamp and re-collide with a neighbour. v >= lo (>=0x8e) so v-1 is safe.
+  local b = v - dither
+  return string.format('#%02x%02x%02x', v, v, b)
 end
 
 -- Per-character colored runs for a shimmering title. Active tabs sweep brighter
 -- (dimmer band is still legible); inactive/unfocused tabs use a lower ceiling so
 -- they read as backgrounded, matching the rest of the dulled styling.
+--
+-- WezTerm coalesces adjacent runs that share identical styling, then shapes each
+-- merged run as a unit — applying proportional kerning across the pair. Near the
+-- cosine peak/trough the wave is flat, so neighbours would quantize to the SAME
+-- grey and merge; as the band sweeps, WHICH neighbours merge changes each frame,
+-- so the kerned pairs change and the title width jitters slightly. Defeat it by
+-- dithering the blue channel with index parity: neighbours can never be byte-
+-- identical, so every char stays its own run every frame → constant shaping, no
+-- shift. The ±1 blue on a grey is imperceptible.
 local function shimmer_runs(title, phase, is_active)
   local lo, hi = is_active and 0xcc or 0x8e, is_active and 0xff or 0xbe
   local runs = {}
   local i = 0
   for _, cp in utf8.codes(title) do
     local wave = (math.cos((i - phase) * 0.5) + 1) / 2  -- 0..1
-    runs[#runs + 1] = { Foreground = { Color = shimmer_grey(lo, hi, wave) } }
+    runs[#runs + 1] = { Foreground = { Color = shimmer_grey(lo, hi, wave, i % 2) } }
     runs[#runs + 1] = { Text = utf8.char(cp) }
     i = i + 1
   end
