@@ -300,6 +300,8 @@ alias pbpaste='xsel --clipboard --output'
 alias x='tauri-explorer &>/dev/null & disown'
 alias lxl='lite-xl'
 alias gg='keifu'
+alias y='yazi'
+
 zss() {
   local diff
   diff="$(chezmoi diff ~/.zshrc 2>/dev/null)"

@@ -3,6 +3,8 @@
 prepend_keymap = [
   { on = "<Esc>", run = "plugin smart-escape", desc = "Escape or quit" },
   { on = "<Enter>", run = "plugin smart-enter", desc = "Enter child directory" },
+  { on = "<PageUp>", run = "arrow -15", desc = "Scroll up 15 items" },
+  { on = "<PageDown>", run = "arrow 15", desc = "Scroll down 15 items" },
 ]
 
 [tasks]

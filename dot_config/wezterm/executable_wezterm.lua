@@ -441,7 +441,7 @@ local APP_ICONS = {
   -- git / version control (keifu is the user's `gg` git TUI)
   keifu = '\u{e725}',  git = '\u{e702}',  lazygit = '\u{e702}',  gitui = '\u{e702}',  tig = '\u{e702}',
   -- file managers
-  yazi = '\u{f07c}',  ranger = '\u{f07c}',  nnn = '\u{f07c}',  lf = '\u{f07c}',  broot = '\u{f07c}',
+  yazi = '\u{ea83}',  ranger = '\u{ea83}',  nnn = '\u{ea83}',  lf = '\u{ea83}',  broot = '\u{ea83}',
   -- multiplexers / sessions
   zellij = '\u{f489}',  tmux = '\u{ebc7}',  screen = '\u{ebc7}',
   -- containers / infra
