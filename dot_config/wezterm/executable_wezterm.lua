@@ -667,7 +667,8 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
     -- Non-claude tabs: a terminal prompt glyph (❯ U+276F, text-presentation so it
     -- needs no Nerd Font), dimmed so it reads as a marker not part of the name.
     marker = '❯'
-    marker_fg = is_active and '#7aadcc' or '#4a5a6a'
+    -- Focused: rich saturated blue. Unfocused: muted slate (was grey).
+    marker_fg = is_active and '#4a90e2' or '#5a7a9a'
     title_fg = is_active and '#ffffff' or '#aaaaaa'
   end
 
