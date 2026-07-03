@@ -239,7 +239,10 @@ local scheme = config.color_schemes[config.color_scheme]
   or wezterm.color.get_builtin_schemes()[config.color_scheme]
   or { background = '#0e1330' }
 config.window_frame = {
-  font = wezterm.font('Inter', { weight = 'Medium' }),
+  -- Inter for the label text; fall back to Hack Nerd Font so the per-app tab
+  -- icons (editor/git/docker/… — see APP_ICONS) have glyphs to render. Inter has
+  -- no Private Use Area glyphs, so without the fallback they'd show as tofu.
+  font = wezterm.font_with_fallback({ { family = 'Inter', weight = 'Medium' }, 'Hack Nerd Font' }),
   font_size = 15,
   active_titlebar_bg = scheme.background,
   inactive_titlebar_bg = scheme.background,
@@ -419,6 +422,75 @@ local STATUS_STYLE = {
   attention = { glyph = '', active_bg = '#E5252B', inactive_bg = '#8A1418' },
 }
 
+-- Per-app tab icons for non-claude tabs. Keyed by the foreground process
+-- basename (what pane:get_foreground_process_name reports, sans path/.exe).
+-- When a running command matches, its Nerd Font glyph replaces the default ❯
+-- prompt marker so you can tell editor/git/file-manager/… tabs apart at a
+-- glance. All glyphs are from Hack Nerd Font (the window_frame fallback above);
+-- text-default codepoints so they take our marker_fg tint, not emoji coloring.
+-- App choices seeded from the user's atuin history (micro, keifu/gg, yazi,
+-- zellij, docker, cargo, bun, python/uv, codex, ssh, vim/nvim, top-tools, git).
+-- Glyphs written as \u{} escapes (NOT raw bytes): raw Nerd Font PUA codepoints
+-- get silently stripped when this file is edited through some tooling, leaving
+-- empty strings that render as no marker. All codepoints verified present in
+-- Hack Nerd Font (the window_frame fallback).
+local APP_ICONS = {
+  -- editors
+  micro = '\u{f040}',  nano = '\u{f040}',  vim = '\u{e62b}',  nvim = '\u{e62b}',  vi = '\u{e62b}',
+  hx = '\u{f0e7}',  helix = '\u{f0e7}',  emacs = '\u{e632}',
+  -- git / version control (keifu is the user's `gg` git TUI)
+  keifu = '\u{e702}',  git = '\u{e702}',  lazygit = '\u{e702}',  gitui = '\u{e702}',  tig = '\u{e702}',
+  -- file managers
+  yazi = '\u{f07c}',  ranger = '\u{f07c}',  nnn = '\u{f07c}',  lf = '\u{f07c}',  broot = '\u{f07c}',
+  -- multiplexers / sessions
+  zellij = '\u{ebc7}',  tmux = '\u{ebc7}',  screen = '\u{ebc7}',
+  -- containers / infra
+  docker = '\u{f308}',  ['docker-compose'] = '\u{f308}',  kubectl = '\u{f10fe}',  k9s = '\u{f10fe}',
+  -- languages / runtimes
+  cargo = '\u{e7a8}',  rustc = '\u{e7a8}',  bun = '\u{e76f}',  node = '\u{e718}',  deno = '\u{e718}',
+  python = '\u{e606}',  python3 = '\u{e606}',  uv = '\u{e606}',  ['python3.12'] = '\u{e606}',
+  go = '\u{e626}',  ruby = '\u{e739}',  lua = '\u{e620}',
+  -- ai clis
+  codex = '\u{f0ea0}',  openclaw = '\u{f0ea0}',
+  -- remote / net
+  ssh = '\u{f08c0}',  mosh = '\u{f08c0}',  ping = '\u{f0200}',  curl = '\u{f0ee}',  wget = '\u{f0ee}',
+  -- monitors
+  htop = '\u{f0e4}',  btop = '\u{f0e4}',  top = '\u{f0e4}',  btm = '\u{f0e4}',
+  -- misc common
+  fzf = '\u{f422}',  rg = '\u{f422}',  make = '\u{e673}',  bat = '\u{f0e7}',  less = '\u{f15c}',
+  man = '\u{f02d}',  brew = '\u{f0f4}',  psql = '\u{e76e}',  redis = '\u{e76d}',  sqlite3 = '\u{e7c4}',
+}
+
+-- Apps whose tab title should show the open FILE's basename instead of just the
+-- cwd (e.g. " .zshrc" for a micro session editing ~/.zshrc). Editors/pagers
+-- take a file path as an argument; we pull it from the process argv. Value is
+-- unused (set membership only).
+local APP_SHOWS_FILE = {
+  micro=1, nano=1, vim=1, nvim=1, vi=1, hx=1, helix=1, emacs=1, bat=1, less=1, man=1,
+}
+
+-- Resolve the basename of the file a known editor has open, from its argv.
+-- pane_id → mux pane → get_foreground_process_info().argv. Returns nil when the
+-- API/info is unavailable or no file argument is present (e.g. `micro` with no
+-- file), so the caller falls back to a cwd-only title. Picks the LAST non-flag
+-- argv entry — editors put the file after any options, and if several files are
+-- open the active/last one is the most useful label.
+local function editor_open_file(pane_id)
+  local ok, pane = pcall(wezterm.mux.get_pane, pane_id)
+  if not ok or not pane then return nil end
+  local ok2, info = pcall(function() return pane:get_foreground_process_info() end)
+  if not ok2 or not info or not info.argv then return nil end
+  local argv = info.argv
+  for i = #argv, 2, -1 do  -- skip argv[1] (the program itself)
+    local a = argv[i]
+    if a and a ~= '' and a:sub(1, 1) ~= '-' then
+      local base = a:gsub('[/\\]+$', ''):match('[^/\\]+$')
+      if base and base ~= '' then return base end
+    end
+  end
+  return nil
+end
+
 -- Spinner animation for "working" tabs. format-tab-title normally renders a
 -- static ⬤ dot; while a claude pane reports status=working we twinkle Claude's
 -- own star glyph in its place — the shape grows/shrinks (· → ✦ → ✳ → ✷ → …) and
@@ -573,13 +645,22 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
       basename = path:match('[^/\\]+$') or path
     end
 
-    local proc_name = proc:match('[^/\\]+$') or ''
+    local proc_name = (proc:match('[^/\\]+$') or ''):gsub('%.exe$', '')
     local shells = { bash=1, sh=1, zsh=1, fish=1, nu=1, login=1 }
     if proc_name ~= '' and not shells[proc_name] then
-      -- Running a command — show "cwd: command args" from pane title
-      -- pane title is usually set to the running command by the shell
-      local cmd = pane_info.title or proc_name
-      title = basename .. ': ' .. cmd
+      if APP_ICONS[proc_name] then
+        -- Known app: its marker icon (set below) already names the app, so show
+        -- just the cwd — no redundant "cwd: micro". For editors/pagers, show the
+        -- open file's basename instead (" .zshrc"), falling back to cwd when no
+        -- file arg is present.
+        local file = APP_SHOWS_FILE[proc_name] and editor_open_file(pane_info.pane_id)
+        title = file and (basename .. ': ' .. file) or basename
+      else
+        -- Unknown command — show "cwd: command args" from pane title.
+        -- pane title is usually set to the running command by the shell.
+        local cmd = pane_info.title or proc_name
+        title = basename .. ': ' .. cmd
+      end
     else
       title = basename
     end
@@ -664,9 +745,12 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
       title_fg = is_active and '#ffffff' or '#bbbbbb'
     end
   else
-    -- Non-claude tabs: a terminal prompt glyph (❯ U+276F, text-presentation so it
-    -- needs no Nerd Font), dimmed so it reads as a marker not part of the name.
-    marker = '❯'
+    -- Non-claude tabs: default to a terminal prompt glyph (❯ U+276F, text-
+    -- presentation, needs no Nerd Font), dimmed so it reads as a marker not part
+    -- of the name. If a known app is the foreground process, swap in its Nerd
+    -- Font icon (see APP_ICONS) — strip any path and a trailing .exe first.
+    local pname = (proc:match('[^/\\]+$') or ''):gsub('%.exe$', '')
+    marker = APP_ICONS[pname] or '❯'
     -- Focused: rich saturated blue. Unfocused: muted slate (was grey).
     marker_fg = is_active and '#4a90e2' or '#5a7a9a'
     title_fg = is_active and '#ffffff' or '#aaaaaa'
