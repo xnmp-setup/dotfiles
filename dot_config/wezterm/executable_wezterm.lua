@@ -242,7 +242,15 @@ config.window_frame = {
   -- Inter for the label text; fall back to Hack Nerd Font so the per-app tab
   -- icons (editor/git/docker/… — see APP_ICONS) have glyphs to render. Inter has
   -- no Private Use Area glyphs, so without the fallback they'd show as tofu.
-  font = wezterm.font_with_fallback({ { family = 'Inter', weight = 'Medium' }, 'Hack Nerd Font' }),
+  --
+  -- Adwaita Mono is a third fallback purely for the Claude status stars ❋ (U+274B)
+  -- and ✹ (U+2739): they exist in NO other installed font, so without this entry
+  -- wezterm can only reach them via its ASYNC system-wide font search. That search
+  -- result is flushed by the full config reload the window-focus-changed handler
+  -- forces (see below), so for a frame after every focus change the idle star drew
+  -- as .notdef (a tall box with a slash). Listing the font here makes the glyphs
+  -- resolve synchronously from the configured stack, so the reload can't gap them.
+  font = wezterm.font_with_fallback({ { family = 'Inter', weight = 'Medium' }, 'Hack Nerd Font', 'Adwaita Mono' }),
   font_size = 15,
   active_titlebar_bg = scheme.background,
   inactive_titlebar_bg = scheme.background,
