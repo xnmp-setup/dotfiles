@@ -28,10 +28,18 @@
 - When unsure, ask clarifying questions rather than guessing.
 - Fix root causes, not symptoms. Avoid band-aid fixes like stopPropagation to mask duplicate handlers, setTimeout to paper over race conditions, or flags to suppress unwanted side effects. If a fix feels like a workaround, step back and address the underlying design issue.
 
+## Debugging
+- Form and add logs to test all independent hypotheses at once, then run once and read combined output — don't add one log, run, observe, repeat. Go serial only on genuine dependencies.
+- Isolate long debug loops in a subagent that returns the conclusion, not the full investigation transcript.
+
 ## Cost & Delegation
-- Fable tokens are very expensive. When the main model is Fable, delegate work to Sonnet or Haiku subagents wherever possible (searching, reading, exploration, routine edits, test runs). Reserve Fable for the high-level reasoning and synthesis that actually needs it.
+- Fable tokens are very expensive. When the main model is Fable, delegate work to Opus, Sonnet or Haiku subagents wherever possible (searching, reading, exploration, routine edits, test runs). Reserve Fable for the high-level reasoning and synthesis that actually needs it.
+- DO NOT use Fable subagents in any circumstance. 
 
 ## Misc
 - When testing whether hooks work, don't pipe text to the shell scripts. Instead run actual commands that would trigger the hooks.
+
+## Shell environment
+Common commands are aliased to modern replacements: cat→bat (adds line numbers, syntax highlighting), du→dust, ls→exa. Output is decorated, not plain. If decoration interferes with parsing or you need raw output, use the full path (`/bin/cat`, `command cat`) or the tool's plain flag (`bat -p`).
 
 @RTK.md
