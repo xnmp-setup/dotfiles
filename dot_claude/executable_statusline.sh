@@ -318,7 +318,9 @@ for line in sys.stdin:
             rv, ml, fcv = float(rewarm), float(mins_left), float(fc)
         except ValueError:
             rv = None
-        if rv is not None:
+        # Only surface the countdown once the cache is within 45m of expiring —
+        # earlier than that it is just noise (plenty of runway, always green).
+        if rv is not None and ml < 45:
             col = "196" if fcv < 0.5 else "221" if fcv < 0.8 else "114"
             when = "now" if ml < 1 else f"in {int(round(ml))}m"
             seg = f"  \x1b[38;5;{col}m⟳{format_cost(rv)} {when}\x1b[0m"
