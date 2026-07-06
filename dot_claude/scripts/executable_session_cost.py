@@ -42,7 +42,7 @@ PRICES = {
 # turn's subagent cost is layered on top, coloured per base model (MODEL_HEX).
 COMPONENTS = [
     ("cache_read",  "cache read",  "#5ab0a6"),
-    ("cache_write", "cache write", "#e0894b"),
+    ("cache_write", "cache write", "#9d7ce0"),
     ("output",      "output",      "#6c8cd5"),
     ("input",       "input",       "#9aa0ac"),
 ]
@@ -525,6 +525,7 @@ _SHELL = """
     <div style="display:flex;align-items:center;gap:14px">
       <button id="back" class="backbtn" onclick="goBack()">&larr; back</button>
       <label class="tgl"><input type="checkbox" id="norm" checked onchange="setMode()"><span class="tr"></span><span id="normlbl">normalize by steps</span></label>
+      <label class="tgl"><input type="checkbox" id="subs" checked onchange="toggleSubs()"><span class="tr"></span>show subagents</label>
     </div>
     <div class="legend" id="legend"></div>
   </div>
@@ -544,10 +545,10 @@ shows the whole span with the current window highlighted (Esc again, once unzoom
 """
 
 _JS = """
-const COMPS=[["cache_read","cache read","#5ab0a6"],["cache_write","cache write","#e0894b"],["output","output","#6c8cd5"],["input","input","#9aa0ac"]];
+const COMPS=[["cache_read","cache read","#5ab0a6"],["cache_write","cache write","#9d7ce0"],["output","output","#6c8cd5"],["input","input","#9aa0ac"]];
 const MODEL_HEX={Opus:"#ff8700",Sonnet:"#ffaf87",Haiku:"#ffd7af",Fable:"#ff5f87"};
 const MODELS=["Opus","Sonnet","Haiku","Fable"], SUBHEX="#b083e0", STEPS="#e05a6b";
-let stack=["root"], mode="per_step";
+let stack=["root"], mode="per_step", showSubs=true;
 let win=null, winKey=null, CH={padL:64,band:10,s0:0}, msel=null;
 
 function fmt(u){if(u>=1)return "$"+u.toFixed(2);var c=u*100;if(c>=10)return Math.round(c)+"c";if(c>=1)return c.toFixed(1)+"c";return c>0?"<1c":"0c";}
@@ -560,7 +561,7 @@ function contW(){return document.getElementById("scroll").clientWidth||900;}
 
 function segsFor(bar,div){
   var out=COMPS.map(function(c){var raw=bar.comps[c[0]];return {color:c[2],v:raw/div,raw:raw,type:c[1],sub:false};});
-  bar.subs.forEach(function(s){out.push({color:mh(s.model),v:s.total/div,raw:s.total,type:s.model+" subagent \\u2014 "+s.label,sub:true,id:s.id});});
+  if(showSubs)bar.subs.forEach(function(s){out.push({color:mh(s.model),v:s.total/div,raw:s.total,type:s.model+" subagent \\u2014 "+s.label,sub:true,id:s.id});});
   return out;
 }
 function barTotal(b){var d=(mode==="per_step"&&b.steps)?b.steps:1;return segsFor(b,d).reduce(function(a,x){return a+x.v;},0);}
@@ -586,7 +587,7 @@ function redraw(node){drawChart(node);buildMini(node);}
 
 function buildLegend(node){
   var out=COMPS.map(function(c){return lg(c[2],c[1]);});
-  MODELS.forEach(function(m){if(node.submodel[m])out.push(lg(mh(m),m+" subagent"));});
+  if(showSubs)MODELS.forEach(function(m){if(node.submodel[m])out.push(lg(mh(m),m+" subagent"));});
   if(node.kind==="turn")out.push("<span class=\\"lg\\"><span style=\\"width:14px;height:0;border-top:2px solid "+STEPS+"\\"></span>steps/turn</span>");
   document.getElementById("legend").innerHTML=out.join("");
 }
@@ -692,6 +693,7 @@ function showTip(e){
 function goBack(){if(stack.length>1){stack.pop();render();}}
 function jump(i){if(i<stack.length-1){stack=stack.slice(0,i+1);render();}}
 function setMode(){if(document.getElementById("norm").disabled)return;mode=document.getElementById("norm").checked?"per_step":"total";render();}
+function toggleSubs(){showSubs=document.getElementById("subs").checked;render();}
 function resetZoom(){var node=cur();win={s:0,e:node.bars.length-1};redraw(node);}
 
 (function(){
