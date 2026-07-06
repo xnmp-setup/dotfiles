@@ -8,7 +8,143 @@
 # the color picker greps for. The bar width is fixed (16 chars) regardless of
 # this value, so a large width only prevents truncation — no visual downside.
 # CCSTATUSLINE_WIDTH is checked first in ccstatusline's width probe and wins.
-OUTPUT=$(cat | CCSTATUSLINE_WIDTH=1000 bunx -y ccstatusline@latest 2>/dev/null)
+#
+# Capture stdin once (ccstatusline consumes it, but we also need the raw JSON to
+# read the real session cost that Claude Code passes as cost.total_cost_usd).
+INPUT=$(cat)
+OUTPUT=$(printf '%s' "$INPUT" | CCSTATUSLINE_WIDTH=1000 bunx -y ccstatusline@latest 2>/dev/null)
+
+# Two costs from the statusline stdin JSON:
+#   SESSION_COST  - cumulative session cost, the authoritative cost.total_cost_usd
+#   LAST_MSG_COST - cost of the last user turn, priced from the transcript's token
+#                   usage (Claude Code doesn't report a per-turn cost). "Last turn"
+#                   = the most recent real user message and every assistant response
+#                   (incl. subagents) after it. Rates are per 1M tokens; cache write
+#                   is 1.25x input for 5m TTL and 2x for 1h; cache read is 0.1x.
+COSTS=$(printf '%s' "$INPUT" | python3 -c '
+import sys, json, os
+
+PRICES = {
+    "Opus":   {"in": 5.0,  "out": 25.0, "cw5": 6.25, "cw1h": 10.0, "cr": 0.5},
+    "Sonnet": {"in": 3.0,  "out": 15.0, "cw5": 3.75, "cw1h": 6.0,  "cr": 0.3},
+    "Haiku":  {"in": 1.0,  "out": 5.0,  "cw5": 1.25, "cw1h": 2.0,  "cr": 0.1},
+    "Fable":  {"in": 10.0, "out": 50.0, "cw5": 12.5, "cw1h": 20.0, "cr": 1.0},
+}
+
+def family(model):
+    lo = (model or "").lower()
+    for name in ("Opus", "Sonnet", "Haiku", "Fable"):
+        if name.lower() in lo:
+            return name
+    return "Opus"
+
+def is_real_user(entry):
+    # A human turn, not a tool_result carrier.
+    if entry.get("type") != "user":
+        return False
+    content = entry.get("message", {}).get("content")
+    if isinstance(content, str):
+        return True
+    if isinstance(content, list):
+        return any(isinstance(b, dict) and b.get("type") != "tool_result" for b in content)
+    return False
+
+def msg_cost(entry):
+    msg = entry.get("message", {})
+    u = msg.get("usage") or {}
+    p = PRICES[family(msg.get("model"))]
+    cc = u.get("cache_creation") or {}
+    cc5 = cc.get("ephemeral_5m_input_tokens")
+    cc1h = cc.get("ephemeral_1h_input_tokens")
+    if cc5 is None and cc1h is None:
+        cc5, cc1h = u.get("cache_creation_input_tokens", 0) or 0, 0
+    return (
+        (u.get("input_tokens", 0) or 0) * p["in"]
+        + (u.get("output_tokens", 0) or 0) * p["out"]
+        + (u.get("cache_read_input_tokens", 0) or 0) * p["cr"]
+        + (cc5 or 0) * p["cw5"]
+        + (cc1h or 0) * p["cw1h"]
+    ) / 1e6
+
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    print("\t"); sys.exit()
+
+session_cost = data.get("cost", {}).get("total_cost_usd", "")
+tpath = data.get("transcript_path", "")
+
+last_cost = ""
+if tpath and os.path.exists(tpath):
+    try:
+        entries = []
+        for ln in open(tpath).read().splitlines():
+            if ln.strip():
+                try:
+                    entries.append(json.loads(ln))
+                except Exception:
+                    pass
+        # Last main-chain human turn marks the start of the current turn.
+        start = None
+        for i in range(len(entries) - 1, -1, -1):
+            if not entries[i].get("isSidechain") and is_real_user(entries[i]):
+                start = i
+                break
+        if start is not None:
+            # Dedupe by message id: one assistant message is often logged on
+            # several transcript lines (one per content block), but its usage is
+            # billed once per API response. Summing raw lines multi-counts cost.
+            seen, total = set(), 0.0
+            for e in entries[start + 1:]:
+                if e.get("type") != "assistant":
+                    continue
+                mid = e.get("message", {}).get("id") or e.get("requestId")
+                if mid is not None:
+                    if mid in seen:
+                        continue
+                    seen.add(mid)
+                total += msg_cost(e)
+            last_cost = total
+    except Exception:
+        pass
+
+# --- countdown + cost to re-warm the cache on the NEXT message ---
+# Claude Code writes a 1h prompt cache, refreshed on each use, so it survives as
+# a block until ~1h after the last reply, then dies all at once. The re-warm
+# cost is therefore FIXED (full cached context x 1h write rate) and only the
+# *timing* is uncertain:
+#   rewarm      = that fixed cost, charged on the next message once the cache dies
+#   mins_left   = minutes until it dies (0 = already expired)
+#   frac_cached = fraction of the 1h window still remaining (drives the color)
+rewarm, mins_left, frac_cached, age_min = "", "", "", ""
+try:
+    import time as _time
+    from datetime import datetime
+    TTL = 3600.0
+    last_asst = None
+    for e in entries:
+        if e.get("type") == "assistant" and e.get("message", {}).get("usage"):
+            last_asst = e
+    if last_asst is not None and last_asst.get("timestamp"):
+        u = last_asst["message"]["usage"]
+        cc = u.get("cache_creation") or {}
+        cw_tok = (cc.get("ephemeral_5m_input_tokens", 0) or 0) + (cc.get("ephemeral_1h_input_tokens", 0) or 0)
+        if cw_tok == 0:
+            cw_tok = u.get("cache_creation_input_tokens", 0) or 0
+        ctx = (u.get("cache_read_input_tokens", 0) or 0) + cw_tok
+        rate = PRICES[family(last_asst["message"].get("model"))]["cw1h"]
+        ts = datetime.fromisoformat(last_asst["timestamp"].replace("Z", "+00:00"))
+        idle = _time.time() - ts.timestamp()
+        rewarm = ctx * rate / 1e6
+        mins_left = max(0.0, (TTL - idle) / 60.0)
+        frac_cached = min(1.0, max(0.0, (TTL - idle) / TTL))
+        age_min = idle / 60.0  # unclamped: real age of the last reply, drives the expiry banner
+except Exception:
+    pass
+
+print(f"{session_cost}\t{last_cost}\t{rewarm}\t{mins_left}\t{frac_cached}\t{age_min}")
+')
+IFS=$'\t' read -r SESSION_COST LAST_MSG_COST REWARM MINS_LEFT FRAC_CACHED AGE_MIN <<< "$COSTS"
 
 # Extract the percentage from the context bar, e.g. "(15%)"
 PCT=$(echo "$OUTPUT" | grep -oE '\([0-9]+%\)' | head -1 | tr -dc '0-9')
@@ -32,8 +168,9 @@ echo "$OUTPUT" \
   | sed \
       -e "s/${ESC}\[38;5;203m/${NEW_FG}/g" \
       -e 's|\.\.\./||g' \
-  | python3 -c '
-import sys, re
+  | SESSION_COST="$SESSION_COST" LAST_MSG_COST="$LAST_MSG_COST" \
+    REWARM="$REWARM" MINS_LEFT="$MINS_LEFT" FRAC_CACHED="$FRAC_CACHED" AGE_MIN="$AGE_MIN" python3 -c '
+import sys, re, os
 
 FAMILIES = ("Opus", "Sonnet", "Haiku", "Fable")
 
@@ -170,5 +307,65 @@ for line in sys.stdin:
                 cost = ctx_tokens * price / 1e6
                 seg = f" \x1b[38;5;245m~{format_cost(cost)}/step\x1b[0m"
                 line = line.rstrip("\n") + seg + "\n"
+    # cache re-warm countdown (⟳ COST in Nm): fixed cost to rebuild the prompt
+    # cache once it expires, and how long until that happens. Color = proportion
+    # of the 1h window still warm: green >=80%, yellow >=50%, bright red <50%.
+    rewarm = os.environ.get("REWARM", "").strip()
+    mins_left = os.environ.get("MINS_LEFT", "").strip()
+    fc = os.environ.get("FRAC_CACHED", "").strip()
+    if rewarm and mins_left and fc:
+        try:
+            rv, ml, fcv = float(rewarm), float(mins_left), float(fc)
+        except ValueError:
+            rv = None
+        if rv is not None:
+            col = "196" if fcv < 0.5 else "221" if fcv < 0.8 else "114"
+            when = "now" if ml < 1 else f"in {int(round(ml))}m"
+            seg = f"  \x1b[38;5;{col}m⟳{format_cost(rv)} {when}\x1b[0m"
+            line = line.rstrip("\n") + seg + "\n"
+    # append cost of the last user turn (blue, "+" = accrued this turn)
+    last_cost = os.environ.get("LAST_MSG_COST", "").strip()
+    if last_cost:
+        try:
+            usd = float(last_cost)
+        except ValueError:
+            usd = None
+        if usd is not None:
+            seg = f"  \x1b[38;5;111m+{format_cost(usd)}\x1b[0m"
+            line = line.rstrip("\n") + seg + "\n"
+    # append actual cumulative session cost on the far right (gold), from the
+    # real total_cost_usd Claude Code reports — not the per-step estimate above.
+    session_cost = os.environ.get("SESSION_COST", "").strip()
+    if session_cost:
+        try:
+            usd = float(session_cost)
+        except ValueError:
+            usd = None
+        if usd is not None:
+            seg = f"  \x1b[38;5;220m{format_cost(usd)}\x1b[0m"
+            line = line.rstrip("\n") + seg + "\n"
+    # GIANT expiry banner: if the last reply is over an hour old the 1h prompt
+    # cache is dead, so the next message pays full re-warm. AGE_MIN is recomputed
+    # live at every render (needs refreshInterval in settings, else the statusline
+    # freezes while idle and this never fires). Printed as its own leading line,
+    # bold + blinking white-on-red, so it is impossible to miss.
+    age_min = os.environ.get("AGE_MIN", "").strip()
+    if age_min:
+        try:
+            am = float(age_min)
+        except ValueError:
+            am = None
+        if am is not None and am > 60:
+            rw = os.environ.get("REWARM", "").strip()
+            try:
+                cost_txt = f" — next msg re-warms {format_cost(float(rw))}" if rw else ""
+            except ValueError:
+                cost_txt = ""
+            banner = (
+                f"\x1b[1;5;38;5;231;48;5;196m "
+                f"⚠ CACHE EXPIRED — last reply {int(round(am))}m ago{cost_txt} ⚠ "
+                f"\x1b[0m\n"
+            )
+            line = banner + line
     sys.stdout.write(line)
 '

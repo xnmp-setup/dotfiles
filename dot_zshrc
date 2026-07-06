@@ -185,6 +185,8 @@ alias ls="eza --icons --group-directories-first"
 alias ll="eza -l --icons --git --group-directories-first"
 alias du="dust"
 alias tv='tidy-viewer'
+# session cost report — opens the chart in the browser (no terminal dump)
+alias cc-cost='python ~/.claude/scripts/session_cost.py >/dev/null'
 
 export ANTHROPIC_MODEL="opus"
 
