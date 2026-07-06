@@ -60,6 +60,12 @@ title_case() {
   echo "$1" | tr '-' ' ' | sed 's/\b\(.\)/\u\1/g'
 }
 
+# Extract a hex colour for a CSS custom property from a stylesheet.
+#   css_var <file> <var-name-without-dashes>
+css_var() {
+  grep -oP -- "--$2:\s*\K#[0-9a-fA-F]{3,8}" "$1" 2>/dev/null | head -1
+}
+
 title=$(title_case "$slug")
 changed=0
 skipped=()
@@ -190,6 +196,61 @@ else
   skipped+=("Chrome (no theme dir found for $slug)")
 fi
 
+# --- Dark Reader (browser extension) ---
+# Dark Reader keeps its config in the browser's extension storage (a live
+# LevelDB), which can't be safely edited from a script. Instead we generate an
+# importable settings file and derive the palette from the theme's tauri CSS,
+# then the user imports it via the Dark Reader UI (one-time per theme change).
+dr_css="$HOME/.config/tauri-explorer/themes/$slug.css"
+if [[ -f "$dr_css" ]] && command -v jq &>/dev/null; then
+  bg=$(css_var "$dr_css" background-solid)
+  fg=$(css_var "$dr_css" text-primary)
+  accent=$(css_var "$dr_css" accent)
+  if [[ -n "$bg" && -n "$fg" ]]; then
+    # Light slugs drive the light scheme; everything else is a dark scheme.
+    dr_mode=1
+    [[ "$slug" =~ light ]] && dr_mode=0
+
+    dr_dir="$HOME/.local/share/darkreader-themes"
+    mkdir -p "$dr_dir"
+    dr_file="$dr_dir/$slug.json"
+
+    # Full default theme object with our colour overrides, so importing this
+    # replaces only the theme (site lists etc. are preserved by the merge).
+    jq -n \
+      --argjson mode "$dr_mode" \
+      --arg bg "$bg" --arg fg "$fg" \
+      --arg sel "${accent:-auto}" \
+      '{
+        enabled: true,
+        theme: {
+          mode: $mode,
+          brightness: 100, contrast: 100, grayscale: 0, sepia: 0,
+          useFont: false, fontFamily: "", textStroke: 0,
+          engine: "dynamicTheme", stylesheet: "",
+          darkSchemeBackgroundColor: (if $mode == 1 then $bg else "#181a1b" end),
+          darkSchemeTextColor:       (if $mode == 1 then $fg else "#e8e6e3" end),
+          lightSchemeBackgroundColor:(if $mode == 0 then $bg else "#dcdad7" end),
+          lightSchemeTextColor:      (if $mode == 0 then $fg else "#181a1b" end),
+          scrollbarColor: "auto",
+          selectionColor: $sel,
+          styleSystemControls: true
+        }
+      }' > "$dr_file"
+
+    echo "  ✓ Dark Reader → $slug (bg $bg, fg $fg)"
+    echo "    Import once: Dark Reader → Settings (gear) → Manage settings"
+    echo "    → Import Settings → $dr_file"
+    ((changed++))
+  else
+    skipped+=("Dark Reader (could not read colours from $dr_css)")
+  fi
+elif [[ -f "$dr_css" ]]; then
+  skipped+=("Dark Reader (jq not installed)")
+else
+  skipped+=("Dark Reader (no tauri theme CSS at $dr_css to derive colours)")
+fi
+
 # --- Zed ---
 config="$HOME/.config/zed/settings.json"
 if [[ -f "$config" ]]; then
@@ -243,6 +304,7 @@ if (( changed > 0 )); then
   echo "  Obsidian: restart or toggle in Appearance"
   echo "  Tauri Explorer: relaunch"
   echo "  Chrome: reload extension at chrome://extensions/"
+  echo "  Dark Reader: import the generated JSON (see above)"
   echo "  Zed: applied immediately (if running)"
   echo "  Vicinae: applied immediately"
   echo "  Powerlevel10k: applied (if called via set-theme shell function)"
