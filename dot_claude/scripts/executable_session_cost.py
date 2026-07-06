@@ -269,6 +269,7 @@ def build_turns(entries):
         seen = set()
         comps = {c: 0.0 for c, _, _ in COMPONENTS}
         inline = {}  # model family -> {"cost": {...}, "steps": n} for old transcripts
+        by_model = {}  # main-chain cost by model family (for the header chip)
         steps, tids = 0, set()
         for x in entries[s + 1:e]:
             if x.get("type") != "assistant" or is_synthetic(x):
@@ -293,6 +294,7 @@ def build_turns(entries):
                 node["steps"] += 1
             else:
                 steps += 1
+                by_model[fam] = by_model.get(fam, 0.0) + sum(c.values())
                 for key in USAGE_KEYS:
                     comps[key] += c[key]
         # legacy inline sidechains become one subagent record per model
@@ -301,7 +303,7 @@ def build_turns(entries):
                  "total": sum(n["cost"].values()), "children": []}
                 for fam, n in inline.items()]
         turns.append({"num": k + 1, "steps": steps, "tids": sorted(tids),
-                      "comps": comps, "subs": subs})
+                      "comps": comps, "subs": subs, "by_model": by_model})
     return turns
 
 
@@ -443,8 +445,14 @@ def build_nodes(turns, nodes):
         bars.append({"label": str(t["num"]),
                      "comps": {k: t["comps"][k] for k in USAGE_KEYS},
                      "steps": t["steps"], "subs": [seg(tid) for tid in direct]})
+    # dominant model over the whole session = main-chain by-model + subagents
+    overall = dict(submodel(all_top))
+    for t in turns:
+        for m, v in t.get("by_model", {}).items():
+            overall[m] = overall.get(m, 0.0) + v
     NODES["root"] = {
-        "title": "Session cost by turn", "subtitle": "", "model": None,
+        "title": "Session cost by turn", "subtitle": "",
+        "model": max(overall, key=overall.get) if overall else None,
         "kind": "turn",
         "total": sum(sum(b["comps"].values()) for b in bars)
         + sum(rolled(tid)["total"] for tid in all_top),
@@ -468,40 +476,46 @@ def fmt(usd):
 
 
 _CSS = """
+ /* Page-chrome colours live in CSS variables so Dark Reader (dynamic mode) can
+    remap them. The chart's data colours (component/model/steps) stay fixed hex
+    so the graph remains legible whatever theme is applied. */
+ :root{color-scheme:dark;
+   --bg1:#20202c;--bg2:#14141b;--panel:#1c1c26;--text:#e4e6eb;--muted:#9aa0ac;
+   --axis2:#c7ccd6;--line:#ffffff14;--border:#ffffff12;--border2:#ffffff20;
+   --track:#3a3a46;--note:#727888;--tipbg:#0d0d12f2;--tipbd:#ffffff22}
  *{box-sizing:border-box}
- body{margin:0;background:radial-gradient(1200px 600px at 20% -10%,#20202c,#14141b 60%);
-   color:#e4e6eb;font-family:ui-sans-serif,system-ui,sans-serif;padding:32px 24px;-webkit-font-smoothing:antialiased}
+ body{margin:0;background:radial-gradient(1200px 600px at 20% -10%,var(--bg1),var(--bg2) 60%);
+   color:var(--text);font-family:ui-sans-serif,system-ui,sans-serif;padding:32px 24px;-webkit-font-smoothing:antialiased}
  .wrap{max-width:960px;margin:0 auto}
  .head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:18px}
  h2{margin:0;font-size:20px;font-weight:650;letter-spacing:-.01em}
- .sub{color:#9aa0ac;margin-top:4px;font-size:13px}
- .crumb{font-size:12px;color:#9aa0ac;margin-bottom:5px}
- .cx{cursor:pointer} .cx:hover{color:#e4e6eb;text-decoration:underline}
+ .sub{color:var(--muted);margin-top:4px;font-size:13px}
+ .crumb{font-size:12px;color:var(--muted);margin-bottom:5px}
+ .chip{font-size:11px;font-weight:600;padding:2px 9px;border-radius:20px;letter-spacing:.02em;white-space:nowrap}
+ .cx{cursor:pointer} .cx:hover{color:var(--text);text-decoration:underline}
  .cs{margin:0 6px;opacity:.5}
  .big{text-align:right;line-height:1}
  .big .amt{font-size:32px;font-weight:700;letter-spacing:-.02em}
- .big .cap{color:#9aa0ac;font-size:11px;text-transform:uppercase;letter-spacing:.08em;margin-top:4px}
- .panel{background:#1c1c26;border:1px solid #ffffff12;border-radius:14px;padding:16px 18px;
+ .big .cap{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.08em;margin-top:4px}
+ .panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px 18px;
    box-shadow:0 1px 0 #ffffff0a inset,0 8px 24px #0006}
  .bar{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:10px}
  .sw{width:11px;height:11px;border-radius:3px;display:inline-block;flex:none}
- .legend{display:flex;flex-wrap:wrap;gap:8px 16px;font-size:12.5px;color:#c7ccd6}
- .lg{display:inline-flex;align-items:center;gap:7px}
- .backbtn{background:#ffffff12;border:1px solid #ffffff20;color:#c7ccd6;font-size:12px;
+ .backbtn{background:var(--border);border:1px solid var(--border2);color:var(--axis2);font-size:12px;
    padding:4px 11px;border-radius:8px;cursor:pointer}
- .backbtn:hover{background:#ffffff1e;color:#e4e6eb}
+ .backbtn:hover{background:#ffffff1e;color:var(--text)}
  .row{display:flex;align-items:center;gap:9px} .row .lb{flex:1}
- .row b{font-variant-numeric:tabular-nums} .row .pct{color:#9aa0ac;width:48px;text-align:right;font-variant-numeric:tabular-nums}
+ .row b{font-variant-numeric:tabular-nums} .row .pct{color:var(--muted);width:48px;text-align:right;font-variant-numeric:tabular-nums}
  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
  @media(max-width:640px){.grid{grid-template-columns:1fr}}
- .card h3{color:#9aa0ac;font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin:0 0 12px;font-weight:600}
+ .card h3{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin:0 0 12px;font-weight:600}
  .col{display:flex;flex-direction:column;gap:9px;font-size:14px}
  .kv{font-size:14px;line-height:2.05}
- .tot{display:flex;gap:9px;border-top:1px solid #ffffff14;padding-top:9px;margin-top:3px;font-weight:600}
- .tgl{display:inline-flex;align-items:center;gap:9px;cursor:pointer;font-size:13px;color:#c7ccd6;user-select:none}
+ .tot{display:flex;gap:9px;border-top:1px solid var(--line);padding-top:9px;margin-top:3px;font-weight:600}
+ .tgl{display:inline-flex;align-items:center;gap:9px;cursor:pointer;font-size:13px;color:var(--axis2);user-select:none}
  .tgl input{display:none}
- .tr{width:38px;height:21px;border-radius:21px;background:#3a3a46;position:relative;transition:.15s;flex:none}
- .tr::after{content:"";position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:50%;background:#e4e6eb;transition:.15s}
+ .tr{width:38px;height:21px;border-radius:21px;background:var(--track);position:relative;transition:.15s;flex:none}
+ .tr::after{content:"";position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:50%;background:var(--text);transition:.15s}
  .tgl input:checked + .tr{background:#5ab0a6}
  .tgl input:checked + .tr::after{transform:translateX(17px)}
  .mini{margin:2px 0 6px;cursor:pointer;display:none}
@@ -509,15 +523,19 @@ _CSS = """
  .scroll{overflow-x:auto}
  svg rect{transition:opacity .1s} svg rect:hover{opacity:.82}
  svg rect.clk{cursor:pointer} svg rect.clk:hover{opacity:.66}
- .tip{position:fixed;pointer-events:none;background:#000d;border:1px solid #ffffff22;color:#e4e6eb;
+ /* SVG chrome routed through the same variables (data fills stay inline hex) */
+ svg .gl{stroke:var(--line)} svg .axt{fill:var(--muted)} svg .axt2{fill:var(--axis2)} svg .sep{fill:var(--panel)}
+ .tip{position:fixed;pointer-events:none;background:var(--tipbg);border:1px solid var(--tipbd);color:var(--text);
    font-size:12px;padding:5px 9px;border-radius:7px;display:none;z-index:20;max-width:340px;box-shadow:0 6px 20px #0009}
- .note{color:#727888;font-size:12px;margin-top:18px;line-height:1.6}
+ .note{color:var(--note);font-size:12px;margin-top:18px;line-height:1.6}
 """
 
 _SHELL = """
 <div class="wrap">
 <div class="head">
-  <div><div id="crumb" class="crumb"></div><h2 id="title"></h2><div id="subtitle" class="sub"></div></div>
+  <div><div id="crumb" class="crumb"></div>
+    <div style="display:flex;align-items:center;gap:10px"><h2 id="title"></h2><span id="modelchip" class="chip"></span></div>
+    <div id="subtitle" class="sub"></div></div>
   <div class="big"><div class="amt" id="total"></div><div class="cap" id="cap">total spend</div></div>
 </div>
 <div class="panel">
@@ -527,7 +545,6 @@ _SHELL = """
       <label class="tgl"><input type="checkbox" id="norm" checked onchange="setMode()"><span class="tr"></span><span id="normlbl">normalize by steps</span></label>
       <label class="tgl"><input type="checkbox" id="subs" checked onchange="toggleSubs()"><span class="tr"></span>show subagents</label>
     </div>
-    <div class="legend" id="legend"></div>
   </div>
   <div id="mini" class="mini"></div>
   <div id="scroll" class="scroll"><div id="chart"></div></div>
@@ -571,6 +588,10 @@ function ensureWin(node){var k=curKey();if(winKey!==k||!win){win={s:0,e:node.bar
 function render(){
   var node=cur();
   document.getElementById("title").textContent=node.title;
+  var chip=document.getElementById("modelchip");
+  if(node.model){var mc=mh(node.model);chip.textContent=node.model;chip.style.display="";
+    chip.style.color=mc;chip.style.background=mc+"22";chip.style.border="1px solid "+mc+"66";}
+  else chip.style.display="none";
   document.getElementById("subtitle").textContent=node.subtitle||"";
   document.getElementById("total").textContent=fmt(node.total);
   document.getElementById("cap").textContent=node.kind==="turn"?"total spend":"subtree spend";
@@ -581,17 +602,9 @@ function render(){
   norm.disabled=stepKind; norm.parentElement.style.opacity=stepKind?".4":"";
   norm.parentElement.style.cursor=stepKind?"default":"pointer";
   document.getElementById("normlbl").textContent=stepKind?"per step (already finest grain)":"normalize by steps";
-  buildLegend(node); buildStats(node); redraw(node);
+  buildStats(node); redraw(node);
 }
 function redraw(node){drawChart(node);buildMini(node);}
-
-function buildLegend(node){
-  var out=COMPS.map(function(c){return lg(c[2],c[1]);});
-  if(showSubs)MODELS.forEach(function(m){if(node.submodel[m])out.push(lg(mh(m),m+" subagent"));});
-  if(node.kind==="turn")out.push("<span class=\\"lg\\"><span style=\\"width:14px;height:0;border-top:2px solid "+STEPS+"\\"></span>steps/turn</span>");
-  document.getElementById("legend").innerHTML=out.join("");
-}
-function lg(c,l){return "<span class=\\"lg\\"><span class=\\"sw\\" style=\\"background:"+c+"\\"></span>"+esc(l)+"</span>";}
 
 function crow(c,l,amt,total){return "<div class=\\"row\\"><span class=\\"sw\\" style=\\"background:"+c+"\\"></span><span class=\\"lb\\">"+esc(l)+"</span><b>"+fmt(amt)+"</b><span class=\\"pct\\">"+(total?(amt/total*100).toFixed(1):"0.0")+"%</span></div>";}
 function buildStats(node){
@@ -623,8 +636,8 @@ function drawChart(node){
   function ys(v){return padT+plotH*(1-v/maxSteps);}
   var s=["<svg width=\\""+W+"\\" height=\\""+H+"\\" viewBox=\\"0 0 "+W+" "+H+"\\" font-family=\\"ui-sans-serif,system-ui,sans-serif\\">"];
   [0,.25,.5,.75,1].forEach(function(f){var y=padT+plotH*(1-f);
-    s.push("<line x1=\\""+padL+"\\" y1=\\""+y.toFixed(1)+"\\" x2=\\""+(padL+plotW)+"\\" y2=\\""+y.toFixed(1)+"\\" stroke=\\"#ffffff14\\"/>");
-    s.push("<text x=\\""+(padL-8)+"\\" y=\\""+(y+4).toFixed(1)+"\\" text-anchor=\\"end\\" font-size=\\"11\\" fill=\\"#9aa0ac\\">"+fmt(maxCost*f)+"</text>");
+    s.push("<line x1=\\""+padL+"\\" y1=\\""+y.toFixed(1)+"\\" x2=\\""+(padL+plotW)+"\\" y2=\\""+y.toFixed(1)+"\\" class=\\"gl\\"/>");
+    s.push("<text x=\\""+(padL-8)+"\\" y=\\""+(y+4).toFixed(1)+"\\" text-anchor=\\"end\\" font-size=\\"11\\" class=\\"axt\\">"+fmt(maxCost*f)+"</text>");
     if(turnKind)s.push("<text x=\\""+(padL+plotW+8)+"\\" y=\\""+(y+4).toFixed(1)+"\\" font-size=\\"11\\" fill=\\""+STEPS+"\\">"+Math.round(maxSteps*f)+"</text>");
   });
   var labelEvery=Math.max(1,Math.round(30/band));
@@ -638,10 +651,10 @@ function drawChart(node){
       if(g.sub)attr+=" class=\\"clk\\" data-id=\\""+g.id+"\\"";
       s.push("<rect x=\\""+x.toFixed(1)+"\\" y=\\""+y1.toFixed(1)+"\\" width=\\""+barW.toFixed(1)+"\\" height=\\""+h.toFixed(1)+"\\" rx=\\""+r+"\\" fill=\\""+g.color+"\\" "+attr+"></rect>");
       if(r&&h>r)s.push("<rect x=\\""+x.toFixed(1)+"\\" y=\\""+(y1+r).toFixed(1)+"\\" width=\\""+barW.toFixed(1)+"\\" height=\\""+(h-r).toFixed(1)+"\\" fill=\\""+g.color+"\\" "+attr+"></rect>");
-      if(j<segs.length-1&&h>1.5)s.push("<rect x=\\""+x.toFixed(1)+"\\" y=\\""+(y1-0.6).toFixed(1)+"\\" width=\\""+barW.toFixed(1)+"\\" height=\\"1.3\\" fill=\\"#1c1c26\\" pointer-events=\\"none\\"></rect>");
+      if(j<segs.length-1&&h>1.5)s.push("<rect x=\\""+x.toFixed(1)+"\\" y=\\""+(y1-0.6).toFixed(1)+"\\" width=\\""+barW.toFixed(1)+"\\" height=\\"1.3\\" class=\\"sep\\" pointer-events=\\"none\\"></rect>");
       acc+=g.v;
     });
-    if(k%labelEvery===0)s.push("<text x=\\""+cx.toFixed(1)+"\\" y=\\""+(padT+plotH+16)+"\\" text-anchor=\\"middle\\" font-size=\\"10\\" fill=\\"#9aa0ac\\">"+b.label+"</text>");
+    if(k%labelEvery===0)s.push("<text x=\\""+cx.toFixed(1)+"\\" y=\\""+(padT+plotH+16)+"\\" text-anchor=\\"middle\\" font-size=\\"10\\" class=\\"axt\\">"+b.label+"</text>");
   }
   if(turnKind){
     var pts=[]; for(var i=s0;i<=e0;i++){var k=i-s0;pts.push((padL+k*band+band/2).toFixed(1)+","+ys(bars[i].steps).toFixed(1));}
@@ -649,9 +662,9 @@ function drawChart(node){
     for(var i=s0;i<=e0;i++){var k=i-s0,cx=padL+k*band+band/2;s.push("<circle cx=\\""+cx.toFixed(1)+"\\" cy=\\""+ys(bars[i].steps).toFixed(1)+"\\" r=\\"3\\" fill=\\""+STEPS+"\\" data-tip=\\""+esc("turn "+bars[i].label+": "+bars[i].steps+" steps")+"\\"></circle>");}
   }
   var mid=padT+plotH/2, yl=turnKind?(mode==="per_step"?"cost / step":"cost / turn"):"cost / step";
-  s.push("<text x=\\"15\\" y=\\""+mid+"\\" font-size=\\"12\\" fill=\\"#c7ccd6\\" transform=\\"rotate(-90 15 "+mid+")\\" text-anchor=\\"middle\\">"+yl+"</text>");
+  s.push("<text x=\\"15\\" y=\\""+mid+"\\" font-size=\\"12\\" class=\\"axt2\\" transform=\\"rotate(-90 15 "+mid+")\\" text-anchor=\\"middle\\">"+yl+"</text>");
   if(turnKind)s.push("<text x=\\""+(W-13)+"\\" y=\\""+mid+"\\" font-size=\\"12\\" fill=\\""+STEPS+"\\" transform=\\"rotate(90 "+(W-13)+" "+mid+")\\" text-anchor=\\"middle\\">steps</text>");
-  s.push("<text x=\\""+(padL+plotW/2).toFixed(0)+"\\" y=\\""+(H-6)+"\\" font-size=\\"12\\" fill=\\"#c7ccd6\\" text-anchor=\\"middle\\">"+(turnKind?"turn":"step")+"</text>");
+  s.push("<text x=\\""+(padL+plotW/2).toFixed(0)+"\\" y=\\""+(H-6)+"\\" font-size=\\"12\\" class=\\"axt2\\" text-anchor=\\"middle\\">"+(turnKind?"turn":"step")+"</text>");
   s.push("</svg>");
   document.getElementById("chart").innerHTML=s.join("");
 }
@@ -730,7 +743,10 @@ function resetZoom(){var node=cur();win={s:0,e:node.bars.length-1};redraw(node);
 
 
 def render_html(nodes_tree, path):
-    doc = ('<!doctype html><html><head><meta charset="utf-8"><title>Session cost</title>'
+    doc = ('<!doctype html><html><head><meta charset="utf-8">'
+           '<meta name="color-scheme" content="dark light">'
+           '<meta name="viewport" content="width=device-width,initial-scale=1">'
+           '<title>Session cost</title>'
            '<style>' + _CSS + '</style></head><body>' + _SHELL
            + '<script>const NODES=' + json.dumps(nodes_tree) + ';\n' + _JS + '</script>'
            '</body></html>')
