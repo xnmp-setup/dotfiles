@@ -237,6 +237,13 @@ def usage_cost(u, fam):
     }
 
 
+def is_synthetic(e):
+    """Harness-injected stub (e.g. the <synthetic> reply to a task-notification)
+    or an API-error message — zero real usage, not a genuine model step."""
+    return (e.get("isApiErrorMessage") is True
+            or e.get("message", {}).get("model") == "<synthetic>")
+
+
 def tool_use_ids(msg):
     """Task/tool_use block ids emitted by an assistant message."""
     c = msg.get("content")
@@ -264,7 +271,7 @@ def build_turns(entries):
         inline = {}  # model family -> {"cost": {...}, "steps": n} for old transcripts
         steps, tids = 0, set()
         for x in entries[s + 1:e]:
-            if x.get("type") != "assistant":
+            if x.get("type") != "assistant" or is_synthetic(x):
                 continue
             msg = x.get("message", {})
             # tool_use blocks stream across separate lines sharing one message.id,
@@ -324,7 +331,7 @@ def load_subagents(main_path):
         # unioned across the streamed lines that share a message id.
         msgs, order = {}, 0
         for x in load(jsonl):
-            if x.get("type") != "assistant":
+            if x.get("type") != "assistant" or is_synthetic(x):
                 continue
             msg = x.get("message", {})
             mid = msg.get("id") or x.get("requestId") or f"_{order}"
@@ -530,8 +537,8 @@ _SHELL = """
 </div>
 <div class="note">Bars = cost per <b id="unitn">turn</b> (toggle: &divide; step count, or raw), stacked by component; subagent
 segments coloured by base model. Hover for the exact cost; <b>click a subagent segment to open its own graph</b> (&larr; back to return).
-When a session is long the graph scrolls and a minimap above shows the whole span with the current viewport.
-"output" includes thinking tokens &mdash; the API does not report them separately.</div>
+<b>Zoom:</b> scroll to zoom around the cursor, drag across the minimap to select a range, double-click or Esc to reset; the minimap
+shows the whole span with the current window highlighted (Esc again, once unzoomed, steps back up the tree). "output" includes thinking tokens &mdash; the API does not report them separately.</div>
 </div>
 <div id="tip" class="tip"></div>
 """
@@ -541,18 +548,24 @@ const COMPS=[["cache_read","cache read","#5ab0a6"],["cache_write","cache write",
 const MODEL_HEX={Opus:"#ff8700",Sonnet:"#ffaf87",Haiku:"#ffd7af",Fable:"#ff5f87"};
 const MODELS=["Opus","Sonnet","Haiku","Fable"], SUBHEX="#b083e0", STEPS="#e05a6b";
 let stack=["root"], mode="per_step";
+let win=null, winKey=null, CH={padL:64,band:10,s0:0}, msel=null;
 
 function fmt(u){if(u>=1)return "$"+u.toFixed(2);var c=u*100;if(c>=10)return Math.round(c)+"c";if(c>=1)return c.toFixed(1)+"c";return c>0?"<1c":"0c";}
 function esc(s){return (""+(s==null?"":s)).replace(/[&<>\"]/g,function(m){return {"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;"}[m];});}
 function mh(m){return MODEL_HEX[m]||SUBHEX;}
 function cur(){return NODES[stack[stack.length-1]];}
+function curKey(){return stack[stack.length-1];}
 function tipEl(){return document.getElementById("tip");}
+function contW(){return document.getElementById("scroll").clientWidth||900;}
 
 function segsFor(bar,div){
   var out=COMPS.map(function(c){var raw=bar.comps[c[0]];return {color:c[2],v:raw/div,raw:raw,type:c[1],sub:false};});
   bar.subs.forEach(function(s){out.push({color:mh(s.model),v:s.total/div,raw:s.total,type:s.model+" subagent \\u2014 "+s.label,sub:true,id:s.id});});
   return out;
 }
+function barTotal(b){var d=(mode==="per_step"&&b.steps)?b.steps:1;return segsFor(b,d).reduce(function(a,x){return a+x.v;},0);}
+function ensureWin(node){var k=curKey();if(winKey!==k||!win){win={s:0,e:node.bars.length-1};winKey=k;}
+  if(win.e>node.bars.length-1)win.e=node.bars.length-1; if(win.s<0)win.s=0; if(win.s>win.e)win.s=win.e;}
 
 function render(){
   var node=cur();
@@ -560,12 +573,16 @@ function render(){
   document.getElementById("subtitle").textContent=node.subtitle||"";
   document.getElementById("total").textContent=fmt(node.total);
   document.getElementById("cap").textContent=node.kind==="turn"?"total spend":"subtree spend";
-  document.getElementById("normlbl").textContent=node.kind==="turn"?"normalize by steps":"(1 step / bar)";
   document.getElementById("unitn").textContent=node.kind;
   document.getElementById("back").style.display=stack.length>1?"":"none";
   document.getElementById("crumb").innerHTML=stack.map(function(k,i){return "<span class=\\"cx\\" onclick=\\"jump("+i+")\\">"+esc(i===0?"session":NODES[k].title)+"</span>";}).join("<span class=\\"cs\\">\\u203a</span>");
-  buildLegend(node); buildStats(node); drawChart(node);
+  var norm=document.getElementById("norm"), stepKind=node.kind!=="turn";
+  norm.disabled=stepKind; norm.parentElement.style.opacity=stepKind?".4":"";
+  norm.parentElement.style.cursor=stepKind?"default":"pointer";
+  document.getElementById("normlbl").textContent=stepKind?"per step (already finest grain)":"normalize by steps";
+  buildLegend(node); buildStats(node); redraw(node);
 }
+function redraw(node){drawChart(node);buildMini(node);}
 
 function buildLegend(node){
   var out=COMPS.map(function(c){return lg(c[2],c[1]);});
@@ -584,8 +601,7 @@ function buildStats(node){
   document.getElementById("breakdown").innerHTML=rows.join("");
   var nb=node.bars.length, steps=node.steps, subs=node.sub_steps||0, unit=node.kind;
   var kv=(node.kind==="turn"?"turns":"steps")+"&nbsp;&nbsp;<b>"+nb+"</b><br>";
-  if(node.kind!=="turn"){/* nb already = steps */}
-  else kv+="steps&nbsp;&nbsp;<b>"+steps+"</b><br>";
+  if(node.kind==="turn")kv+="steps&nbsp;&nbsp;<b>"+steps+"</b><br>";
   if(subs)kv+="subagent steps&nbsp;&nbsp;<b>"+subs+"</b><br>";
   kv+="avg cost / "+unit+"&nbsp;&nbsp;<b>"+fmt(node.total/(nb||1))+"</b><br>";
   kv+="avg cost / step&nbsp;&nbsp;<b>"+fmt(node.total/(((node.kind==="turn"?steps:nb)+subs)||1))+"</b>";
@@ -593,15 +609,15 @@ function buildStats(node){
 }
 
 function drawChart(node){
-  var bars=node.bars, n=bars.length, turnKind=node.kind==="turn";
-  var scroll=document.getElementById("scroll"), cont=scroll.clientWidth||900;
-  var padL=64,padR=turnKind?52:20,padT=16,padB=30,plotH=300;
-  var band=Math.floor((cont-padL-padR)/Math.max(1,n));
-  band=Math.max(11,Math.min(60,band));
-  var barW=Math.max(3,band*0.62), plotW=n*band, W=padL+plotW+padR, H=padT+plotH+padB;
-  var heights=bars.map(function(b){var d=(mode==="per_step"&&b.steps)?b.steps:1;return segsFor(b,d).reduce(function(a,s){return a+s.v;},0);});
+  ensureWin(node);
+  var bars=node.bars, turnKind=node.kind==="turn", s0=win.s, e0=win.e, m=e0-s0+1;
+  var cont=contW(), padL=64,padR=turnKind?52:20,padT=16,padB=30,plotH=300;
+  var band=(cont-padL-padR)/Math.max(1,m);
+  var barW=Math.max(2,Math.min(band*0.66,44)), plotW=m*band, W=cont, H=padT+plotH+padB;
+  CH={padL:padL,band:band,s0:s0};
+  var heights=[]; for(var i=s0;i<=e0;i++)heights.push(barTotalDiv(bars[i]));
   var maxCost=Math.max.apply(null,heights.concat([1e-9]));
-  var maxSteps=Math.max.apply(null,bars.map(function(b){return b.steps;}).concat([1]));
+  var maxSteps=1; for(var i=s0;i<=e0;i++)maxSteps=Math.max(maxSteps,bars[i].steps);
   function yc(v){return padT+plotH*(1-v/maxCost);}
   function ys(v){return padT+plotH*(1-v/maxSteps);}
   var s=["<svg width=\\""+W+"\\" height=\\""+H+"\\" viewBox=\\"0 0 "+W+" "+H+"\\" font-family=\\"ui-sans-serif,system-ui,sans-serif\\">"];
@@ -611,8 +627,8 @@ function drawChart(node){
     if(turnKind)s.push("<text x=\\""+(padL+plotW+8)+"\\" y=\\""+(y+4).toFixed(1)+"\\" font-size=\\"11\\" fill=\\""+STEPS+"\\">"+Math.round(maxSteps*f)+"</text>");
   });
   var labelEvery=Math.max(1,Math.round(30/band));
-  bars.forEach(function(b,i){
-    var cx=padL+i*band+band/2, x=cx-barW/2, div=(mode==="per_step"&&b.steps)?b.steps:1;
+  for(var i=s0;i<=e0;i++){
+    var b=bars[i], k=i-s0, cx=padL+k*band+band/2, x=cx-barW/2, div=(mode==="per_step"&&b.steps)?b.steps:1;
     var segs=segsFor(b,div).filter(function(g){return g.v>0;}), acc=0;
     segs.forEach(function(g,j){
       var y0=yc(acc), y1=yc(acc+g.v), h=Math.max(0,y0-y1), r=(j===segs.length-1)?4:0;
@@ -621,14 +637,15 @@ function drawChart(node){
       if(g.sub)attr+=" class=\\"clk\\" data-id=\\""+g.id+"\\"";
       s.push("<rect x=\\""+x.toFixed(1)+"\\" y=\\""+y1.toFixed(1)+"\\" width=\\""+barW.toFixed(1)+"\\" height=\\""+h.toFixed(1)+"\\" rx=\\""+r+"\\" fill=\\""+g.color+"\\" "+attr+"></rect>");
       if(r&&h>r)s.push("<rect x=\\""+x.toFixed(1)+"\\" y=\\""+(y1+r).toFixed(1)+"\\" width=\\""+barW.toFixed(1)+"\\" height=\\""+(h-r).toFixed(1)+"\\" fill=\\""+g.color+"\\" "+attr+"></rect>");
+      if(j<segs.length-1&&h>1.5)s.push("<rect x=\\""+x.toFixed(1)+"\\" y=\\""+(y1-0.6).toFixed(1)+"\\" width=\\""+barW.toFixed(1)+"\\" height=\\"1.3\\" fill=\\"#1c1c26\\" pointer-events=\\"none\\"></rect>");
       acc+=g.v;
     });
-    if(i%labelEvery===0)s.push("<text x=\\""+cx.toFixed(1)+"\\" y=\\""+(padT+plotH+16)+"\\" text-anchor=\\"middle\\" font-size=\\"10\\" fill=\\"#9aa0ac\\">"+b.label+"</text>");
-  });
+    if(k%labelEvery===0)s.push("<text x=\\""+cx.toFixed(1)+"\\" y=\\""+(padT+plotH+16)+"\\" text-anchor=\\"middle\\" font-size=\\"10\\" fill=\\"#9aa0ac\\">"+b.label+"</text>");
+  }
   if(turnKind){
-    var pts=bars.map(function(b,i){return (padL+i*band+band/2).toFixed(1)+","+ys(b.steps).toFixed(1);}).join(" ");
-    s.push("<polyline points=\\""+pts+"\\" fill=\\"none\\" stroke=\\""+STEPS+"\\" stroke-width=\\"2\\" opacity=\\"0.9\\"/>");
-    bars.forEach(function(b,i){var cx=padL+i*band+band/2;s.push("<circle cx=\\""+cx.toFixed(1)+"\\" cy=\\""+ys(b.steps).toFixed(1)+"\\" r=\\"3\\" fill=\\""+STEPS+"\\" data-tip=\\""+esc("turn "+b.label+": "+b.steps+" steps")+"\\"></circle>");});
+    var pts=[]; for(var i=s0;i<=e0;i++){var k=i-s0;pts.push((padL+k*band+band/2).toFixed(1)+","+ys(bars[i].steps).toFixed(1));}
+    s.push("<polyline points=\\""+pts.join(" ")+"\\" fill=\\"none\\" stroke=\\""+STEPS+"\\" stroke-width=\\"2\\" opacity=\\"0.9\\"/>");
+    for(var i=s0;i<=e0;i++){var k=i-s0,cx=padL+k*band+band/2;s.push("<circle cx=\\""+cx.toFixed(1)+"\\" cy=\\""+ys(bars[i].steps).toFixed(1)+"\\" r=\\"3\\" fill=\\""+STEPS+"\\" data-tip=\\""+esc("turn "+bars[i].label+": "+bars[i].steps+" steps")+"\\"></circle>");}
   }
   var mid=padT+plotH/2, yl=turnKind?(mode==="per_step"?"cost / step":"cost / turn"):"cost / step";
   s.push("<text x=\\"15\\" y=\\""+mid+"\\" font-size=\\"12\\" fill=\\"#c7ccd6\\" transform=\\"rotate(-90 15 "+mid+")\\" text-anchor=\\"middle\\">"+yl+"</text>");
@@ -636,40 +653,34 @@ function drawChart(node){
   s.push("<text x=\\""+(padL+plotW/2).toFixed(0)+"\\" y=\\""+(H-6)+"\\" font-size=\\"12\\" fill=\\"#c7ccd6\\" text-anchor=\\"middle\\">"+(turnKind?"turn":"step")+"</text>");
   s.push("</svg>");
   document.getElementById("chart").innerHTML=s.join("");
-  buildMini(node,maxCost);
-  updateVP();
 }
+function barTotalDiv(b){var d=(mode==="per_step"&&b.steps)?b.steps:1;return segsFor(b,d).reduce(function(a,x){return a+x.v;},0);}
 
-function buildMini(node,maxCost){
-  var mini=document.getElementById("mini"), scroll=document.getElementById("scroll");
-  if(scroll.scrollWidth<=scroll.clientWidth+4){mini.style.display="none";mini.innerHTML="";return;}
-  mini.style.display="";
-  var bars=node.bars, n=bars.length, W=scroll.clientWidth, Hm=42, mb=W/n;
+function buildMini(node){
+  var mini=document.getElementById("mini"), n=node.bars.length;
+  if(n<8){mini.style.display="none";mini.innerHTML="";return;}
+  mini.style.display="block";
+  var W=contW(), Hm=40, mb=W/n;
+  var full=node.bars.map(barTotalDiv), maxC=Math.max.apply(null,full.concat([1e-9]));
   var s=["<svg width=\\""+W+"\\" height=\\""+Hm+"\\" viewBox=\\"0 0 "+W+" "+Hm+"\\" preserveAspectRatio=\\"none\\">"];
-  bars.forEach(function(b,i){
+  node.bars.forEach(function(b,i){
     var div=(mode==="per_step"&&b.steps)?b.steps:1, acc=0;
     segsFor(b,div).filter(function(g){return g.v>0;}).forEach(function(g){
-      var h=(g.v/maxCost)*(Hm-6), y=Hm-3-(acc/maxCost)*(Hm-6)-h;
-      s.push("<rect x=\\""+(i*mb).toFixed(2)+"\\" y=\\""+y.toFixed(2)+"\\" width=\\""+Math.max(0.6,mb-0.4).toFixed(2)+"\\" height=\\""+h.toFixed(2)+"\\" fill=\\""+g.color+"\\"/>");
+      var h=(g.v/maxC)*(Hm-5), y=Hm-3-(acc/maxC)*(Hm-5)-h;
+      s.push("<rect x=\\""+(i*mb).toFixed(2)+"\\" y=\\""+y.toFixed(2)+"\\" width=\\""+Math.max(0.6,mb-0.35).toFixed(2)+"\\" height=\\""+h.toFixed(2)+"\\" fill=\\""+g.color+"\\"/>");
       acc+=g.v;
     });
   });
-  s.push("<rect id=\\"vp\\" x=\\"0\\" y=\\"0\\" width=\\"10\\" height=\\""+Hm+"\\" fill=\\"#ffffff1e\\" stroke=\\"#ffffffcc\\" stroke-width=\\"1\\" rx=\\"3\\"/>");
+  var vx=win.s*mb, vw=(win.e-win.s+1)*mb;
+  s.push("<rect x=\\"0\\" y=\\"0\\" width=\\""+vx.toFixed(1)+"\\" height=\\""+Hm+"\\" fill=\\"#0e0e14aa\\"/>");
+  s.push("<rect x=\\""+(vx+vw).toFixed(1)+"\\" y=\\"0\\" width=\\""+(W-vx-vw).toFixed(1)+"\\" height=\\""+Hm+"\\" fill=\\"#0e0e14aa\\"/>");
+  s.push("<rect x=\\""+vx.toFixed(1)+"\\" y=\\"0.5\\" width=\\""+vw.toFixed(1)+"\\" height=\\""+(Hm-1)+"\\" fill=\\"#ffffff10\\" stroke=\\"#ffffffcc\\" stroke-width=\\"1\\" rx=\\"3\\"/>");
   s.push("</svg>");
   mini.innerHTML=s.join("");
 }
-function updateVP(){
-  var mini=document.getElementById("mini"); if(mini.style.display==="none")return;
-  var vp=document.getElementById("vp"); if(!vp)return;
-  var scroll=document.getElementById("scroll"), cont=scroll.clientWidth, tot=scroll.scrollWidth;
-  vp.setAttribute("x",((scroll.scrollLeft/tot)*cont).toFixed(1));
-  vp.setAttribute("width",Math.min(cont,(scroll.clientWidth/tot)*cont).toFixed(1));
-}
-function miniSeek(e){
-  var mini=document.getElementById("mini"), r=mini.getBoundingClientRect(), scroll=document.getElementById("scroll");
-  scroll.scrollLeft=((e.clientX-r.left)/r.width)*scroll.scrollWidth - scroll.clientWidth/2;
-}
 
+function miniBarAt(e){var mini=document.getElementById("mini"),r=mini.getBoundingClientRect(),n=cur().bars.length;
+  return Math.max(0,Math.min(n-1,Math.floor(((e.clientX-r.left)/r.width)*n)));}
 function showTip(e){
   var t=e.target, d=t&&t.getAttribute&&t.getAttribute("data-tip"), tip=tipEl();
   if(!d){tip.style.display="none";return;}
@@ -680,19 +691,37 @@ function showTip(e){
 }
 function goBack(){if(stack.length>1){stack.pop();render();}}
 function jump(i){if(i<stack.length-1){stack=stack.slice(0,i+1);render();}}
-function setMode(){mode=document.getElementById("norm").checked?"per_step":"total";render();}
+function setMode(){if(document.getElementById("norm").disabled)return;mode=document.getElementById("norm").checked?"per_step":"total";render();}
+function resetZoom(){var node=cur();win={s:0,e:node.bars.length-1};redraw(node);}
 
 (function(){
   var chart=document.getElementById("chart");
   chart.addEventListener("mousemove",showTip);
   chart.addEventListener("mouseleave",function(){tipEl().style.display="none";});
   chart.addEventListener("click",function(e){var id=e.target&&e.target.getAttribute&&e.target.getAttribute("data-id");if(id){stack.push(id);tipEl().style.display="none";render();}});
-  document.getElementById("scroll").addEventListener("scroll",updateVP);
+  chart.addEventListener("dblclick",resetZoom);
+  chart.addEventListener("wheel",function(e){
+    e.preventDefault(); var node=cur(); var r=chart.getBoundingClientRect();
+    var pos=CH.s0+(e.clientX-r.left-CH.padL)/CH.band; var m=win.e-win.s+1;
+    var f=e.deltaY>0?1.25:0.8, nm=Math.max(3,Math.min(node.bars.length,Math.round(m*f)));
+    var ns=Math.round(pos-(pos-win.s)*(nm/m)); ns=Math.max(0,Math.min(node.bars.length-nm,ns));
+    win={s:ns,e:ns+nm-1}; redraw(node);
+  },{passive:false});
   var mini=document.getElementById("mini");
-  mini.addEventListener("mousedown",miniSeek);
-  mini.addEventListener("mousemove",function(e){if(e.buttons)miniSeek(e);});
-  document.addEventListener("keydown",function(e){if(e.key==="Escape")goBack();});
-  var rt; window.addEventListener("resize",function(){clearTimeout(rt);rt=setTimeout(render,120);});
+  mini.addEventListener("dblclick",resetZoom);
+  mini.addEventListener("mousedown",function(e){e.preventDefault();msel={a:miniBarAt(e),moved:false};});
+  window.addEventListener("mousemove",function(e){
+    if(!msel)return; var b=miniBarAt(e); if(b!==msel.a)msel.moved=true;
+    var node=cur(); win={s:Math.min(msel.a,b),e:Math.max(msel.a,b)}; redraw(node);
+  });
+  window.addEventListener("mouseup",function(e){
+    if(!msel)return; var node=cur();
+    if(!msel.moved){ var w=win.e-win.s+1, c=msel.a, s=Math.max(0,Math.min(node.bars.length-w,c-Math.floor(w/2))); win={s:s,e:s+w-1}; redraw(node); }
+    msel=null;
+  });
+  document.addEventListener("keydown",function(e){if(e.key!=="Escape")return;
+    var node=cur(); if(win&&(win.s>0||win.e<node.bars.length-1))resetZoom(); else goBack();});
+  var rt; window.addEventListener("resize",function(){clearTimeout(rt);rt=setTimeout(function(){redraw(cur());},120);});
   render();
 })();
 """
