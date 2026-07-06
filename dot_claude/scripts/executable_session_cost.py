@@ -476,15 +476,16 @@ def fmt(usd):
 
 
 _CSS = """
- /* Page-chrome colours live in CSS variables so Dark Reader (dynamic mode) can
-    remap them. The chart's data colours (component/model/steps) stay fixed hex
-    so the graph remains legible whatever theme is applied. */
- :root{color-scheme:dark;
-   --bg1:#20202c;--bg2:#14141b;--panel:#1c1c26;--text:#e4e6eb;--muted:#9aa0ac;
-   --axis2:#c7ccd6;--line:#ffffff14;--border:#ffffff12;--border2:#ffffff20;
-   --track:#3a3a46;--note:#727888;--tipbg:#0d0d12f2;--tipbd:#ffffff22}
+ /* Page-chrome colours live in CSS variables. The page is always LIGHT (no
+    prefers-color-scheme:dark override) so Dark Reader always engages — it skips
+    already-dark pages — and drives the theme. Chart data colours (component /
+    model / steps) stay fixed hex so the graph stays legible under any theme. */
+ :root{color-scheme:light;
+   --bg1:#eef0f4;--bg2:#e3e6ee;--panel:#ffffff;--text:#1b1d24;--muted:#6b7280;
+   --axis2:#3f4653;--line:#00000014;--border:#0000001a;--border2:#00000026;
+   --track:#cfd3dc;--note:#868c99;--tipbg:#1b1d24f2;--tiptext:#f4f4f7;--tipbd:#ffffff33;--hover:#00000010}
  *{box-sizing:border-box}
- body{margin:0;background:radial-gradient(1200px 600px at 20% -10%,var(--bg1),var(--bg2) 60%);
+ body{margin:0;background:var(--bg1);
    color:var(--text);font-family:ui-sans-serif,system-ui,sans-serif;padding:32px 24px;-webkit-font-smoothing:antialiased}
  .wrap{max-width:960px;margin:0 auto}
  .head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:18px}
@@ -503,7 +504,7 @@ _CSS = """
  .sw{width:11px;height:11px;border-radius:3px;display:inline-block;flex:none}
  .backbtn{background:var(--border);border:1px solid var(--border2);color:var(--axis2);font-size:12px;
    padding:4px 11px;border-radius:8px;cursor:pointer}
- .backbtn:hover{background:#ffffff1e;color:var(--text)}
+ .backbtn:hover{background:var(--hover);color:var(--text)}
  .row{display:flex;align-items:center;gap:9px} .row .lb{flex:1}
  .row b{font-variant-numeric:tabular-nums} .row .pct{color:var(--muted);width:48px;text-align:right;font-variant-numeric:tabular-nums}
  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
@@ -525,7 +526,7 @@ _CSS = """
  svg rect.clk{cursor:pointer} svg rect.clk:hover{opacity:.66}
  /* SVG chrome routed through the same variables (data fills stay inline hex) */
  svg .gl{stroke:var(--line)} svg .axt{fill:var(--muted)} svg .axt2{fill:var(--axis2)} svg .sep{fill:var(--panel)}
- .tip{position:fixed;pointer-events:none;background:var(--tipbg);border:1px solid var(--tipbd);color:var(--text);
+ .tip{position:fixed;pointer-events:none;background:var(--tipbg);border:1px solid var(--tipbd);color:var(--tiptext);
    font-size:12px;padding:5px 9px;border-radius:7px;display:none;z-index:20;max-width:340px;box-shadow:0 6px 20px #0009}
  .note{color:var(--note);font-size:12px;margin-top:18px;line-height:1.6}
 """
@@ -744,7 +745,7 @@ function resetZoom(){var node=cur();win={s:0,e:node.bars.length-1};redraw(node);
 
 def render_html(nodes_tree, path):
     doc = ('<!doctype html><html><head><meta charset="utf-8">'
-           '<meta name="color-scheme" content="dark light">'
+           '<meta name="color-scheme" content="light">'
            '<meta name="viewport" content="width=device-width,initial-scale=1">'
            '<title>Session cost</title>'
            '<style>' + _CSS + '</style></head><body>' + _SHELL
