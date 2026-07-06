@@ -47,6 +47,35 @@ def shorten_model(text):
 BG_EMPTY = "238"  # gray bg for empty portion (lighter than 236, keeps contrast)
 FG_ON_FILL = "0"  # black text on the bright filled portion
 
+# Cache-read price per 1M tokens = input price x 0.1 (the 90% prompt-cache
+# discount). Every model request (agent "step") re-sends the whole context as
+# cached input, so the marginal cost of one step ~= context_tokens x cache_read.
+# One user message can span many steps (each tool result triggers another).
+#   Opus 4.8 $5/M, Sonnet 5 $3/M, Haiku 4.5 $1/M, Fable 5 $10/M input.
+CACHE_READ_PRICE = {"Opus": 0.50, "Sonnet": 0.30, "Haiku": 0.10, "Fable": 1.00}
+
+def parse_tokens(s):
+    m = re.match(r"([0-9.]+)([kKmM]?)", s)
+    if not m:
+        return None
+    val = float(m.group(1))
+    suf = m.group(2).lower()
+    if suf == "k":
+        val *= 1e3
+    elif suf == "m":
+        val *= 1e6
+    return val
+
+def format_cost(usd):
+    if usd >= 1:
+        return f"${usd:.2f}"
+    cents = usd * 100
+    if cents >= 10:
+        return f"{round(cents)}c"
+    if cents >= 1:
+        return f"{cents:.1f}c"
+    return "<1c"
+
 def rebuild_context_bar(m):
     """Replace [████░░░░] Xk/Yk (N%) with a text-inside-bar using bg colors."""
     fg_code = m.group(1)  # the ansi256 fg color code number
@@ -101,6 +130,12 @@ SEP = " | "  # separator used by ccstatusline (can be NBSP or regular space)
 NBSP_SEP = "\xa0|\xa0"
 
 for line in sys.stdin:
+    # capture current context tokens from the raw bar ("[████░░] 203k/1.0M ...")
+    # before rebuild_context_bar reformats the label and drops the token count.
+    ctx_tokens = None
+    mt = re.search(r"\[[█░]+\]\s*([0-9.]+[kKmM]?)\s*/", line)
+    if mt:
+        ctx_tokens = parse_tokens(mt.group(1))
     # strip "no git" and the orphaned separator+color it leaves behind
     line = line.replace("⎇\xa0no\xa0git", "")
     line = re.sub(r"\x1b\[38;5;\d+m\x1b\[39m\xa0\|\xa0", "", line)
@@ -124,5 +159,16 @@ for line in sys.stdin:
         rebuild_context_bar,
         line
     )
+    # append estimated cached cost per step: context_tokens x cache_read_price.
+    # model family is detected from the recolored model segment (its color code
+    # is set only by recolor_model above, so this never false-matches cwd/branch).
+    if ctx_tokens:
+        mm = re.search(r"\x1b\[38;5;(?:208|216|223|204)m(Opus|Sonnet|Haiku|Fable)", line)
+        if mm:
+            price = CACHE_READ_PRICE.get(mm.group(1))
+            if price:
+                cost = ctx_tokens * price / 1e6
+                seg = f" \x1b[38;5;245m~{format_cost(cost)}/step\x1b[0m"
+                line = line.rstrip("\n") + seg + "\n"
     sys.stdout.write(line)
 '
