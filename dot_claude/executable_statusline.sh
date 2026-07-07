@@ -146,27 +146,10 @@ print(f"{session_cost}\t{last_cost}\t{rewarm}\t{mins_left}\t{frac_cached}\t{age_
 ')
 IFS=$'\t' read -r SESSION_COST LAST_MSG_COST REWARM MINS_LEFT FRAC_CACHED AGE_MIN <<< "$COSTS"
 
-# Extract the percentage from the context bar, e.g. "(15%)"
-PCT=$(echo "$OUTPUT" | grep -oE '\([0-9]+%\)' | head -1 | tr -dc '0-9')
-PCT="${PCT:-0}"
-
-# Pick color based on compaction proximity (ansi256 codes to match colorLevel 2)
-if [ "$PCT" -lt 45 ]; then
-  # Green (ansi256 78, a teal-green — git branch uses 155)
-  NEW_FG='\x1b[38;5;78m'
-elif [ "$PCT" -lt 70 ]; then
-  # Yellow
-  NEW_FG='\x1b[38;5;227m'
-else
-  # Red (autocompaction at 80%)
-  NEW_FG='\x1b[38;5;203m'
-fi
-
-ESC=$(printf '\x1b')
-
+# The context-bar color is computed continuously (green->yellow->red) inside
+# rebuild_context_bar from the fill proportion, so no threshold bucketing here.
 echo "$OUTPUT" \
   | sed \
-      -e "s/${ESC}\[38;5;203m/${NEW_FG}/g" \
       -e 's|\.\.\./||g' \
   | SESSION_COST="$SESSION_COST" LAST_MSG_COST="$LAST_MSG_COST" \
     REWARM="$REWARM" MINS_LEFT="$MINS_LEFT" FRAC_CACHED="$FRAC_CACHED" AGE_MIN="$AGE_MIN" python3 -c '
@@ -183,6 +166,49 @@ def shorten_model(text):
 
 BG_EMPTY = "238"  # gray bg for empty portion (lighter than 236, keeps contrast)
 FG_ON_FILL = "0"  # black text on the bright filled portion
+
+# Continuous context-bar color. The fill proportion maps to a smooth
+# green -> yellow -> red gradient (truecolor RGB) instead of 3 discrete buckets.
+# Fully red is reached exactly at the auto-compaction cutoff, so t = proportion /
+# cutoff clamped to [0,1] and the fill colour aligns with the red cutoff line.
+# Stops match the old ansi256 palette:
+#   green  #87d787 (was 114) -> yellow #ffd75f (was 221) -> red #ff5f5f (203).
+_GRADIENT = ((0.0, (135, 215, 135)), (0.5, (255, 215, 95)), (1.0, (255, 95, 95)))
+
+def bar_color(proportion, cutoff=0.8):
+    t = max(0.0, min(1.0, proportion / cutoff if cutoff else proportion))
+    for i in range(len(_GRADIENT) - 1):
+        t0, c0 = _GRADIENT[i]
+        t1, c1 = _GRADIENT[i + 1]
+        if t <= t1:
+            s = 0.0 if t1 == t0 else (t - t0) / (t1 - t0)
+            return tuple(round(a + (b - a) * s) for a, b in zip(c0, c1))
+    return _GRADIENT[-1][1]
+
+# Auto-compaction cutoff. Claude Code compacts when the used context reaches
+# (window - 13000) tokens -- a FIXED ~13k output-token headroom, not a fixed
+# percentage. So the cutoff as a fraction of the window varies with window size:
+# 200k -> 93.5%, 1M -> 98.7%. (Verified in the CLI binary: c9l() triggers
+# "compact" at used >= Wln() == window - 13000.) CLAUDE_AUTOCOMPACT_PCT_OVERRIDE
+# can only LOWER it. The 0.2 "precomputeBufferFraction" is a prep threshold, not
+# the trigger, so it is intentionally ignored here.
+COMPACT_RESERVE_TOKENS = 13000
+
+def compact_cutoff_fraction(window_tokens):
+    """Fraction of the full window at which auto-compaction fires, or None if the
+    window is unknown / too small to reason about."""
+    if not window_tokens or window_tokens <= COMPACT_RESERVE_TOKENS:
+        return None
+    thresh = window_tokens - COMPACT_RESERVE_TOKENS
+    ov = os.environ.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE", "").strip()
+    if ov:
+        try:
+            pct = float(ov)
+            if 0 < pct <= 100:
+                thresh = min(thresh, window_tokens * pct / 100.0)
+        except ValueError:
+            pass
+    return thresh / window_tokens
 
 # Cache-read price per 1M tokens = input price x 0.1 (the 90% prompt-cache
 # discount). Every model request (agent "step") re-sends the whole context as
@@ -226,10 +252,13 @@ def rebuild_context_bar(m):
 
     proportion = filled / bar_width
 
-    # Reformat label "203k/1.0M (20%)" -> "20% of 1.0M".
+    # Reformat label "203k/1.0M (20%)" -> "20% of 1.0M". Capture the window size
+    # (the "/1.0M" total) in tokens so the cutoff marker can be placed correctly.
+    window = None
     mm = re.search(r"/\s*([0-9.]+[kKmM]?)\s*\((\d+)%\)", label)
     if mm:
         total, pct = mm.group(1), mm.group(2)
+        window = parse_tokens(total)
         label = f"{pct}% of {total}"
     else:
         # Fallback: just shorten 1000k -> 1m if the format is unexpected.
@@ -246,20 +275,17 @@ def rebuild_context_bar(m):
     text_filled = text[:split]
     text_empty = text[split:]
 
-    fg_num = int(fg_code) if fg_code else 203
+    # Fill colour ramps to full red at the auto-compaction cutoff (fall back to
+    # 0.8 of the window when the window size is unknown).
+    r, g, b = bar_color(proportion, compact_cutoff_fraction(window) or 0.8)
 
-    # Remap the bar color (used for both the fill block and the empty-portion
-    # text) for better contrast on the grey bg. Red (203) is left as-is.
-    BAR_FG = {78: 114, 227: 221}
-    bar_fg = BAR_FG.get(fg_num, fg_num)
-
-    # Filled: bg is the bar color, text is black
+    # Filled: bg is the (continuous) bar color, text is black
     # Empty: grey bg, text in the bar color
     result = ""
     if text_filled:
-        result += f"\x1b[48;5;{bar_fg};38;5;{FG_ON_FILL}m{text_filled}"
+        result += f"\x1b[48;2;{r};{g};{b};38;5;{FG_ON_FILL}m{text_filled}"
     if text_empty:
-        result += f"\x1b[48;5;{BG_EMPTY};38;5;{bar_fg}m{text_empty}"
+        result += f"\x1b[48;5;{BG_EMPTY};38;2;{r};{g};{b}m{text_empty}"
     result += "\x1b[0m"
     return result
 
