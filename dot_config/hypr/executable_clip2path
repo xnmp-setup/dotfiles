@@ -21,7 +21,10 @@ if [[ -n "$MIME" ]]; then
     FILE="/tmp/clipboard-$(date +%Y%m%d_%H%M%S).${EXT}"
     wl-paste --type "$MIME" > "$FILE" 2>/dev/null
     if [[ -s "$FILE" ]]; then
-        wtype -- "$FILE"
+        # Prefix with @ so Claude Code resolves it as a file-mention and embeds
+        # the image at submit time (no Read round-trip). Trailing space delimits
+        # the mention and lets you keep typing after it.
+        wtype -- "@$FILE "
     fi
 else
     # Text clipboard — paste via wtype
