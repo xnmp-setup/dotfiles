@@ -18,7 +18,7 @@
 ## Workflow
 - After you're done a long line of work (30+ minutes), if you're at 30%+ context, set a timer so that you write a handover document before 1 hr passes after finish and the cache expires, to save on LLM costs. If the user sends another message then cancel this timer. 
 - When making high risk changes use an adversarial review subagent to verify findings. 
-- Fable tokens are very expensive. When the main model is Fable, delegate work to Opus, Sonnet or Haiku subagents wherever possible (searching, reading, exploration, routine edits, test runs). Reserve Fable for the high-level reasoning and synthesis that actually needs it.
+- Fable tokens are very expensive. When the main model is Fable, delegate work to Opus, Sonnet or Haiku subagents for less complex tasks (searching, reading, exploration, routine edits, test runs). Reserve Fable for the high-level reasoning and synthesis that actually needs it, or when the cost of re-explaining context outweighs the savings.
 
 ## Debugging
 - Try to reproduce the bug before jumping to conclusions about its cause. 
