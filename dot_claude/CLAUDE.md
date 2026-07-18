@@ -3,16 +3,10 @@
 - Style: Prefer functional programming patterns (immutability, pure functions, composition) where practical.
 
 ## Architecture & Design
+- Write code that is easy to reason about, test, and refactor. Long term maintainability is the most important consideration. 
 - Design domain logic first; separate it clearly from infrastructure and implementation details.
-- Build small, composable abstractions with a bias toward readability and long-term maintainability.
-- Adhere to SOLID principles; avoid premature generalization.
-- Optimize for clarity over cleverness.
+- Try to adhere to SOLID principles.
 - When approaching a difficult problem, first research the industry standard approach to the problem and use it to guide your approach.
-
-## Coding Standards
-- Write code that is easy to reason about, test, and refactor.
-- Favor explicit types, clear naming, and minimal side effects.
-- Avoid unnecessary abstractions, frameworks, or indirection.
 
 ## Testing
 - Unit tests must test behavior and contracts, not implementation details. Assert on outputs and observable side effects, not on how state is structured internally.
@@ -21,25 +15,20 @@
 - Consider adding unit tests whenever new business logic is introduced. 
 - Ensure that edge cases are covered - eg input is malformed, null, extremely large
 
-## Workflow & Debugging
-- Do not change behavior without understanding the cause.
-- If the root cause of a bug is unclear, add targeted logging or instrumentation before modifying logic.
-- Make incremental, verifiable changes; prefer small diffs.
-- When unsure, ask clarifying questions rather than guessing.
-- Fix root causes, not symptoms. Avoid band-aid fixes like stopPropagation to mask duplicate handlers, setTimeout to paper over race conditions, or flags to suppress unwanted side effects. If a fix feels like a workaround, step back and address the underlying design issue.
+## Workflow
+- After you're done a long line of work (30+ minutes), if you're at 30%+ context, set a timer so that you write a handover document before 1 hr passes after finish and the cache expires, to save on LLM costs. If the user sends another message then cancel this timer. 
+- When making high risk changes use an adversarial review subagent to verify findings. 
+- Fable tokens are very expensive. When the main model is Fable, delegate work to Opus, Sonnet or Haiku subagents wherever possible (searching, reading, exploration, routine edits, test runs). Reserve Fable for the high-level reasoning and synthesis that actually needs it.
 
 ## Debugging
+- Try to reproduce the bug before jumping to conclusions about its cause. 
+- If the root cause of a bug is unclear, add targeted logging or instrumentation before modifying logic.
+- When unsure, ask clarifying questions rather than guessing. 
+- Fix root causes, not symptoms. Avoid band-aid fixes like stopPropagation to mask duplicate handlers, setTimeout to paper over race conditions, or flags to suppress unwanted side effects. If a fix feels like a workaround, step back and address the underlying design issue.
 - Form and add logs to test all independent hypotheses at once, then run once and read combined output — don't add one log, run, observe, repeat. Go serial only on genuine dependencies.
 - Isolate long debug loops in a subagent that returns the conclusion, not the full investigation transcript.
 
-## Cost & Delegation
-- Fable tokens are very expensive. When the main model is Fable, delegate work to Opus, Sonnet or Haiku subagents wherever possible (searching, reading, exploration, routine edits, test runs). Reserve Fable for the high-level reasoning and synthesis that actually needs it.
-- DO NOT use Fable subagents in any circumstance. 
-
 ## Misc
 - When testing whether hooks work, don't pipe text to the shell scripts. Instead run actual commands that would trigger the hooks.
-
-## Shell environment
-Common commands are aliased to modern replacements: cat→bat (adds line numbers, syntax highlighting), du→dust, ls→exa. Output is decorated, not plain. If decoration interferes with parsing or you need raw output, use the full path (`/bin/cat`, `command cat`) or the tool's plain flag (`bat -p`).
 
 @RTK.md
