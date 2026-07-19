@@ -1,0 +1,56 @@
+# Base ignore list — the only ignore source for the Ctrl+P fzf file widget.
+# Used via `fd --no-ignore --ignore-file ~/.config/fd/base-ignore`, so per-repo
+# .gitignore / .ignore / .fdignore files are deliberately NOT consulted.
+# Syntax is gitignore-compatible.
+
+# --- VCS ---
+.git/
+.hg/
+.svn/
+.jj/
+
+# --- Node / JS ---
+node_modules/
+bower_components/
+.next/
+.nuxt/
+.svelte-kit/
+.turbo/
+.parcel-cache/
+.yarn/cache/
+.pnpm-store/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.tox/
+.nox/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# --- Rust / Go / JVM ---
+target/
+vendor/
+.gradle/
+build/
+out/
+
+# --- Build / dist output ---
+dist/
+.cache/
+.output/
+
+# --- Editors / OS ---
+.idea/
+.vscode-server/
+.DS_Store
+Thumbs.db
+
+# --- Misc heavy dirs ---
+.terraform/
+.direnv/
+*.lock.bak
