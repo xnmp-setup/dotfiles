@@ -19,11 +19,12 @@
 - After you're done a long line of work (30+ minutes), if you're at 30%+ context, set a timer so that you write a handover document before 1 hr passes after finish and the cache expires, to save on LLM costs. If the user sends another message then cancel this timer. 
 - When making high risk changes use an adversarial review subagent to verify findings. 
 - Fable tokens are very expensive. When the main model is Fable, delegate work to Opus, Sonnet or Haiku subagents for less complex tasks (searching, reading, exploration, routine edits, test runs). Reserve Fable for the high-level reasoning and synthesis that actually needs it, or when the cost of re-explaining context outweighs the savings.
+- When unsure, ask clarifying questions rather than guessing. 
+- Please don't confidently jump to conclusions without evidence. If there's no evidence, hedge your statements, eg "I suspect that X happened because of Y", not just a straight up "X happened because of Y"
 
 ## Debugging
 - Try to reproduce the bug before jumping to conclusions about its cause. 
 - If the root cause of a bug is unclear, add targeted logging or instrumentation before modifying logic.
-- When unsure, ask clarifying questions rather than guessing. 
 - Fix root causes, not symptoms. Avoid band-aid fixes like stopPropagation to mask duplicate handlers, setTimeout to paper over race conditions, or flags to suppress unwanted side effects. If a fix feels like a workaround, step back and address the underlying design issue.
 - Form and add logs to test all independent hypotheses at once, then run once and read combined output — don't add one log, run, observe, repeat. Go serial only on genuine dependencies.
 - Isolate long debug loops in a subagent that returns the conclusion, not the full investigation transcript.
