@@ -1,0 +1,30 @@
+// Managed by chezmoi. Vicinae rewrites this file when you change settings in the GUI,
+// so after doing that run `chezmoi add ~/.config/vicinae/settings.json` and re-apply the
+// templating below, or your edits will drift out of the repo.
+//
+// Templated because .desktop files live in different places per distro: Arch uses
+// /usr/share/applications, NixOS exposes them via /run/current-system/sw and the user
+// profile. A literal copy leaves the launcher showing no system apps on NixOS.
+{
+   "$schema": "https://vicinae.com/schemas/config.json",
+   "theme": {
+      "dark": {
+         "name": "cosmic-dusk"
+      }
+   },
+   "providers": {
+      "applications": {
+         "preferences": {
+            "paths": [
+               "{{ .chezmoi.homeDir }}/.local/share/applications",
+{{- if eq .chezmoi.osRelease.id "nixos" }}
+               "/run/current-system/sw/share/applications",
+               "{{ .chezmoi.homeDir }}/.nix-profile/share/applications"
+{{- else }}
+               "/usr/share/applications"
+{{- end }}
+            ]
+         }
+      }
+   }
+}

@@ -393,10 +393,19 @@ _fzf_open_cmd() {
   esac
 }
 
+# Ctrl+P listing: --no-ignore drops every ignore source (per-repo .gitignore,
+# .ignore, .fdignore, fd's own global ignore), then --ignore-file adds back a
+# single base list. So the widget shows gitignored-but-interesting files
+# (.env.example, build configs) while still hiding node_modules/__pycache__.
+FD_BASE_IGNORE="$HOME/.config/fd/base-ignore"
+_fd_base() {
+  fd --hidden --follow --no-ignore --ignore-file "$FD_BASE_IGNORE" "$@"
+}
+
 fzf-file-widget() {
   local sel quoted
 
-  sel=$({ eval "$FZF_DEFAULT_COMMAND"; fd --type d --hidden --follow --exclude .git; zoxide query -l 2>/dev/null } | awk '!seen[$0]++' | fz --multi) || { zle reset-prompt; return }
+  sel=$({ _fd_base --type f; _fd_base --type d; zoxide query -l 2>/dev/null } | awk '!seen[$0]++' | fz --multi) || { zle reset-prompt; return }
 
   if [[ $(echo "$sel" | wc -l) -eq 1 ]] && [[ -d "$sel" ]]; then
     builtin cd -- "$sel"
