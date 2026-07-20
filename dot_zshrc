@@ -729,6 +729,86 @@ if (( ! $+functions[o] )) && ! alias o >/dev/null 2>&1; then
   }
 fi
 
+# Resolve the cwd's git remote to a github.com owner/repo slug (echoed on
+# stdout). Single remote is auto-picked; multiple present an fzf menu. Errors
+# (not a repo, no remotes, non-GitHub host) go to stderr with a non-zero exit.
+_gh_repo_slug() {
+  git rev-parse --is-inside-work-tree &>/dev/null || {
+    echo "Not in a git repo" >&2; return 1
+  }
+
+  # Pick a remote: single one is auto-selected, otherwise fzf menu.
+  local -a remotes
+  remotes=("${(@f)$(git remote)}")
+  local remote
+  if (( ${#remotes[@]} == 0 )); then
+    echo "No git remotes configured" >&2; return 1
+  elif (( ${#remotes[@]} == 1 )); then
+    remote="${remotes[1]}"
+  else
+    remote=$(printf '%s\n' "${remotes[@]}" | fzf --height=40% --border --prompt="remote > ") || return 1
+  fi
+
+  # Parse host + owner/repo from the remote URL (SSH or HTTPS forms).
+  local url host slug rest
+  url=$(git remote get-url "$remote") || return 1
+  if [[ "$url" == git@*:* ]]; then          # git@github.com:owner/repo.git
+    host="${${url#git@}%%:*}"
+    slug="${url#*:}"
+  elif [[ "$url" == *://* ]]; then          # https://[user@]github.com/owner/repo.git
+    rest="${url#*://}"
+    host="${rest%%/*}"; host="${host#*@}"   # drop any user@ creds
+    slug="${rest#*/}"
+  else
+    echo "Unrecognized remote URL: $url" >&2; return 1
+  fi
+  slug="${slug%.git}"
+
+  if [[ "$host" != "github.com" ]]; then
+    echo "Not a github.com remote (host: $host)" >&2; return 1
+  fi
+
+  print -r -- "$slug"
+}
+
+# Open a GitHub PR in the browser. `pr 123` opens PR #123; `pr` (no arg) opens
+# the latest open PR (needs gh). Repo is inferred from the cwd's git remote.
+pr() {
+  local slug; slug=$(_gh_repo_slug) || return 1
+
+  local num="$1"
+  if [[ -z "$num" ]]; then
+    command -v gh &>/dev/null || {
+      echo "No PR number given and gh not installed" >&2; return 1
+    }
+    num=$(gh pr list --repo "$slug" --state open --limit 1 --json number -q '.[0].number' 2>/dev/null)
+    [[ -z "$num" ]] && { echo "No open PRs in $slug" >&2; return 1; }
+  elif [[ "$num" != <-> ]]; then
+    echo "PR number must be numeric: $num" >&2; return 1
+  fi
+
+  o "https://github.com/$slug/pull/$num"
+}
+
+# Open a GitHub issue in the browser. `iss 42` opens issue #42; `iss` (no arg)
+# opens the latest open issue (needs gh). Repo is inferred from the git remote.
+iss() {
+  local slug; slug=$(_gh_repo_slug) || return 1
+
+  local num="$1"
+  if [[ -z "$num" ]]; then
+    command -v gh &>/dev/null || {
+      echo "No issue number given and gh not installed" >&2; return 1
+    }
+    num=$(gh issue list --repo "$slug" --state open --limit 1 --json number -q '.[0].number' 2>/dev/null)
+    [[ -z "$num" ]] && { echo "No open issues in $slug" >&2; return 1; }
+  elif [[ "$num" != <-> ]]; then
+    echo "issue number must be numeric: $num" >&2; return 1
+  fi
+
+  o "https://github.com/$slug/issues/$num"
+}
+
 # OpenClaw Completion
 [[ -f /home/chong/.openclaw/completions/openclaw.zsh ]] && source /home/chong/.openclaw/completions/openclaw.zsh
 
