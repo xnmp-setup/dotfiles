@@ -149,6 +149,52 @@ Map the palette to Chrome color keys:
 
 Reference: read any theme in `~/.local/share/chrome-themes/` for the exact format.
 
+#### Dark Reader (`~/.local/share/chrome-themes/{theme-name}/darkreader-{theme-name}.json`)
+
+A Dark Reader settings file that recolors the *content* of every web page (the Chrome theme above only styles the browser chrome). Write it alongside the Chrome theme extension. The file contains a single `"theme"` object — Dark Reader's import merges shallowly at the top level, so importing `{ "theme": {...} }` replaces the theme but **preserves** the user's per-site enable/disable lists, automation, and presets.
+
+Because the merge is shallow and missing keys are not back-filled, the `theme` object must be **complete**. Use Dark Reader's defaults for everything except the colors and mode:
+
+```json
+{
+  "theme": {
+    "mode": 1,
+    "brightness": 100,
+    "contrast": 100,
+    "grayscale": 0,
+    "sepia": 0,
+    "useFont": false,
+    "fontFamily": "Open Sans",
+    "textStroke": 0,
+    "engine": "dynamicTheme",
+    "stylesheet": "",
+    "darkSchemeBackgroundColor": "#...",
+    "darkSchemeTextColor": "#...",
+    "lightSchemeBackgroundColor": "#...",
+    "lightSchemeTextColor": "#...",
+    "scrollbarColor": "",
+    "selectionColor": "auto",
+    "styleSystemControls": false,
+    "lightColorScheme": "Default",
+    "darkColorScheme": "Default",
+    "immediateModify": false
+  }
+}
+```
+
+Map the palette:
+- `mode` — `1` for a dark theme, `0` for a light theme
+- `darkSchemeBackgroundColor` — primary background shade (dark)
+- `darkSchemeTextColor` — primary foreground (light)
+- `lightSchemeBackgroundColor` — primary background shade (light)
+- `lightSchemeTextColor` — primary foreground (dark)
+- `selectionColor` — accent color (or leave `"auto"`)
+- `scrollbarColor` — a muted background/border shade (or leave `""` for auto)
+
+Set **both** scheme color pairs so the theme looks right whichever mode the user runs Dark Reader in; `mode` selects the active pair. Use 6-digit `#rrggbb` hex.
+
+**Note:** importing resets Dark Reader's brightness/contrast/font to the defaults above. If the user has customized those, tell them to instead export their current settings (⚙ → Manage Settings → Export), then only swap the `*SchemeColor`, `selectionColor`, `scrollbarColor`, and `mode` keys before re-importing.
+
 #### Obsidian (`~/Vaults/Technical Vault/.obsidian/themes/{Theme Name}/`)
 
 Directory containing `manifest.json` (name, version, minAppVersion, author) and `theme.css`. The CSS uses `.theme-light` or `.theme-dark` selector with Obsidian CSS custom properties:
@@ -205,6 +251,7 @@ Update each app's config to use the new theme:
 - **Vicinae**: Run `vicinae theme set {theme-name}` to switch the active theme (updates `~/.config/vicinae/settings.json` automatically). For dark themes, this sets `theme.dark.name`; for light themes, `theme.light.name`.
 - **Powerlevel10k**: Create `~/.config/p10k-themes/{theme-name}.zsh` and symlink it as `current.zsh`.
 - **Chrome**: Do NOT edit settings — tell the user to load the theme manually via `chrome://extensions/` → Developer mode → Load unpacked → press `Ctrl+H` in the file picker to show hidden directories → navigate to `~/.local/share/chrome-themes/{theme-name}/`.
+- **Dark Reader**: Cannot be applied from disk (settings live in the extension's storage). Tell the user to import manually: click the Dark Reader toolbar icon → ⚙ (Settings) → Manage Settings → Import Settings → select `~/.local/share/chrome-themes/{theme-name}/darkreader-{theme-name}.json`.
 
 ### 6. Align Tauri Explorer colors
 
@@ -240,4 +287,5 @@ List the files created and configs updated. Note that:
 - Powerlevel10k: run `source ~/.p10k.zsh` or open a new terminal
 - Vicinae: theme applies on next launch or when the window is re-opened
 - Chrome: load unpacked extension from `~/chrome-themes-{theme-name}/` via `chrome://extensions/`
+- Dark Reader: import `darkreader-{theme-name}.json` via the extension's Settings → Manage Settings → Import Settings; applies immediately to all pages
 - Claude Code: run `/theme` to sync with the new terminal theme (light or dark)

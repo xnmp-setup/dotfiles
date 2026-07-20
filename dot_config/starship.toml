@@ -1,0 +1,49 @@
+# Lean two-line prompt: dir + git + lang + duration, bare ❯ on its own line.
+add_newline = true
+
+format = """
+$directory$git_branch$git_status$git_state$rust$nodejs$bun$python$cmd_duration
+$character"""
+
+[character]
+success_symbol = "[❯](bold green)"
+error_symbol = "[❯](bold red)"
+
+[directory]
+truncation_length = 3
+truncate_to_repo = false
+truncation_symbol = "…/"
+style = "bold cyan"
+
+[git_branch]
+format = "[$branch]($style) "
+style = "bold purple"
+
+[git_status]
+format = '([$all_status$ahead_behind]($style) )'
+style = "red"
+
+[git_state]
+format = '[($state( $progress_current/$progress_total))]($style) '
+style = "bold yellow"
+
+[cmd_duration]
+min_time = 2000
+format = "[$duration]($style) "
+style = "yellow"
+
+[rust]
+format = "[$symbol($version )]($style)"
+symbol = "🦀 "
+
+[nodejs]
+format = "[$symbol($version )]($style)"
+symbol = " "
+
+[bun]
+format = "[$symbol($version )]($style)"
+symbol = "🥟 "
+
+[python]
+format = '[$symbol($version )(\($virtualenv\) )]($style)'
+symbol = "🐍 "
