@@ -10,6 +10,9 @@
 
 require("nary")
 
+local theme      = require("theme")
+local scratchpad = require("scratchpad")
+
 ------------------
 ---- MONITORS ----
 ------------------
@@ -64,10 +67,10 @@ hl.config({
         gaps_out    = 10,
         border_size = 2,
 
-        -- Cyan/Green active border for that "terminal" feel
+        -- Accent gradient from the active theme (see theme.lua).
         col = {
-            active_border   = { colors = { "rgba(33ccffee)", "rgba(00ff99ee)" }, angle = 45 },
-            inactive_border = "rgba(595959aa)",
+            active_border   = theme.active_gradient(),
+            inactive_border = theme.rgba(theme.colors.border, "aa"),
         },
 
         layout = "lua:nary",
@@ -91,10 +94,10 @@ hl.config({
     misc = {
         -- What shows through while a window is catching up with a resize.
         -- Hyprland's default is #111111, which reads as a grey glitch against
-        -- this palette; the terminal background makes it read as depth.
+        -- any palette; the theme's own background makes it read as depth.
         -- (render:expand_undersized_textures, which stretches the stale buffer
         -- rather than exposing this at all, is already on by default.)
-        background_color = "rgb(0e1330)",
+        background_color = "rgb(" .. theme.colors.background .. ")",
     },
 
     input = {
@@ -107,28 +110,31 @@ hl.config({
     -- Native tabbed groups (replaces hy3 tabs)
     group = {
         col = {
-            border_active   = { colors = { "rgba(33ccffee)", "rgba(00ff99ee)" }, angle = 45 },
-            border_inactive = "rgba(595959aa)",
+            border_active   = theme.active_gradient(),
+            border_inactive = theme.rgba(theme.colors.border, "aa"),
         },
-        -- Tab strip, painted like WezTerm's tab bar (Cosmic Dusk) rather than
-        -- the default yellow gradient: flat, bar in the terminal background,
-        -- active tab a shade lighter. Locked groups get the scheme's pink.
+        -- Tab strip, painted like WezTerm's tab bar rather than the default
+        -- yellow gradient: flat, bar in the theme's background, active tab a
+        -- shade lifted off it. Locked groups get the theme's accent.
+        --
+        -- height has to lead font_size: the strip does not grow to fit its text,
+        -- so a font raised on its own is clipped top and bottom.
         groupbar = {
             enabled       = true,
-            font_size     = 10,
-            height        = 15,
+            font_size     = 14,
+            height        = 22,
             render_titles = true,
             gradients     = false,
             col = {
-                active          = "rgba(2a3352ff)",
-                inactive        = "rgba(0e1330ee)",
-                locked_active   = "rgba(4a2a44ff)",
-                locked_inactive = "rgba(0e1330ee)",
+                active          = theme.rgba(theme.colors.surface),
+                inactive        = theme.rgba(theme.colors.background, "ee"),
+                locked_active   = theme.rgba(theme.colors.accent, "55"),
+                locked_inactive = theme.rgba(theme.colors.background, "ee"),
             },
-            text_color                 = "rgba(ffffffff)",
-            text_color_inactive        = "rgba(aaaaaaff)",
-            text_color_locked_active   = "rgba(d4607aff)",
-            text_color_locked_inactive = "rgba(aaaaaaff)",
+            text_color                 = theme.rgba(theme.colors.text),
+            text_color_inactive        = theme.rgba(theme.colors.text_dim),
+            text_color_locked_active   = theme.rgba(theme.colors.accent),
+            text_color_locked_inactive = theme.rgba(theme.colors.text_dim),
         },
     },
 
@@ -160,10 +166,11 @@ hl.on("hyprland.start", function()
     hl.exec_cmd("wlsunset -l -33.87 -L 151.21 -t 3500 -T 6500")
     hl.exec_cmd("dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP")
     hl.exec_cmd("gnome-keyring-daemon --start --components=secrets")
-    hl.exec_cmd("~/.local/bin/scratchpad-autohide.sh lite-xl ghostty-drop ytmusic chrome-drop")
-    hl.exec_cmd("~/.config/hypr/imv-splash.sh")
+    -- scratchpad-autohide.sh and imv-splash.sh are gone: both tailed the event
+    -- socket through socat to react to focus, which is an `hl.on` handler now.
     hl.exec_cmd("wezterm", { workspace = "1" })
     hl.exec_cmd("google-chrome-stable", { workspace = "1" })
+    hl.exec_cmd("obsidian", { workspace = "1" })
     hl.exec_cmd("systemctl --user start hypr-session-save.service")
 {{ if eq .chezmoi.hostname "t14s" }}
     -- NixOS laptop: polkit agent is not autostarted by anything else
@@ -439,10 +446,6 @@ hl.bind(mainMod .. " + RETURN",   hl.dsp.exec_cmd("wezterm"))
 hl.bind(mainMod .. " + SPACE",    hl.dsp.exec_cmd("vicinae toggle"))
 hl.bind(mainMod .. " + CTRL + L", hl.dsp.exec_cmd("hyprlock"))
 hl.bind(mainMod .. " + CTRL + R", hl.dsp.exec_cmd("~/.local/bin/hypr-session-restore.sh"))
-hl.bind("F6", hl.dsp.exec_cmd("~/.local/bin/toggle-scratchpad.sh chrome-drop 1800 1100 --class google-chrome --singleton google-chrome-stable --new-window"))
-hl.bind("F7", hl.dsp.exec_cmd("~/.local/bin/toggle-scratchpad.sh ytmusic 1400 900 --class \"YouTube Music Desktop App\" youtube-music-desktop-app"))
-hl.bind("F9", hl.dsp.exec_cmd("~/.local/bin/toggle-scratchpad.sh ghostty-drop 1600 1000 --class com.mitchellh.ghostty 920 1440 ghostty"))
-hl.bind("F10", hl.dsp.exec_cmd("~/.local/bin/toggle-scratchpad.sh lite-xl 900 600 --class com.lite_xl.LiteXL lite-xl"))
 hl.bind(mainMod .. " + E",         hl.dsp.exec_cmd("~/.config/hypr/open-explorer-cwd.sh"))
 hl.bind(mainMod .. " + SHIFT + S", hl.dsp.exec_cmd("hyprshot -m region --clipboard-only"))
 hl.bind("CTRL + SHIFT + V",        hl.dsp.exec_cmd("~/.config/hypr/clip2path"))
@@ -475,14 +478,22 @@ hl.bind(mainMod .. " + CTRL + right", untab_or_step("right"))
 hl.bind(mainMod .. " + CTRL + up",    untab_or_step("up"))
 hl.bind(mainMod .. " + CTRL + down",  untab_or_step("down"))
 
+-- Same step through the tree, with the un-tab suppressed: a tab strip travels
+-- as one tile instead of the focused tab leaving it. nary already moves whole
+-- tiles — CTRL alone only looks different because it spends the keypress on
+-- escaping the strip first — so adding ALT is just declining that escape.
+for _, dir in ipairs({ "left", "right", "up", "down" }) do
+    hl.bind(mainMod .. " + CTRL + ALT + " .. dir, hl.dsp.layout("move " .. DIR_SHORT[dir]))
+end
+
 -- Move window to prev/next monitor (nary is per-workspace, so crossing
 -- monitors stays an explicit action rather than an edge overflow).
 -- SHIFT, not CTRL: CTRL + Prior/Next cycles tabs within a group.
 hl.bind(mainMod .. " + SHIFT + Prior", hl.dsp.window.move({ monitor = "l" }))
 hl.bind(mainMod .. " + SHIFT + Next",  hl.dsp.window.move({ monitor = "r" }))
 
--- Float center toggle with dim
-hl.bind(mainMod .. " + CTRL + end", hl.dsp.exec_cmd("~/.local/bin/toggle-float-center.sh"))
+-- Float center toggle with dim is bound in the SPOTLIT WINDOWS section below,
+-- which is where the state it toggles lives.
 
 -- Mouse move/resize. `mouse = true` is inert in 0.55.4's Lua path (upstream's
 -- own example config passes it); the drag behaviour comes from the mouse:NNN
@@ -512,6 +523,128 @@ hl.bind(mainMod .. " + ALT + Next",   hl.dsp.group.next())
 -- them back with that one showing.
 hl.bind("F1", expose_toggle)
 
+---------------------
+---- SCRATCHPADS ----
+---------------------
+-- Drop-downs: parked in a special workspace, summoned onto whatever workspace
+-- is in front of you, dismissed by the same key or by focusing anything else.
+-- Without x/y they are centred on the focused monitor.
+
+scratchpad.define("chrome-drop", {
+    class = "google-chrome",
+    cmd   = "google-chrome-stable --new-window",
+    w     = 1800, h = 1100,
+})
+scratchpad.define("ytmusic", {
+    class = "YouTube Music Desktop App",
+    cmd   = "youtube-music-desktop-app",
+    w     = 1400, h = 900,
+})
+scratchpad.define("ghostty-drop", {
+    class = "com.mitchellh.ghostty",
+    cmd   = "ghostty",
+    w     = 1600, h = 1000,
+    x     = 920,  y = 1440,
+})
+scratchpad.define("lite-xl", {
+    class = "com.lite_xl.LiteXL",
+    cmd   = "lite-xl",
+    w     = 900, h = 600,
+})
+
+hl.bind("F6",  function() scratchpad.toggle("chrome-drop") end)
+hl.bind("F7",  function() scratchpad.toggle("ytmusic") end)
+hl.bind("F9",  function() scratchpad.toggle("ghostty-drop") end)
+hl.bind("F10", function() scratchpad.toggle("lite-xl") end)
+
+
+---------------------------
+---- SPOTLIT WINDOWS ------
+---------------------------
+-- One window pulled to the front of the workspace with everything behind it
+-- dimmed, until focus moves on. Two ways in: SUPER + CTRL + End floats and
+-- centres whatever is focused, and an imv window does it to itself when it
+-- opens, so a previewed image lands centred rather than tiled into the grid.
+--
+-- Both were shell scripts (toggle-float-center.sh, imv-splash.sh) that tailed
+-- the event socket through socat and toggled dim with `hyprctl keyword` — a
+-- command the Lua config refuses outright ("can't work with non-legacy
+-- parsers"). Dim is a config write and focus is an event, so both belong here.
+
+-- { address, floated } while something is held forward. `floated` records that
+-- the spotlight is what floated it, and so that letting go should tile it back;
+-- a window that was already floating (imv, by window rule) is left floating.
+local spotlit = nil
+
+local function unspotlight()
+    local held = spotlit
+    spotlit = nil
+    hl.config({ decoration = { dim_inactive = false, dim_strength = 0.4 } })
+    if not (held and held.floated) then return end
+
+    for _, w in ipairs(hl.get_windows() or {}) do
+        if w.address == held.address and w.floating then
+            hl.dispatch(hl.dsp.window.float({ action = "off", window = w }))
+        end
+    end
+end
+
+local function spotlight(w, opts)
+    if not w then return end
+    opts = opts or {}
+
+    local floated = not w.floating
+    if floated then
+        hl.dispatch(hl.dsp.window.float({ action = "on", window = w }))
+    end
+    if opts.size then
+        hl.dispatch(hl.dsp.window.resize({ x = opts.size[1], y = opts.size[2], window = w }))
+    end
+    hl.dispatch(hl.dsp.focus({ window = w }))
+    hl.dispatch(hl.dsp.window.center())
+
+    spotlit = { address = w.address, floated = floated }
+    hl.config({ decoration = { dim_inactive = true, dim_strength = opts.dim or 0.4 } })
+end
+
+-- Half the monitor's width and 80% of its height, in layout coordinates — the
+-- proportions toggle-float-center.sh used, which is why it had to divide by the
+-- monitor scale itself.
+local function centred_size()
+    local mon = hl.get_active_monitor()
+    if not (mon and mon.width and mon.height) then return nil end
+    local scale = mon.scale or 1
+    return { math.floor(mon.width / scale * 0.5), math.floor(mon.height / scale * 0.8) }
+end
+
+hl.bind(mainMod .. " + CTRL + end", function()
+    local w = hl.get_active_window()
+    if not w then return end
+
+    if spotlit and spotlit.address == w.address then
+        unspotlight()
+    else
+        spotlight(w, { size = centred_size(), dim = 0.2 })
+    end
+end)
+
+-- imv is floated and sized by window rule already, so the spotlight only has to
+-- centre it and dim what is behind.
+hl.on("window.open", function(w)
+    if w and w.class == "imv" then spotlight(w) end
+end)
+
+-- Anything else taking focus ends it.
+hl.on("window.active", function()
+    if not spotlit then return end
+    local active = hl.get_active_window()
+    if not active or active.address ~= spotlit.address then unspotlight() end
+end)
+
+hl.on("window.close", function(w)
+    if spotlit and w and w.address == spotlit.address then unspotlight() end
+end)
+
 -- Invade the neighbour in that direction: the focused window leaves its tile and
 -- becomes a tab of the window it lands on, creating that group if the neighbour
 -- is a plain window. SUPER + T dissolves the group again.
@@ -520,13 +653,58 @@ hl.bind(mainMod .. " + ALT + right", hl.dsp.window.move({ into_or_create_group =
 hl.bind(mainMod .. " + ALT + up",    hl.dsp.window.move({ into_or_create_group = "up" }))
 hl.bind(mainMod .. " + ALT + down",  hl.dsp.window.move({ into_or_create_group = "down" }))
 
--- Resize
-hl.bind(mainMod .. " + CTRL + SHIFT + right", hl.dsp.window.resize({ x = 50,  y = 0,   relative = true }), { repeating = true })
-hl.bind(mainMod .. " + CTRL + SHIFT + left",  hl.dsp.window.resize({ x = -50, y = 0,   relative = true }), { repeating = true })
-hl.bind(mainMod .. " + CTRL + SHIFT + down",  hl.dsp.window.resize({ x = 0,   y = 50,  relative = true }), { repeating = true })
-hl.bind(mainMod .. " + CTRL + SHIFT + up",    hl.dsp.window.resize({ x = 0,   y = -50, relative = true }), { repeating = true })
-hl.bind(mainMod .. " + CTRL + equal", hl.dsp.exec_cmd("~/.config/hypr/accel-resize.sh grow"),   { repeating = true })
-hl.bind(mainMod .. " + CTRL + minus", hl.dsp.exec_cmd("~/.config/hypr/accel-resize.sh shrink"), { repeating = true })
+-- Resize. Tiled windows go through nary's own `resize`, not window.resize: the
+-- Lua layout API has no resize hook at all (a provider is only recalculate +
+-- layout_msg), so window.resize is silently a no-op on anything tiled. What it
+-- moves is the TILE, which for a tab strip is the whole group.
+--
+-- Floating windows have no tile, so they keep the real dispatcher.
+local function resize_tile(dx, dy)
+    return function()
+        local w = hl.get_active_window()
+        if w and w.floating then
+            hl.dispatch(hl.dsp.window.resize({ x = dx, y = dy, relative = true }))
+        else
+            hl.dispatch(hl.dsp.layout(("resize %d %d"):format(dx, dy)))
+        end
+    end
+end
+
+hl.bind(mainMod .. " + CTRL + SHIFT + right", resize_tile(50, 0),  { repeating = true })
+hl.bind(mainMod .. " + CTRL + SHIFT + left",  resize_tile(-50, 0), { repeating = true })
+hl.bind(mainMod .. " + CTRL + SHIFT + down",  resize_tile(0, 50),  { repeating = true })
+hl.bind(mainMod .. " + CTRL + SHIFT + up",    resize_tile(0, -50), { repeating = true })
+
+-- Grow/shrink the tile on both axes at once, with a step that accelerates while
+-- the key is held so a large change does not take twenty presses. This lived in
+-- accel-resize.sh, which timestamped itself through /tmp and drove
+-- `hyprctl --batch dispatch` — a syntax the Lua config no longer accepts.
+--
+-- Rather than timing the gap between presses, each press arms a one-shot timer
+-- that drops the step back to base. Held down, a later press always supersedes
+-- the pending reset before it can fire.
+local ACCEL = { base = 40, max = 200, increment = 30, idle_ms = 400 }
+local accel = { step = ACCEL.base, generation = 0 }
+
+local function accel_resize(sign)
+    return function()
+        local step = sign * accel.step
+        hl.dispatch(hl.dsp.layout(("resize %d %d"):format(step, step)))
+
+        accel.step = math.min(ACCEL.max, accel.step + ACCEL.increment)
+
+        -- Superseding rather than cancelling: timers already in flight still
+        -- fire, but only the one armed by the most recent press still matches.
+        accel.generation = accel.generation + 1
+        local mine = accel.generation
+        hl.timer(function()
+            if accel.generation == mine then accel.step = ACCEL.base end
+        end, { timeout = ACCEL.idle_ms, type = "oneshot" })
+    end
+end
+
+hl.bind(mainMod .. " + CTRL + equal", accel_resize(1),  { repeating = true })
+hl.bind(mainMod .. " + CTRL + minus", accel_resize(-1), { repeating = true })
 
 -- Window State
 hl.bind(mainMod .. " + Q",      hl.dsp.window.close())

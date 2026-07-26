@@ -415,6 +415,149 @@ do
 end
 
 --------------------------------------------------------------------------------
+-- Resize
+--
+-- Asserted on the boxes windows are actually given, not on the tree: weights are
+-- an implementation detail, the geometry is the contract.
+--------------------------------------------------------------------------------
+
+-- A stand-in for Hyprland's own context: cuts boxes the way ctx:split does and
+-- records where each window is put down.
+local function geometry(tiles, focus, area)
+    local ctx = ctx_of(tiles, focus)
+    ctx.area = area or { x = 0, y = 0, w = 1000, h = 400 }
+
+    function ctx:split(box, side, ratio)
+        if side == "left"  then return { x = box.x, y = box.y, w = box.w * ratio, h = box.h } end
+        if side == "right" then return { x = box.x + box.w * (1 - ratio), y = box.y, w = box.w * ratio, h = box.h } end
+        if side == "top"   then return { x = box.x, y = box.y, w = box.w, h = box.h * ratio } end
+        return { x = box.x, y = box.y + box.h * (1 - ratio), w = box.w, h = box.h * ratio }
+    end
+
+    local boxes = {}
+    for _, target in ipairs(ctx.targets) do
+        target.place = function(self, box) boxes[self.window.stable_id] = box end
+    end
+    return ctx, boxes
+end
+
+-- Round, so the checks read as pixels rather than as floating-point noise.
+local function widths(boxes, ...)
+    local out = {}
+    for i, id in ipairs({ ... }) do out[i] = math.floor((boxes[id] and boxes[id].w or 0) + 0.5) end
+    return table.concat(out, " ")
+end
+
+local function heights(boxes, ...)
+    local out = {}
+    for i, id in ipairs({ ... }) do out[i] = math.floor((boxes[id] and boxes[id].h or 0) + 0.5) end
+    return table.concat(out, " ")
+end
+
+do
+    nary.state.trees[KEY] = nil
+    local ctx, boxes = geometry({ "1", "2", "3" }, "1")
+    nary.recalculate(ctx)
+    check("an untouched row splits evenly", widths(boxes, "1", "2", "3"), "333 333 333")
+
+    nary.dispatch(ctx, "resize 90 0")
+    nary.recalculate(ctx)
+    check("resize widens the focused tile by the pixels asked for",
+        widths(boxes, "1"), "423")
+    check("its neighbours give up the width in proportion",
+        widths(boxes, "2", "3"), "288 288")
+end
+
+do
+    nary.state.trees[KEY] = nil
+    local ctx, boxes = geometry({ "1", "2" }, "1")
+    nary.recalculate(ctx)
+    nary.dispatch(ctx, "resize -150 0")
+    nary.recalculate(ctx)
+    check("a negative delta shrinks it", widths(boxes, "1", "2"), "350 650")
+end
+
+do
+    -- v(1 h(2 3)): resizing 2 horizontally must not disturb the row above it.
+    nary.state.trees[KEY] = C("v", L("1"), C("h", L("2"), L("3")))
+    local ctx, boxes = geometry({ "1", "2", "3" }, "2")
+    nary.recalculate(ctx)
+    nary.dispatch(ctx, "resize 100 0")
+    nary.recalculate(ctx)
+    check("resizing across an axis only touches the container running that way",
+        widths(boxes, "2", "3"), "600 400")
+    check("the perpendicular neighbour keeps its full width", widths(boxes, "1"), "1000")
+    check("and every row keeps its height", heights(boxes, "1", "2", "3"), "200 200 200")
+end
+
+do
+    nary.state.trees[KEY] = C("v", L("1"), C("h", L("2"), L("3")))
+    local ctx, boxes = geometry({ "1", "2", "3" }, "2")
+    nary.recalculate(ctx)
+    nary.dispatch(ctx, "resize 0 60")
+    nary.recalculate(ctx)
+    check("the vertical delta is spent on the nearest vertical ancestor",
+        heights(boxes, "1", "2"), "140 260")
+end
+
+do
+    -- A tabbed group is one tile, so the strip resizes as a unit.
+    nary.state.trees[KEY] = nil
+    local ctx, boxes = geometry({ "1", { "2", "9" } }, "2")
+    nary.recalculate(ctx)
+    nary.dispatch(ctx, "resize 100 0")
+    nary.recalculate(ctx)
+    check("resizing a tab resizes its whole strip", widths(boxes, "1", "2"), "400 600")
+end
+
+do
+    -- Nothing runs horizontally beside a lone tile, so there is no space to take.
+    nary.state.trees[KEY] = nil
+    local ctx, boxes = geometry({ "1" }, "1")
+    nary.recalculate(ctx)
+    nary.dispatch(ctx, "resize 200 200")
+    nary.recalculate(ctx)
+    check("a tile that already spans the workspace cannot grow",
+        widths(boxes, "1") .. "/" .. heights(boxes, "1"), "1000/400")
+end
+
+do
+    nary.state.trees[KEY] = nil
+    local ctx, boxes = geometry({ "1", "2" }, "1")
+    nary.recalculate(ctx)
+    for _ = 1, 40 do nary.dispatch(ctx, "resize 200 0") end
+    nary.recalculate(ctx)
+    check("growing without limit still leaves the neighbour on screen",
+        widths(boxes, "1", "2"), "950 50")
+
+    for _ = 1, 80 do nary.dispatch(ctx, "resize -200 0") end
+    nary.recalculate(ctx)
+    check("and shrinking without limit leaves the tile itself on screen",
+        widths(boxes, "1", "2"), "50 950")
+end
+
+do
+    nary.state.trees[KEY] = nil
+    local ctx = geometry({ "1", "2" }, "1")
+    check("resize with a malformed argument is rejected",
+        type(nary.dispatch(ctx, "resize wide")), "string")
+    check("resize with a missing axis is rejected",
+        type(nary.dispatch(ctx, "resize 50")), "string")
+end
+
+do
+    -- Weight has to survive the tree being rearranged around it.
+    nary.state.trees[KEY] = nil
+    local ctx, boxes = geometry({ "1", "2", "3" }, "1")
+    nary.recalculate(ctx)
+    nary.dispatch(ctx, "resize 90 0")
+    nary.dispatch(ctx, "move r")
+    nary.recalculate(ctx)
+    check("a resized tile keeps its share after being moved",
+        widths(boxes, "1"), "423")
+end
+
+--------------------------------------------------------------------------------
 
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)

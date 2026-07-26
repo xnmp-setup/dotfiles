@@ -10,6 +10,11 @@
 -- The root is always a container. Leaves reference windows by stable_id, which
 -- is how structure persists across recalculate() calls.
 --
+-- Any node may carry a `weight` (default 1): its share of the parent's extent
+-- along the parent's orientation, relative to its siblings. Weight is what
+-- resizing moves, and it rides on the node itself rather than in a parallel
+-- array on the parent, so every insert/remove keeps it correct for free.
+--
 -- Nesting a container inside a same-orientation parent is NOT redundant here:
 -- it changes the weights. h(h(1 2) 3) gives 1 and 2 a quarter each and 3 a
 -- half, whereas h(1 2 3) gives equal thirds. That distinction is what makes
@@ -77,6 +82,7 @@
 -- Registered as "nary"; activate with general.layout = "lua:nary".
 -- Commands (via hl.dsp.layout("<cmd>")):
 --   move l|r|u|d    step the focused window one insertion slot along an axis
+--   resize <dx> <dy> grow/shrink the focused TILE by that many pixels per axis
 --   untab l|r|u|d   when the focused tab next leaves its tile, put it that side
 --   explode         unfold every tabbed tile in place as its tabs are freed
 --   toggleorient    flip the focused window's parent container between h and v
@@ -153,11 +159,11 @@ local function copy(node)
             ids = {}
             for i, id in ipairs(node.ids) do ids[i] = id end
         end
-        return { kind = "leaf", id = node.id, ids = ids }
+        return { kind = "leaf", id = node.id, ids = ids, weight = node.weight }
     end
     local children = {}
     for i, child in ipairs(node.children) do children[i] = copy(child) end
-    return { kind = "container", orient = node.orient, children = children }
+    return { kind = "container", orient = node.orient, children = children, weight = node.weight }
 end
 
 -- Structural fingerprint. Two trees with the same canon render identically and
@@ -251,7 +257,13 @@ local function prune(node, root)
     node.children = kept
     if node ~= root then
         if #kept == 0 then return nil end
-        if #kept == 1 then return kept[1] end
+        if #kept == 1 then
+            -- The survivor takes over the collapsed container's slot, so it must
+            -- take its share of the parent too, or resizing a nested container
+            -- would be undone the moment it lost a child.
+            kept[1].weight = node.weight
+            return kept[1]
+        end
     end
     return node
 end
@@ -530,17 +542,36 @@ end
 -- Placement: split an area into N slices using only ctx:split
 --------------------------------------------------------------------------------
 
-local function slice(ctx, area, orient, n)
+-- Each child's share of its parent. Absent weights mean "an equal share", which
+-- is what an untouched tree is made of.
+local function weights(children)
+    local out, total = {}, 0
+    for i, child in ipairs(children) do
+        local w = child.weight
+        if not w or w ~= w or w <= 0 then w = 1 end -- also rejects NaN
+        out[i] = w
+        total  = total + w
+    end
+    return out, total
+end
+
+-- Peel children off `area` one at a time, each taking its weight's share of
+-- whatever is left. Working on the remainder rather than on the whole keeps this
+-- expressible in ctx:split, which only ever cuts a box in two.
+local function slice(ctx, area, orient, children)
     local first = (orient == "v") and "top" or "left"
     local rest  = (orient == "v") and "bottom" or "right"
+    local ws, remaining_weight = weights(children)
+
     local rects, remaining = {}, area
-    for i = 1, n do
-        if i == n then
+    for i = 1, #children do
+        if i == #children then
             rects[i] = remaining
         else
-            local frac = 1 / (n - i + 1)
+            local frac = ws[i] / remaining_weight
             rects[i]  = ctx:split(remaining, first, frac)
             remaining = ctx:split(remaining, rest, 1 - frac)
+            remaining_weight = remaining_weight - ws[i]
         end
     end
     return rects
@@ -552,12 +583,32 @@ local function layout_node(ctx, node, area, place)
         if target then target:place(area) end
         return
     end
-    local n = #node.children
-    if n == 0 then return end
-    local rects = slice(ctx, area, node.orient, n)
+    if #node.children == 0 then return end
+    local rects = slice(ctx, area, node.orient, node.children)
     for i, child in ipairs(node.children) do
         layout_node(ctx, child, rects[i], place)
     end
+end
+
+-- The pixel extent every node on the chain from root to `leaf` occupies, so a
+-- resize expressed in pixels can be turned into one expressed in weight. Same
+-- arithmetic slice() does, minus the gaps Hyprland insets afterwards — near
+-- enough, since the answer only scales a step the user is watching anyway.
+local function extents_along(root, area, chain, idxs)
+    local out = {}
+    local w, h = area.w or 0, area.h or 0
+
+    for depth, node in ipairs(chain) do
+        local ws, total = weights(node.children)
+        local frac = (total > 0) and (ws[idxs[depth]] / total) or 1
+
+        -- The container's own extent along its orientation is what the child is
+        -- taking a share of.
+        out[depth] = (node.orient == "h") and w or h
+
+        if node.orient == "h" then w = w * frac else h = h * frac end
+    end
+    return out
 end
 
 --------------------------------------------------------------------------------
@@ -808,6 +859,62 @@ local function cmd_explode(root, key, args)
     return true
 end
 
+-- Grow or shrink the focused TILE by (dx, dy) pixels. A tile is one leaf, and a
+-- tabbed group is one tile, so this resizes the whole strip rather than the tab
+-- that happens to be showing.
+--
+-- Each axis is spent on the innermost ancestor running along it: widening takes
+-- width from the tile's horizontal neighbours and leaves the rows above and
+-- below untouched. An axis with no such ancestor has nothing to take from — the
+-- tile already spans the workspace that way — and is skipped.
+--
+-- Siblings give up (or take back) space in proportion to what they already
+-- have, so repeatedly growing one tile never singles a neighbour out.
+local MIN_SHARE = 0.05
+
+local function cmd_resize(root, ctx, args)
+    local sx, sy = args:match("^(-?%d+)%s+(-?%d+)$")
+    if not sx then return "nary: resize expects '<dx> <dy>' in pixels" end
+
+    local id = active_id(ctx)
+    if not id then return true end
+
+    local nodes, idxs = chain_to(root, id)
+    if not nodes then return true end
+
+    local extent = extents_along(root, ctx.area, nodes, idxs)
+
+    for _, axis in ipairs({ { ax = "h", delta = tonumber(sx) }, { ax = "v", delta = tonumber(sy) } }) do
+        if axis.delta ~= 0 then
+            local si
+            for i = #nodes, 1, -1 do
+                if nodes[i].orient == axis.ax then si = i break end
+            end
+
+            local px = si and extent[si]
+            if si and px and px > 0 then
+                local parent   = nodes[si]
+                local idx      = idxs[si]
+                local ws, total = weights(parent.children)
+                local rest      = total - ws[idx]
+
+                -- Only one child: it already fills the container, and there is
+                -- no sibling to take the pixels from.
+                if rest > 0 then
+                    local cap  = 1 - MIN_SHARE * (#parent.children - 1)
+                    local want = ws[idx] / total + axis.delta / px
+                    want = math.max(MIN_SHARE, math.min(cap, want))
+
+                    -- Weights are relative, so pin the siblings' total and solve
+                    -- for the weight that gives this child the share it wants.
+                    parent.children[idx].weight = want * rest / (1 - want)
+                end
+            end
+        end
+    end
+    return true
+end
+
 local function cmd_toggleorient(root, ctx)
     local id = active_id(ctx)
     if not id then return true end
@@ -825,6 +932,8 @@ local function dispatch(ctx, msg)
     local command, args = msg:match("^%s*(%S+)%s*(.-)%s*$")
     if command == "move" then
         return cmd_move(root, key, ctx, args)
+    elseif command == "resize" then
+        return cmd_resize(root, ctx, args)
     elseif command == "untab" then
         return cmd_untab(root, key, ctx, args)
     elseif command == "explode" then
@@ -832,28 +941,31 @@ local function dispatch(ctx, msg)
     elseif command == "toggleorient" then
         return cmd_toggleorient(root, ctx)
     end
-    return "nary: expected 'move <l|r|u|d>', 'untab <l|r|u|d>', 'explode <window> <columns>' or 'toggleorient'"
+    return "nary: expected 'move <l|r|u|d>', 'resize <dx> <dy>', 'untab <l|r|u|d>', " ..
+           "'explode <window> <columns>' or 'toggleorient'"
+end
+
+local function recalculate(ctx)
+    local root, place = reconcile(ctx, true)
+    layout_node(ctx, root, ctx.area, place)
 end
 
 -- Exposed for the offline test harness; harmless under Hyprland.
 local M = {
-    state     = state,
-    canon     = canon,
-    dispatch  = dispatch,
-    space_key = space_key,
-    tree_for  = tree_for,
+    state       = state,
+    canon       = canon,
+    dispatch    = dispatch,
+    -- The full pass, so tests can assert on the geometry windows are given
+    -- rather than on the shape of the tree behind it.
+    recalculate = recalculate,
     -- What recalculate does, minus the placing: the pass that settles arrivals.
-    settle    = function(ctx) return reconcile(ctx, true) end,
+    settle      = function(ctx) return reconcile(ctx, true) end,
 }
 
 if hl and hl.layout then
     hl.layout.register("nary", {
-        recalculate = function(ctx)
-            local root, place = reconcile(ctx, true)
-            layout_node(ctx, root, ctx.area, place)
-        end,
-
-        layout_msg = dispatch,
+        recalculate = recalculate,
+        layout_msg  = dispatch,
     })
 end
 

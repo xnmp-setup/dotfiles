@@ -1,3 +1,14 @@
+# EMERGENCY FALLBACK — not the live config.
+#
+# Hyprland prefers hyprland.lua and never reads this while that file exists (see
+# the header of hyprland.lua). It is here so a broken Lua config still leaves a
+# bootable desktop: delete ~/.config/hypr/hyprland.lua and this takes over.
+#
+# It is deliberately a plain desktop, not a copy of the real one. The nary
+# layout, tabs, expose, scratchpads, the accelerating resize and the themed
+# colours are all Lua and have no .conf equivalent, so none of them are here.
+# Bindings that exist in both are kept on the same keys.
+
 # --- Monitor & General ---
 monitor=,preferred,auto,1
 env = ELECTRON_OZONE_PLATFORM_HINT,auto
@@ -93,10 +104,9 @@ exec-once = vicinae server
 exec-once = wlsunset -l -33.87 -L 151.21 -t 3500 -T 6500
 exec-once = dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP
 exec-once = gnome-keyring-daemon --start --components=secrets
-exec-once = ~/.local/bin/scratchpad-autohide.sh lite-xl ghostty-drop ytmusic chrome-drop
-exec-once = ~/.config/hypr/imv-splash.sh
 exec-once = [workspace 1] wezterm
 exec-once = [workspace 1] google-chrome-stable
+exec-once = [workspace 1] obsidian
 exec-once = systemctl --user start hypr-session-save.service
 
 # --- Window Rules ---
@@ -135,9 +145,6 @@ bind = $mainMod, RETURN, exec, wezterm
 bind = $mainMod, SPACE, exec, vicinae toggle
 bind = $mainMod CTRL, L, exec, hyprlock
 bind = $mainMod CTRL, R, exec, ~/.local/bin/hypr-session-restore.sh
-bind = , F6, exec, ~/.local/bin/toggle-scratchpad.sh chrome-drop 1800 1100 --class google-chrome --singleton google-chrome-stable --new-window
-bind = , F7, exec, ~/.local/bin/toggle-scratchpad.sh ytmusic 1400 900 --class "YouTube Music Desktop App" youtube-music-desktop-app
-bind = , F9, exec, ~/.local/bin/toggle-scratchpad.sh ghostty-drop 1600 1000 --class com.mitchellh.ghostty 920 1440 ghostty
 bind = $mainMod, E, exec, ~/.config/hypr/open-explorer-cwd.sh
 bind = $mainMod SHIFT, S, exec, hyprshot -m region --clipboard-only
 bind = CTRL SHIFT, V, exec, ~/.config/hypr/clip2path
@@ -149,11 +156,12 @@ bind = $mainMod, right, movefocus, r
 bind = $mainMod, up, movefocus, u
 bind = $mainMod, down, movefocus, d
 
-# Move Window (native, cross-monitor swap at edges)
-bind = $mainMod CTRL, left, exec, ~/.config/hypr/swap-or-move.sh l
-bind = $mainMod CTRL, right, exec, ~/.config/hypr/swap-or-move.sh r
-bind = $mainMod CTRL, up, exec, ~/.config/hypr/swap-or-move.sh u
-bind = $mainMod CTRL, down, exec, ~/.config/hypr/swap-or-move.sh d
+# Move Window. Plain dispatchers, not swap-or-move.sh: this file has to stand on
+# its own when the Lua config is what broke, so it depends on nothing outside it.
+bind = $mainMod CTRL, left, movewindow, l
+bind = $mainMod CTRL, right, movewindow, r
+bind = $mainMod CTRL, up, movewindow, u
+bind = $mainMod CTRL, down, movewindow, d
 
 # Invade the neighbour in that direction: focused window becomes a tab of it,
 # creating the group if the neighbour is a plain window.
@@ -165,9 +173,6 @@ bind = $mainMod ALT, down, moveintoorcreategroup, d
 # Move window to prev/next monitor (SHIFT: CTRL + Prior/Next cycles tabs)
 bind = $mainMod SHIFT, Prior, movewindow, mon:l
 bind = $mainMod SHIFT, Next, movewindow, mon:r
-
-# Float center toggle with dim
-bind = $mainMod CTRL, end, exec, ~/.local/bin/toggle-float-center.sh
 
 # Mouse move/resize
 bindm = SUPER, mouse:272, movewindow
@@ -188,30 +193,18 @@ bind = $mainMod CTRL, Prior, changegroupactive, b
 bind = $mainMod CTRL, Next, changegroupactive, f
 bind = $mainMod ALT, Prior, changegroupactive, b
 bind = $mainMod ALT, Next, changegroupactive, f
-# NOTE: the .lua config also sweeps up one-window groups and makes CTRL+arrows
-# pop a tab out into its own pane; neither is expressible in plain .conf.
 
 # Split control (dwindle: togglesplit flips axis; preserve_split keeps it)
-# NOTE: degraded from hy3 makegroup h/v — dwindle can't preselect a direction, only flip.
 bind = $mainMod, H, layoutmsg, togglesplit
 bind = $mainMod, Y, layoutmsg, togglesplit
-# bind = $mainMod SHIFT, H, ...   # no dwindle equivalent (hy3 changegroup h)
-# bind = $mainMod SHIFT, Y, ...   # no dwindle equivalent (hy3 changegroup v)
 
-# Focus Hierarchy — NO dwindle equivalent (hy3 changefocus raise/lower)
-# bind = $mainMod, A, ...
-# bind = $mainMod SHIFT, A, ...
-
-# Equalize window sizes — NO native equivalent (hy3 equalize)
-# bind = $mainMod CTRL, 0, ...
-
-# Resize
+# Resize (a flat step here; the .lua config accelerates it while held)
 binde = $mainMod CTRL SHIFT, right, resizeactive, 50 0
 binde = $mainMod CTRL SHIFT, left, resizeactive, -50 0
 binde = $mainMod CTRL SHIFT, down, resizeactive, 0 50
 binde = $mainMod CTRL SHIFT, up, resizeactive, 0 -50
-binde = $mainMod CTRL, equal, exec, ~/.config/hypr/accel-resize.sh grow
-binde = $mainMod CTRL, minus, exec, ~/.config/hypr/accel-resize.sh shrink
+binde = $mainMod CTRL, equal, resizeactive, 60 60
+binde = $mainMod CTRL, minus, resizeactive, -60 -60
 
 # Window State
 bind = $mainMod, Q, killactive
@@ -220,7 +213,6 @@ bind = CTRL, Escape, killactive
 bind = $mainMod, Escape, killactive
 bind = $mainMod, F, fullscreen
 
-bind = , F10, exec, ~/.local/bin/toggle-scratchpad.sh lite-xl 900 600 --class com.lite_xl.LiteXL lite-xl
 bind = $mainMod, grave, workspace, previous
 
 # Media Keys

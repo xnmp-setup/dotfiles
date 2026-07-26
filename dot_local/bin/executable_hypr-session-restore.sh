@@ -58,18 +58,22 @@ for ((i = 0; i < count; i++)); do
         continue
     fi
 
-    # Build window rules for hyprctl dispatch exec
-    rules="workspace $ws_id silent"
+    # Build the rule table for hl.dsp.exec_cmd. The old "[workspace 5 silent;
+    # float] cmd" form is gone: under a Lua config `hyprctl dispatch` parses its
+    # argument as Lua, so the rules are a table and the command is a string.
+    rules="workspace = \"$ws_id silent\""
     if [[ "$floating" == "true" ]]; then
         w=$(echo "$size" | jq '.[0]')
         h=$(echo "$size" | jq '.[1]')
         x=$(echo "$at" | jq '.[0]')
         y=$(echo "$at" | jq '.[1]')
-        rules="$rules;float;size $w $h;move $x $y"
+        rules="$rules, float = true, size = { $w, $h }, move = { $x, $y }"
     fi
 
     echo "Restore: $class → workspace $ws_id (${floating:+float})"
-    hyprctl dispatch exec "[$rules] $cmd"
+    # Long brackets: a saved cmdline carries arbitrary quoting, and this way none
+    # of it has to survive a second round of escaping.
+    hyprctl dispatch "hl.dsp.exec_cmd([==[$cmd]==], { $rules })"
 
     # Small delay to avoid race conditions with window rules
     sleep 0.3
