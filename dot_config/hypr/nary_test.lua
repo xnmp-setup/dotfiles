@@ -78,7 +78,8 @@ end
 
 -- Apply `msg` repeatedly with `focus` held, checking the layout after each step.
 local function steps(label, root, focus, msg, want)
-    nary.state.trees[KEY] = root
+    nary.state.trees[KEY]   = root
+    nary.state.history[KEY] = nil
     for i = 1, #want do
         nary.dispatch(ctx_for(nary.state.trees[KEY], focus), msg)
         check(string.format("%s [step %d]", label, i), nary.canon(nary.state.trees[KEY]), want[i])
@@ -444,6 +445,83 @@ do
     nary.settle(ctx_of({ "1", { "8", "2" }, "9" }, "8"))
     check("a pane folded back into its tile leaves the tile in place",
         nary.canon(nary.state.trees[KEY]), "h(1 2 9)")
+end
+
+--------------------------------------------------------------------------------
+-- The opposite direction retraces the move
+--------------------------------------------------------------------------------
+
+-- Drive `msgs` in order from `root`, holding focus, and report the final layout.
+local function drive(root, focus, msgs)
+    nary.state.trees[KEY]   = root
+    nary.state.history[KEY] = nil
+    for _, msg in ipairs(msgs) do
+        nary.dispatch(ctx_for(nary.state.trees[KEY], focus), msg)
+    end
+    return nary.canon(nary.state.trees[KEY])
+end
+
+do
+    -- Bootstrapping and claiming a band both restructure the tree, so neither
+    -- is undone by the slot ladder alone.
+    check("up undoes the pairing that down created",
+        drive(C("h", L("1"), L("2"), L("3")), "1", { "move d", "move u" }), "h(1 2 3)")
+
+    check("down undoes claiming a band",
+        drive(C("h", L("1"), C("v", L("2"), L("3"))), "2", { "move u", "move d" }),
+        "h(1 v(2 3))")
+
+    check("left undoes claiming a column",
+        drive(C("v", L("1"), C("h", L("2"), L("3"))), "2", { "move l", "move r" }),
+        "v(1 h(2 3))")
+
+    -- A whole run retraces, not just the last step.
+    check("five rights are undone by five lefts",
+        drive(C("h", C("h", L("1"), L("2")), L("3")), "1",
+              { "move r", "move r", "move r", "move r", "move r",
+                "move l", "move l", "move l", "move l", "move l" }),
+        "h(h(1 2) 3)")
+
+    check("a mixed run retraces in reverse order",
+        drive(C("h", L("1"), L("2"), L("3")), "1",
+              { "move d", "move r", "move l", "move u" }), "h(1 2 3)")
+
+    -- Redo: going back and forth again lands in the same place.
+    check("repeating a move after undoing it is deterministic",
+        drive(C("h", L("1"), C("v", L("2"), L("3"))), "2",
+              { "move u", "move d", "move u" }), "v(2 h(1 3))")
+
+    -- Pressing into the far edge changes nothing, so it must not consume the
+    -- trail: the undo still has to be there afterwards.
+    check("a press at the boundary does not spend the undo",
+        drive(C("h", L("1"), L("2")), "1",
+              { "move r", "move r", "move l" }), "h(1 2)")
+end
+
+do
+    -- The trail describes one specific layout; if anything else edits the tree
+    -- it must be abandoned rather than restoring a stale one.
+    nary.state.trees[KEY]   = C("h", L("1"), L("2"), L("3"))
+    nary.state.history[KEY] = nil
+    nary.dispatch(ctx_for(nary.state.trees[KEY], "1"), "move d")   -- h(v(2 1) 3)
+
+    -- Window 3 closes, then 1 moves back up.
+    nary.dispatch(ctx_for(C("h", C("v", L("2"), L("1"))), "1"), "move u")
+    check("a closed window abandons the trail instead of resurrecting it",
+        nary.canon(nary.state.trees[KEY]), "v(1 2)")
+
+    -- The trail belongs to the window that made it. Window 2 claiming a band
+    -- must not be undone by pressing down on window 1 — that is window 1's
+    -- move to make, and it goes somewhere else entirely.
+    nary.state.trees[KEY]   = C("h", L("1"), C("v", L("2"), L("3")))
+    nary.state.history[KEY] = nil
+    nary.dispatch(ctx_for(nary.state.trees[KEY], "2"), "move u")
+    check("window 2 claims a band",
+        nary.canon(nary.state.trees[KEY]), "v(2 h(1 3))")
+
+    nary.dispatch(ctx_for(nary.state.trees[KEY], "1"), "move d")
+    check("pressing down on a different window does not undo window 2's move",
+        nary.canon(nary.state.trees[KEY]), "v(2 3 1)")
 end
 
 --------------------------------------------------------------------------------

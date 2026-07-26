@@ -47,6 +47,13 @@
 -- everything is in one horizontal row — the move bootstraps one by pairing the
 -- focused window with an adjacent sibling.
 --
+-- Stepping is its own inverse, but claiming a band and bootstrapping are not:
+-- both rewrite the surrounding structure, so the opposite press computes
+-- against a slot list the old layout is not in. Each move therefore records
+-- what it came from, and pressing the opposite direction on the same window
+-- retraces that trail exactly. Any other edit to the tree — a window opening or
+-- closing, toggleorient, a move on a different window — abandons it.
+--
 -- TABS — a leaf is a TILE, not a window
 --
 -- A tabbed group is several windows sharing one tile, and Hyprland hands it to
@@ -108,7 +115,14 @@
 -- recalculating workspace 2 would reconcile away every window of workspace 1.
 -- pending holds a workspace's placement intents: where windows that are about
 -- to leave a tile should be put down when they arrive. See PLACEMENT INTENTS.
-local state = { trees = {}, pending = {} }
+local state = { trees = {}, pending = {}, history = {} }
+
+-- Most moves are their own inverse already: stepping one slot along and one
+-- slot back lands where you started. The two restructuring moves are not —
+-- claiming a band flips the root's axis, so the reverse press computes against
+-- a different slot list and cannot find the way home. Remembering the trail is
+-- what makes up genuinely undo down.
+local MAX_HISTORY = 64
 
 local function new_root()
     return { kind = "container", orient = "h", children = {} }
@@ -709,8 +723,18 @@ end
 -- Commands
 --------------------------------------------------------------------------------
 
-local AXIS  = { l = "h", r = "h", u = "v", d = "v" }
-local DELTA = { l = -1,  r = 1,   u = -1,  d = 1 }
+local AXIS     = { l = "h", r = "h", u = "v", d = "v" }
+local DELTA    = { l = -1,  r = 1,   u = -1,  d = 1 }
+local OPPOSITE = { l = "r", r = "l", u = "d", d = "u" }
+
+local function history_for(key)
+    local hist = state.history[key]
+    if not hist then
+        hist = {}
+        state.history[key] = hist
+    end
+    return hist
+end
 
 -- No ancestor runs along the axis of travel, so there is nowhere to step to.
 -- Pair the focused window with an adjacent sibling to create that axis, after
@@ -748,7 +772,36 @@ local function cmd_move(root, key, ctx, dir)
     if not id then return true end
 
     local current = canon(root)
-    local work    = copy(root)
+    local hist    = history_for(key)
+
+    -- Anything else that touched the tree since our last move — a window
+    -- opening or closing, toggleorient, a move on a different window — means
+    -- the trail no longer describes this layout, so it cannot be walked back.
+    if #hist > 0 and hist[#hist].result ~= current then
+        hist = {}
+        state.history[key] = hist
+    end
+
+    local last = hist[#hist]
+    if last and last.id == id and last.dir == OPPOSITE[dir] then
+        state.trees[key] = last.tree
+        hist[#hist] = nil
+        return true
+    end
+
+    -- Record what we came from, so the opposite press can retrace it. A move
+    -- that changes nothing is not worth remembering.
+    local function commit(after)
+        local fingerprint = canon(after)
+        if fingerprint ~= current then
+            hist[#hist + 1] = { tree = copy(root), dir = dir, id = id, result = fingerprint }
+            if #hist > MAX_HISTORY then table.remove(hist, 1) end
+        end
+        state.trees[key] = after
+        return true
+    end
+
+    local work = copy(root)
 
     local nodes, idxs = chain_to(work, id)
     if not nodes then return true end
@@ -768,7 +821,7 @@ local function cmd_move(root, key, ctx, dir)
 
     if not si then
         if bootstrap_axis(nodes, idxs, ax, delta) then
-            state.trees[key] = normalize(work)
+            return commit(normalize(work))
         end
         return true
     end
@@ -783,8 +836,7 @@ local function cmd_move(root, key, ctx, dir)
     local function escape_into(container, index)
         remove_leaf(work, id)
         table.insert(container.children, index + (delta > 0 and 1 or 0), leaf)
-        state.trees[key] = normalize(work)
-        return true
+        return commit(normalize(work))
     end
 
     -- The focused window sits inside a container perpendicular to the axis, so
@@ -820,8 +872,7 @@ local function cmd_move(root, key, ctx, dir)
     if at then
         local target = candidates[at + delta]
         if target then
-            state.trees[key] = target
-            return true
+            return commit(target)
         end
     end
 
@@ -839,12 +890,11 @@ local function cmd_move(root, key, ctx, dir)
     -- Nothing outside runs along this axis, so give the window a branch of its
     -- own: it claims a full band across the tree and everything else shares the
     -- rest. h(1 v(2 3)) with 2 moving up becomes v(2 h(1 3)).
-    state.trees[key] = normalize({
+    return commit(normalize({
         kind     = "container",
         orient   = ax,
         children = (delta > 0) and { work, leaf } or { leaf, work },
-    })
-    return true
+    }))
 end
 
 -- Record where the focused tab should be put down when it leaves its tile.
