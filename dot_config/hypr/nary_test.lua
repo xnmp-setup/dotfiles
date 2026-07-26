@@ -339,27 +339,53 @@ check("an untabbed window with no intent is adopted, not placed",
 -- explode: unfolding every tabbed tile in place, and folding it back
 --------------------------------------------------------------------------------
 
--- Unfold the tile holding tabs 2, 8 and 9 (2 visible) out of `root`, reporting
--- the freed windows in `order`, and return the resulting layout.
-local function unfold(root, order, focus)
+-- Unfold the tile holding `tabs` (first one visible) out of `root` into a grid
+-- `cols` wide, reporting the freed windows in `order`, and return the layout.
+local function unfold(root, tabs, cols, order, focus)
+    local folded = { "1", tabs }
     nary.state.trees[KEY] = root
-    nary.settle(ctx_of({ "1", { "2", "8", "9" } }, focus))
-    nary.dispatch(ctx_of({ "1", { "2", "8", "9" } }, focus), "explode")
-    nary.settle(ctx_of({ "1", { "2", "8", "9" } }, focus)) -- the message's own recalculate
-    nary.settle(ctx_of(order, focus))                      -- the group dissolved
+    nary.settle(ctx_of(folded, focus))
+    nary.dispatch(ctx_of(folded, focus), "explode " .. tabs[1] .. " " .. cols)
+    nary.settle(ctx_of(folded, focus)) -- the message's own recalculate
+    nary.settle(ctx_of(order, focus))  -- the group dissolved
     return nary.canon(nary.state.trees[KEY])
 end
 
-check("tabs unfold where their tile was, in tab order",
-    unfold(C("h", L("1"), L("2")), { "1", "2", "8", "9" }, "1"), "h(1 2 8 9)")
+local THREE = { "2", "8", "9" }
+local FOUR  = { "2", "8", "9", "7" }
 
-check("a tile in a column unfolds into a row of its own",
-    unfold(C("v", L("1"), L("2")), { "1", "2", "8", "9" }, "1"), "v(1 h(2 8 9))")
+check("tabs unfold where their tile was, in tab order",
+    unfold(C("h", L("1"), L("2")), THREE, 3, { "1", "2", "8", "9" }, "1"),
+    "h(1 h(2 8 9))")
+
+check("a tile in a column unfolds inside its own slot, not across the column",
+    unfold(C("v", L("1"), L("2")), THREE, 3, { "1", "2", "8", "9" }, "1"),
+    "v(1 h(2 8 9))")
 
 -- Which window keeps the tile must not depend on the order Hyprland happens to
 -- report the freed windows in: it is the tab that was visible.
 check("the unfolded tile stays with the tab that was visible",
-    unfold(C("h", L("1"), L("2")), { "8", "9", "2", "1" }, "1"), "h(1 2 8 9)")
+    unfold(C("h", L("1"), L("2")), THREE, 3, { "8", "9", "2", "1" }, "1"),
+    "h(1 h(2 8 9))")
+
+-- The shape of the grid is the caller's to choose; the layout just fills it
+-- row-major, and every row is a row of the tile's slot rather than of the tree
+-- around it — so unfolding never steals space from the neighbours.
+check("four tabs, two columns, land in a 2x2",
+    unfold(C("h", L("1"), L("2")), FOUR, 2, { "1", "2", "8", "9", "7" }, "1"),
+    "h(1 v(h(2 8) h(9 7)))")
+
+check("four tabs in one column stack vertically",
+    unfold(C("h", L("1"), L("2")), FOUR, 1, { "1", "2", "8", "9", "7" }, "1"),
+    "h(1 v(2 8 9 7))")
+
+check("four tabs in four columns stay a single row",
+    unfold(C("h", L("1"), L("2")), FOUR, 4, { "1", "2", "8", "9", "7" }, "1"),
+    "h(1 h(2 8 9 7))")
+
+check("a ragged last row spans what is left of the width",
+    unfold(C("h", L("1"), L("2")), THREE, 2, { "1", "2", "8", "9" }, "1"),
+    "h(1 v(h(2 8) 9))")
 
 do
     -- Folding back: each pane is merged into the tile, which stays put — this

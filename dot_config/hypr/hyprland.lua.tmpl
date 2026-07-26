@@ -290,9 +290,15 @@ end
 --
 -- Hyprland cannot build a group from a list of windows: the only way in is
 -- moveintogroup, which merges whatever lies in a DIRECTION. So folding back
--- sends each pane leftwards at the tab that stayed behind, which works only
--- because unfolding asked the layout to lay each set of tabs out as a row in
--- tab order, starting from that tab (nary's `explode`).
+-- sends each pane at whatever the merges before it left behind, which works
+-- only because unfolding asked the layout for a known shape: a grid filling the
+-- tile's own slot, row-major in tab order, starting from the tab that was
+-- visible (nary's `explode`).
+--
+-- That makes the directions fall out of the grid. The first row merges
+-- leftwards into the tile. Every later row merges upwards, because by the time
+-- it is reached the rows above have collapsed into the tile, which spans the
+-- full width above it.
 --
 -- Every pane folds back, the selection included and in its row position — it
 -- cannot be held aside and merged last, because a pane left sitting among panes
@@ -333,12 +339,38 @@ local function tabbed_groups()
     return groups
 end
 
+-- How many columns to unfold `n` tabs into, given the shape of the tile they
+-- are on. Every column count is tried and the one whose cells come out closest
+-- to square wins, penalised for cells it would leave empty — a short last row
+-- stretches to fill the width, so a ragged grid is an uneven one.
+--
+-- The answer follows the tile rather than the count: on a 1440-tall tile, four
+-- tabs land on 2x2 at half an ultrawide's width, stack into a single column at
+-- 700px, and lay out as one row of four across the full 3440.
+local function grid_columns(w, h, n)
+    if n < 2 or not w or not h or w <= 0 or h <= 0 then return 1 end
+
+    local best, best_cost = 1, nil
+    for cols = n, 1, -1 do -- descending, so a tie takes the wider grid
+        local rows   = math.ceil(n / cols)
+        local aspect = (w / cols) / (h / rows)
+        local cost   = math.abs(math.log(aspect)) + (rows * cols - n) / n
+
+        if not best_cost or cost < best_cost then best, best_cost = cols, cost end
+    end
+    return best
+end
+
 local function expose_unfold()
     local groups = tabbed_groups()
     if #groups == 0 then return end
 
     busy = true
-    hl.dispatch(hl.dsp.layout("explode"))
+    for _, group in ipairs(groups) do
+        local size = group.anchor.size
+        group.cols = grid_columns(size and size.x, size and size.y, #group.rest + 1)
+        hl.dispatch(hl.dsp.layout(("explode %s %d"):format(group.anchor.stable_id, group.cols)))
+    end
     for _, group in ipairs(groups) do
         hl.dispatch(hl.dsp.group.toggle({ window = group.anchor }))
     end
@@ -358,10 +390,13 @@ local function expose_fold()
     for _, group in ipairs(groups) do
         local merged, raise = 0, 1 -- 1 is the anchor: the tab that was showing
 
-        for _, w in ipairs(group.rest) do
+        for i, w in ipairs(group.rest) do
             -- An expired window (closed while unfolded) reads as nil throughout.
             if w.mapped then
-                hl.dispatch(hl.dsp.window.move({ window = w, into_or_create_group = "left" }))
+                -- Cell i of the grid: the first row folds sideways into the
+                -- tile, later rows fold up into what it has become.
+                local dir = (i < (group.cols or 1)) and "left" or "up"
+                hl.dispatch(hl.dsp.window.move({ window = w, into_or_create_group = dir }))
                 merged = merged + 1
                 if w.stable_id == sel_id then raise = merged + 1 end
             end

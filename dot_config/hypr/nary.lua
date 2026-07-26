@@ -67,12 +67,12 @@
 -- one of those, since Hyprland runs a recalculate as soon as the command
 -- returns — before the keybinding has dispatched anything.
 --
--- `untab` names one window. `explode` names every hidden tab of every tabbed
--- tile at once, which is how the whole workspace can be unfolded into panes and
--- folded back again: each set of tabs stays where its tile was, in tab order,
--- beside the tab that was visible, which keeps the tile. Adjacency is the point
--- — Hyprland can only build a group out of what lies in a DIRECTION, so folding
--- back means sending each pane at the one that stayed behind.
+-- `untab` names one window and a side. `explode` names a tile and a column
+-- count, unfolding its tabs into a grid that fills the tile's own slot, in tab
+-- order, around the tab that was visible — which is how the whole workspace can
+-- be unfolded into panes and folded back again. The grid is the point:
+-- Hyprland can only build a group out of what lies in a DIRECTION, so folding
+-- back means sending each pane at whatever the previous merges left behind.
 --
 -- Registered as "nary"; activate with general.layout = "lua:nary".
 -- Commands (via hl.dsp.layout("<cmd>")):
@@ -322,20 +322,55 @@ end
 
 -- Put a leaf immediately beside another along an axis, splitting the anchor's
 -- own slot when the surrounding container runs the wrong way. Same "lands on
--- the side it was sent towards" rule as bootstrap_axis.
-local function insert_beside(root, anchor, ax, delta, leaf)
+-- the side it was sent towards" rule as bootstrap_axis. Returns the container
+-- the two now share, so a caller building a structure can carry on inside it.
+--
+-- `confine` splits the anchor's slot even when the surrounding container would
+-- have taken the leaf as a peer: it is how a tile unfolds into a grid of its
+-- own rather than spreading across the row it sits in.
+local function insert_beside(root, anchor, ax, delta, leaf, confine)
     local parent, idx = parent_of(root, anchor)
-    if not parent then return false end
+    if not parent then return nil end
 
-    if parent.orient == ax then
+    if parent.orient == ax and not confine then
         table.insert(parent.children, idx + (delta > 0 and 1 or 0), leaf)
-    else
-        parent.children[idx] = {
-            kind     = "container",
-            orient   = ax,
-            children = (delta > 0) and { anchor, leaf } or { leaf, anchor },
-        }
+        return parent
     end
+
+    local container = {
+        kind     = "container",
+        orient   = ax,
+        children = (delta > 0) and { anchor, leaf } or { leaf, anchor },
+    }
+    parent.children[idx] = container
+    return container
+end
+
+-- Where a window that has left a tile is put down. An intent either names a
+-- direction (untab: straight beside the tile) or a grid (explode: row-major
+-- around it, the tile keeping cell 0, every row a row of the tile's own slot).
+local function place_for(root, intent, leaf)
+    if not intent.cols then
+        local shared = insert_beside(root, intent.after, intent.ax, intent.delta, leaf)
+        if shared then intent.after = leaf end
+        return shared
+    end
+
+    local k    = intent.placed + 1
+    local cols = intent.cols
+
+    if k % cols == 0 then
+        -- Opening a row, under the whole block built so far. The first one has
+        -- to carve the tile's slot out; later rows are peers within it.
+        if not insert_beside(root, intent.row, "v", 1, leaf, k == cols) then return nil end
+        intent.row, intent.cell = leaf, leaf
+    else
+        local row = insert_beside(root, intent.cell, "h", 1, leaf, k == 1)
+        if not row then return nil end
+        intent.cell, intent.row = leaf, row
+    end
+
+    intent.placed = k
     return true
 end
 
@@ -451,11 +486,8 @@ local function reconcile(ctx, settling)
                 if claimed[intent.origin] then
                     for _, id in ipairs(entry.ids) do
                         if intent.ids[id] then
-                            placed = insert_beside(root, intent.after, intent.ax, intent.delta, leaf)
-                            if placed then
-                                intent.ids[id] = nil
-                                intent.after   = leaf
-                            end
+                            placed = place_for(root, intent, leaf)
+                            if placed then intent.ids[id] = nil end
                             break
                         end
                     end
@@ -741,25 +773,38 @@ local function cmd_untab(root, key, ctx, dir)
     return true
 end
 
--- Every tabbed tile is about to be dissolved into its windows. Keep each set of
--- tabs where its tile was, in tab order, beside the tab that was visible — both
--- so the unfolding reads as the tile opening up, and so that folding back has
--- an unobstructed direction to send each pane in (see PLACEMENT INTENTS).
-local function cmd_explode(root, key)
-    local intents = {}
-    for _, leaf in ipairs(collect_leaves(root, {})) do
-        local ids = leaf_ids(leaf)
-        if #ids > 1 then
-            local waiting = {}
-            for i = 2, #ids do waiting[ids[i]] = true end
-            intents[#intents + 1] = {
-                origin = leaf, after = leaf, ax = "h", delta = 1,
-                ids    = waiting,
-                keeper = ids[1],
-            }
-        end
+-- The tile holding <window> is about to be dissolved into its windows: unfold
+-- them into a <columns>-wide grid filling that tile's slot, in tab order, with
+-- the tab that was visible keeping cell 0. Caller picks the column count, since
+-- it depends on the tile's proportions and it also decides the direction each
+-- pane is sent back in when the grid is folded up again.
+local function cmd_explode(root, key, args)
+    local id, cols = args:match("^(%S+)%s+(%d+)$")
+    if not id then return "nary: explode expects '<window id> <columns>'" end
+
+    cols = math.max(1, math.tointeger(tonumber(cols)) or 1)
+
+    local leaf = find_leaf(root, id)
+    if not leaf then return true end
+
+    local ids = leaf_ids(leaf)
+    if #ids < 2 then return true end -- not a tab strip: nothing will leave
+
+    local waiting = {}
+    for i = 2, #ids do waiting[ids[i]] = true end
+
+    local intents = state.pending[key] or {}
+    for i = #intents, 1, -1 do -- one intent per tile; a repeat replaces it
+        if intents[i].origin == leaf then table.remove(intents, i) end
     end
-    state.pending[key] = (#intents > 0) and intents or nil
+
+    intents[#intents + 1] = {
+        origin = leaf, row = leaf, cell = leaf, placed = 0,
+        cols   = cols,
+        ids    = waiting,
+        keeper = ids[1],
+    }
+    state.pending[key] = intents
     return true
 end
 
@@ -777,17 +822,17 @@ end
 
 local function dispatch(ctx, msg)
     local root, _, key = reconcile(ctx)
-    local command, arg = msg:match("^(%S+)%s*(%S*)$")
+    local command, args = msg:match("^%s*(%S+)%s*(.-)%s*$")
     if command == "move" then
-        return cmd_move(root, key, ctx, arg)
+        return cmd_move(root, key, ctx, args)
     elseif command == "untab" then
-        return cmd_untab(root, key, ctx, arg)
+        return cmd_untab(root, key, ctx, args)
     elseif command == "explode" then
-        return cmd_explode(root, key)
+        return cmd_explode(root, key, args)
     elseif command == "toggleorient" then
         return cmd_toggleorient(root, ctx)
     end
-    return "nary: expected 'move <l|r|u|d>', 'untab <l|r|u|d>', 'explode' or 'toggleorient'"
+    return "nary: expected 'move <l|r|u|d>', 'untab <l|r|u|d>', 'explode <window> <columns>' or 'toggleorient'"
 end
 
 -- Exposed for the offline test harness; harmless under Hyprland.
