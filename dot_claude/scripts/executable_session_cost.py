@@ -266,44 +266,61 @@ def build_turns(entries):
     turns = []
     for k in range(len(bounds) - 1):
         s, e = bounds[k], bounds[k + 1]
-        seen = set()
         comps = {c: 0.0 for c, _, _ in COMPONENTS}
         inline = {}  # model family -> {"cost": {...}, "steps": n} for old transcripts
         by_model = {}  # main-chain cost by model family (for the header chip)
-        steps, tids = 0, set()
+        tids = set()
+        # per main-chain step (= per message id): usage counted once, tool_use ids
+        # unioned across the streamed lines that share a message id (same shape as
+        # load_subagents). Preserves order for the per-step chart.
+        msgs, order = {}, 0
         for x in entries[s + 1:e]:
             if x.get("type") != "assistant" or is_synthetic(x):
                 continue
             msg = x.get("message", {})
-            # tool_use blocks stream across separate lines sharing one message.id,
-            # so gather ids from every line even when usage is deduped below.
-            if not x.get("isSidechain"):
-                tids.update(tool_use_ids(msg))
-            mid = msg.get("id") or x.get("requestId")
-            if mid is not None:
-                if mid in seen:
-                    continue  # same response logged on several lines
-                seen.add(mid)
             fam = family(msg.get("model"))
             c = usage_cost(msg.get("usage") or {}, fam)
             if x.get("isSidechain"):
+                # tool_use blocks stream across separate lines sharing one message
+                # id, so dedup cost per id before folding into the inline record.
+                mid = msg.get("id") or x.get("requestId")
                 node = inline.setdefault(
-                    fam, {"cost": {key: 0.0 for key in USAGE_KEYS}, "steps": 0})
+                    fam, {"cost": {key: 0.0 for key in USAGE_KEYS},
+                          "steps": 0, "_seen": set()})
+                if mid is not None and mid in node["_seen"]:
+                    continue
+                if mid is not None:
+                    node["_seen"].add(mid)
                 for key in USAGE_KEYS:
                     node["cost"][key] += c[key]
                 node["steps"] += 1
-            else:
-                steps += 1
-                by_model[fam] = by_model.get(fam, 0.0) + sum(c.values())
-                for key in USAGE_KEYS:
-                    comps[key] += c[key]
+                continue
+            mid = msg.get("id") or x.get("requestId") or f"_{order}"
+            d = msgs.get(mid)
+            if d is None:
+                d = {"order": order, "tids": set(), "comps": None, "model": None}
+                msgs[mid] = d
+                order += 1
+            d["tids"].update(tool_use_ids(msg))
+            if d["comps"] is None:  # first line for this id carries the usage
+                d["comps"] = {key: c[key] for key in USAGE_KEYS}
+                d["model"] = fam
+        steps_detail = [{"comps": d["comps"], "model": d["model"],
+                         "tids": sorted(d["tids"])}
+                        for d in sorted(msgs.values(), key=lambda d: d["order"])]
+        for d in steps_detail:
+            tids.update(d["tids"])
+            by_model[d["model"]] = by_model.get(d["model"], 0.0) + sum(d["comps"].values())
+            for key in USAGE_KEYS:
+                comps[key] += d["comps"][key]
         # legacy inline sidechains become one subagent record per model
         subs = [{"label": f"inline subagent ({fam})", "type": "sidechain",
                  "model": fam, "cost": n["cost"], "steps": n["steps"],
                  "total": sum(n["cost"].values()), "children": []}
                 for fam, n in inline.items()]
-        turns.append({"num": k + 1, "steps": steps, "tids": sorted(tids),
-                      "comps": comps, "subs": subs, "by_model": by_model})
+        turns.append({"num": k + 1, "steps": len(steps_detail), "tids": sorted(tids),
+                      "comps": comps, "subs": subs, "by_model": by_model,
+                      "steps_detail": steps_detail})
     return turns
 
 
@@ -461,6 +478,25 @@ def build_nodes(turns, nodes):
         "comp_tot": {k: sum(t["comps"][k] for t in turns) for k in USAGE_KEYS},
         "submodel": submodel(all_top), "bars": bars,
     }
+    # Flat per-step view: one bar per main-chain model pass across the whole
+    # session, labelled "<turn>.<step>". Subagents spawned by a pass attach to
+    # that pass's own tool_use ids. Shares root's totals (same underlying steps).
+    sbars, sdirect = [], []
+    for t in turns:
+        for j, st in enumerate(t.get("steps_detail", [])):
+            kids = [c for c in st["tids"] if c in nodes]
+            sdirect.extend(kids)
+            sbars.append({"label": f"{t['num']}.{j + 1}",
+                          "comps": {k: st["comps"][k] for k in USAGE_KEYS},
+                          "steps": 1, "subs": [seg(c) for c in kids]})
+    NODES["root_steps"] = {
+        "title": "Session cost by step", "subtitle": "",
+        "model": NODES["root"]["model"], "kind": "step",
+        "total": NODES["root"]["total"],
+        "steps": NODES["root"]["steps"], "sub_steps": NODES["root"]["sub_steps"],
+        "comp_tot": {k: sum(b["comps"][k] for b in sbars) for k in USAGE_KEYS},
+        "submodel": submodel(sdirect), "bars": sbars,
+    }
     return NODES
 
 
@@ -543,6 +579,7 @@ _SHELL = """
   <div class="bar">
     <div style="display:flex;align-items:center;gap:14px">
       <button id="back" class="backbtn" onclick="goBack()">&larr; back</button>
+      <label class="tgl"><input type="checkbox" id="perstep" onchange="setBase()"><span class="tr"></span>per-step bars</label>
       <label class="tgl"><input type="checkbox" id="norm" checked onchange="setMode()"><span class="tr"></span><span id="normlbl">normalize by steps</span></label>
       <label class="tgl"><input type="checkbox" id="subs" checked onchange="toggleSubs()"><span class="tr"></span>show subagents</label>
     </div>
@@ -566,7 +603,7 @@ _JS = """
 const COMPS=[["cache_read","cache read","#5ab0a6"],["cache_write","cache write","#9d7ce0"],["output","output","#6c8cd5"],["input","input","#9aa0ac"]];
 const MODEL_HEX={Opus:"#ff8700",Sonnet:"#ffaf87",Haiku:"#ffd7af",Fable:"#ff5f87"};
 const MODELS=["Opus","Sonnet","Haiku","Fable"], SUBHEX="#b083e0", STEPS="#e05a6b";
-let stack=["root"], mode="per_step", showSubs=true;
+let base="root", stack=["root"], mode="per_step", showSubs=true;
 let win=null, winKey=null, CH={padL:64,band:10,s0:0}, msel=null;
 
 function fmt(u){if(u>=1)return "$"+u.toFixed(2);var c=u*100;if(c>=10)return Math.round(c)+"c";if(c>=1)return c.toFixed(1)+"c";return c>0?"<1c":"0c";}
@@ -706,6 +743,7 @@ function showTip(e){
 }
 function goBack(){if(stack.length>1){stack.pop();render();}}
 function jump(i){if(i<stack.length-1){stack=stack.slice(0,i+1);render();}}
+function setBase(){base=document.getElementById("perstep").checked?"root_steps":"root";stack=[base];win=null;render();}
 function setMode(){if(document.getElementById("norm").disabled)return;mode=document.getElementById("norm").checked?"per_step":"total";render();}
 function toggleSubs(){showSubs=document.getElementById("subs").checked;render();}
 function resetZoom(){var node=cur();win={s:0,e:node.bars.length-1};redraw(node);}

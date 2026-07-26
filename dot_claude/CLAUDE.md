@@ -26,7 +26,6 @@
 ## Debugging
 - Try to reproduce the bug before jumping to conclusions about its cause. 
 - If the root cause of a bug is unclear, add targeted logging or instrumentation before modifying logic.
-- When unsure, ask clarifying questions rather than guessing. 
 - Fix root causes, not symptoms. Avoid band-aid fixes like stopPropagation to mask duplicate handlers, setTimeout to paper over race conditions, or flags to suppress unwanted side effects. If a fix feels like a workaround, step back and address the underlying design issue.
 - Form and add logs to test all independent hypotheses at once, then run once and read combined output — don't add one log, run, observe, repeat. Go serial only on genuine dependencies.
 - Isolate long debug loops in a subagent that returns the conclusion, not the full investigation transcript.
