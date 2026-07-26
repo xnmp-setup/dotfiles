@@ -24,6 +24,7 @@
     "Ctrl-u": "DeleteLine",
     "Ctrl-w": "DeleteWordLeft",
     "Alt-Ctrl-w": "lua:initlua.toggleWrap",
+    "Ctrl-e": "lua:initlua.expandSelection",
     "Ctrl-c": "Copy|CopyLine",
     "PageUp": "CursorPageUp",
     "PageDown": "CursorPageDown"

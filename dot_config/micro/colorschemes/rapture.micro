@@ -38,9 +38,9 @@ color-link divider "#304b66"
 color-link scrollbar "#426185"
 
 # Visual indicators
-color-link selection "#c0c9e5,#233749"
+color-link selection "#e6ecfa,#395a7d"
 color-link hlsearch "#111e2a,#7afde1"
-color-link match-brace "#111e2a,#304b66"
+color-link match-brace "#111e2a,#64e0ff"
 color-link diff-added "#7afde1"
 color-link diff-modified "#6c9bf5"
 color-link diff-deleted "#fc644d"
