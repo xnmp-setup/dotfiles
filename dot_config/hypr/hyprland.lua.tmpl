@@ -101,12 +101,25 @@ hl.config({
             border_active   = { colors = { "rgba(33ccffee)", "rgba(00ff99ee)" }, angle = 45 },
             border_inactive = "rgba(595959aa)",
         },
+        -- Tab strip, painted like WezTerm's tab bar (Cosmic Dusk) rather than
+        -- the default yellow gradient: flat, bar in the terminal background,
+        -- active tab a shade lighter. Locked groups get the scheme's pink.
         groupbar = {
             enabled       = true,
             font_size     = 10,
             height        = 15,
             render_titles = true,
-            gradients     = true,
+            gradients     = false,
+            col = {
+                active          = "rgba(2a3352ff)",
+                inactive        = "rgba(0e1330ee)",
+                locked_active   = "rgba(4a2a44ff)",
+                locked_inactive = "rgba(0e1330ee)",
+            },
+            text_color                 = "rgba(ffffffff)",
+            text_color_inactive        = "rgba(aaaaaaff)",
+            text_color_locked_active   = "rgba(d4607aff)",
+            text_color_locked_inactive = "rgba(aaaaaaff)",
         },
     },
 
@@ -175,6 +188,67 @@ hl.window_rule({ name = "thunar-dialog-float",  match = { class = "[Tt]hunar", t
 hl.window_rule({ name = "thunar-dialog-center", match = { class = "[Tt]hunar", title = "negative:.*[Tt]hunar.*" }, center = true })
 
 
+--------------------------
+---- TABS  (= GROUPS) ----
+--------------------------
+-- Hyprland "tabs" are groups: several windows share one tile and the groupbar
+-- above it is the tab strip. A group is a single leaf of the nary tree, so
+-- tabbing and tiling compose rather than compete.
+--
+-- A group is only dissolved when it is ALREADY down to one member at removal
+-- time (CGroup::remove computes its REMOVING_GROUP flag before the erase), so
+-- taking a window out of a pair leaves a one-tab group behind — a tab title
+-- over what is plainly just a window. No config key turns that off, so sweep
+-- them up ourselves.
+
+local function dissolve_lone_groups()
+    local lone = {}
+    for _, w in ipairs(hl.get_windows() or {}) do
+        local g = w.group
+        if g and g.size == 1 then lone[#lone + 1] = w end
+    end
+    for _, w in ipairs(lone) do
+        hl.dispatch(hl.dsp.group.toggle({ window = w }))
+    end
+end
+
+-- Every way a group can shrink has to be covered and there is no "a group
+-- changed" event: a tab can leave by being closed, dragged off the groupbar,
+-- sent to another workspace or monitor, or tabbed into a different window
+-- entirely. So the sweep hangs off the events that accompany any of those,
+-- coalesced through a single one-shot timer.
+--
+-- Deferring is what makes it safe to hook so broadly. These events fire in the
+-- middle of the operation — window.close before the window has left its group,
+-- and moveIntoOrCreateGroup passing through a group of one on its way to two —
+-- so a sweep running inline would variously miss the change or undo it, while
+-- a moment later only the settled result is visible. It also reacts sooner than
+-- window.destroy alone, which waits for the close animation to finish and would
+-- leave the lone tab bar up for the length of the fade.
+local sweeping = false
+
+local function sweep_lone_groups()
+    if sweeping then return end
+    sweeping = true
+    hl.timer(function()
+        sweeping = false
+        dissolve_lone_groups()
+    end, { timeout = 60, type = "oneshot" })
+end
+
+for _, event in ipairs({ "window.close", "window.destroy", "window.active", "window.move_to_workspace" }) do
+    hl.on(event, sweep_lone_groups)
+end
+
+-- group.toggle() on an ungrouped window creates a group of one — the very thing
+-- swept up above. Keep only the useful half: dissolve a group, never open one.
+-- Tabs are made by invading a neighbour (SUPER + ALT + arrows), which groups two
+-- windows at once.
+local function ungroup()
+    local w = hl.get_active_window()
+    if w and w.group then hl.dispatch(hl.dsp.group.toggle()) end
+end
+
 ---------------------
 ---- KEYBINDINGS ----
 ---------------------
@@ -204,15 +278,42 @@ hl.bind(mainMod .. " + down",  hl.dsp.focus({ direction = "down" }))
 -- Move Window — steps one insertion slot through the nary tree. Repeatedly
 -- pressing right walks: swap with sibling -> pop out of the group -> cross the
 -- row -> join the next neighbour -> swap inside it -> pop out again.
-hl.bind(mainMod .. " + CTRL + left",  hl.dsp.layout("move l"))
-hl.bind(mainMod .. " + CTRL + right", hl.dsp.layout("move r"))
-hl.bind(mainMod .. " + CTRL + up",    hl.dsp.layout("move u"))
-hl.bind(mainMod .. " + CTRL + down",  hl.dsp.layout("move d"))
+--
+-- A tab has no slot of its own to step through — its whole group occupies one
+-- leaf — so for a tabbed window the same key means the other escape: leave the
+-- tab strip and take a pane of its own on that side. Inverse of SUPER + ALT.
+-- The window lands directly beside the tile it was a tab of, on the side named.
+-- nary has to be told which side first: Hyprland's own hint for this (the focal
+-- point handed to movedTarget) is discarded by the Lua layout API, so without
+-- the message the pane is merely adopted wherever the tree happens to put it.
+local DIR_SHORT = { left = "l", right = "r", up = "u", down = "d" }
+
+local function untab_or_step(dir)
+    local hint = hl.dsp.layout("untab " .. DIR_SHORT[dir])
+    local pop  = hl.dsp.window.move({ out_of_group = dir })
+    local step = hl.dsp.layout("move " .. DIR_SHORT[dir])
+    return function()
+        local w = hl.get_active_window()
+        if w and w.group and w.group.size > 1 then
+            hl.dispatch(hint)
+            hl.dispatch(pop)
+            dissolve_lone_groups() -- the tab we left may now be a group of one
+        else
+            hl.dispatch(step)
+        end
+    end
+end
+
+hl.bind(mainMod .. " + CTRL + left",  untab_or_step("left"))
+hl.bind(mainMod .. " + CTRL + right", untab_or_step("right"))
+hl.bind(mainMod .. " + CTRL + up",    untab_or_step("up"))
+hl.bind(mainMod .. " + CTRL + down",  untab_or_step("down"))
 
 -- Move window to prev/next monitor (nary is per-workspace, so crossing
 -- monitors stays an explicit action rather than an edge overflow).
-hl.bind(mainMod .. " + CTRL + Prior", hl.dsp.window.move({ monitor = "l" }))
-hl.bind(mainMod .. " + CTRL + Next",  hl.dsp.window.move({ monitor = "r" }))
+-- SHIFT, not CTRL: CTRL + Prior/Next cycles tabs within a group.
+hl.bind(mainMod .. " + SHIFT + Prior", hl.dsp.window.move({ monitor = "l" }))
+hl.bind(mainMod .. " + SHIFT + Next",  hl.dsp.window.move({ monitor = "r" }))
 
 -- Float center toggle with dim
 hl.bind(mainMod .. " + CTRL + end", hl.dsp.exec_cmd("~/.local/bin/toggle-float-center.sh"))
@@ -231,11 +332,23 @@ hl.bind(mainMod .. " + CTRL + slash", hl.dsp.layout("toggleorient"))
 hl.bind(mainMod .. " + H",            hl.dsp.layout("toggleorient"))
 hl.bind(mainMod .. " + Y",            hl.dsp.layout("toggleorient"))
 
--- Tab Groups (native groups are tabbed)
-hl.bind(mainMod .. " + T",            hl.dsp.group.toggle())
-hl.bind(mainMod .. " + SHIFT + T",    hl.dsp.group.toggle())
+-- Tabs (see the TABS section above for the model)
+hl.bind(mainMod .. " + T",            ungroup)
+hl.bind(mainMod .. " + SHIFT + T",    ungroup)
 hl.bind(mainMod .. " + bracketleft",  hl.dsp.group.prev())
 hl.bind(mainMod .. " + bracketright", hl.dsp.group.next())
+hl.bind(mainMod .. " + CTRL + Prior", hl.dsp.group.prev())
+hl.bind(mainMod .. " + CTRL + Next",  hl.dsp.group.next())
+hl.bind(mainMod .. " + ALT + Prior",  hl.dsp.group.prev())
+hl.bind(mainMod .. " + ALT + Next",   hl.dsp.group.next())
+
+-- Invade the neighbour in that direction: the focused window leaves its tile and
+-- becomes a tab of the window it lands on, creating that group if the neighbour
+-- is a plain window. SUPER + T dissolves the group again.
+hl.bind(mainMod .. " + ALT + left",  hl.dsp.window.move({ into_or_create_group = "left" }))
+hl.bind(mainMod .. " + ALT + right", hl.dsp.window.move({ into_or_create_group = "right" }))
+hl.bind(mainMod .. " + ALT + up",    hl.dsp.window.move({ into_or_create_group = "up" }))
+hl.bind(mainMod .. " + ALT + down",  hl.dsp.window.move({ into_or_create_group = "down" }))
 
 -- Resize
 hl.bind(mainMod .. " + CTRL + SHIFT + right", hl.dsp.window.resize({ x = 50,  y = 0,   relative = true }), { repeating = true })

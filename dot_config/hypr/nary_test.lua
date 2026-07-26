@@ -41,6 +41,29 @@ local function ctx_for(root, focus, ws)
     return { targets = targets }
 end
 
+-- Tabs: a context built from an explicit list of TILES rather than from the
+-- tree. A tile is an id (a plain window) or a list of ids (a tabbed group,
+-- first entry visible — which is all Hyprland shows the layout).
+local function ctx_of(tiles, focus, ws)
+    local targets = {}
+    for i, tile in ipairs(tiles) do
+        local ids     = (type(tile) == "table") and tile or { tile }
+        local members = {}
+        for j, id in ipairs(ids) do members[j] = { stable_id = id } end
+
+        targets[i] = {
+            index  = i,
+            window = {
+                stable_id = ids[1],
+                active    = (ids[1] == focus),
+                workspace = { id = ws or 1 },
+                group     = (#ids > 1) and { members = members, size = #ids } or nil,
+            },
+        }
+    end
+    return { targets = targets }
+end
+
 local KEY = "ws:1"
 
 local failures, checks = 0, 0
@@ -235,6 +258,82 @@ do
     check("moving on workspace 2 leaves workspace 1 untouched",
         nary.canon(nary.state.trees["ws:1"]), "h(1 2)")
 end
+
+--------------------------------------------------------------------------------
+-- Tabs: a tile may hold several windows, and must not move when they change
+--------------------------------------------------------------------------------
+
+do
+    -- Hyprland shows the layout only the visible tab, and recalculates on every
+    -- tab switch. Identity that followed the visible window would make the tile
+    -- teleport to the end of the row each time.
+    nary.state.trees[KEY] = C("h", L("1"), L("2"), L("3"))
+    nary.settle(ctx_of({ "1", { "2", "9" }, "3" }, "2"))
+    nary.settle(ctx_of({ "1", { "9", "2" }, "3" }, "9"))
+    check("cycling tabs leaves the tile where it was",
+        nary.canon(nary.state.trees[KEY]), "h(1 2 3)")
+
+    -- Same for losing one: the survivors keep the tile.
+    nary.settle(ctx_of({ "1", "9", "3" }, "9"))
+    check("closing a tab leaves the tile where it was",
+        nary.canon(nary.state.trees[KEY]), "h(1 9 3)")
+end
+
+do
+    -- Tabbing into a neighbour: two leaves, one target. The focused window is
+    -- the one that moved, so the tile stays where the neighbour was.
+    nary.state.trees[KEY] = C("h", L("1"), L("2"), L("3"))
+    nary.settle(ctx_of({ "1", { "3", "2" } }, "3"))
+    check("a window tabbed into its neighbour takes the neighbour's place",
+        nary.canon(nary.state.trees[KEY]), "h(1 2)")
+end
+
+do
+    -- And a whole tile travels as one when moved.
+    nary.state.trees[KEY] = C("h", L("1"), L("2"))
+    nary.settle(ctx_of({ "1", { "2", "9" } }, "9"))
+    nary.dispatch(ctx_of({ "1", { "9", "2" } }, "9"), "move l")
+    check("moving a tabbed tile moves the whole tile",
+        nary.canon(nary.state.trees[KEY]), "h(2 1)")
+    nary.settle(ctx_of({ "1", { "9", "2" } }, "9"))
+    check("the tile keeps its identity across the move",
+        nary.canon(nary.state.trees[KEY]), "h(2 1)")
+end
+
+--------------------------------------------------------------------------------
+-- untab: the popped window lands beside the tile it left, on the named side
+--------------------------------------------------------------------------------
+
+-- Set up "a tile holding tabs 9 and 2 (9 in front), then 1", pop 9 out towards
+-- `dir`, and report the resulting layout. The tile is deliberately NOT last in
+-- the row: a window that merely got adopted would land at the end, so each
+-- direction below is a claim about placement, not about adoption.
+local function untab(dir, extra_settles)
+    nary.state.trees[KEY] = C("h", L("2"), L("1"))
+    nary.settle(ctx_of({ { "2", "9" }, "1" }, "9"))
+    if dir then
+        nary.dispatch(ctx_of({ { "9", "2" }, "1" }, "9"), "untab " .. dir)
+    end
+    for _ = 1, (extra_settles or 0) do
+        nary.settle(ctx_of({ { "9", "2" }, "1" }, "9"))
+    end
+    nary.settle(ctx_of({ "2", "1", "9" }, "9"))
+    return nary.canon(nary.state.trees[KEY])
+end
+
+check("a tab popped right lands directly right of its tile",  untab("r"), "h(2 9 1)")
+check("a tab popped left lands directly left of its tile",    untab("l"), "h(9 2 1)")
+check("a tab popped up lands directly above its tile",        untab("u"), "h(v(9 2) 1)")
+check("a tab popped down lands directly below its tile",      untab("d"), "h(v(2 9) 1)")
+
+-- Hyprland recalculates as soon as the message returns, before the window has
+-- actually left the group; the intent has to outlive that pass.
+check("the intent survives the recalculate that follows the message",
+    untab("u", 2), "h(v(9 2) 1)")
+
+-- Without a stated direction the window is merely adopted, not placed.
+check("an untabbed window with no intent is adopted, not placed",
+    untab(nil), "h(2 1 9)")
 
 --------------------------------------------------------------------------------
 -- toggleorient and bad input

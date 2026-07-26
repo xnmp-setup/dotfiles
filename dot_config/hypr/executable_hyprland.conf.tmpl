@@ -155,15 +155,16 @@ bind = $mainMod CTRL, right, exec, ~/.config/hypr/swap-or-move.sh r
 bind = $mainMod CTRL, up, exec, ~/.config/hypr/swap-or-move.sh u
 bind = $mainMod CTRL, down, exec, ~/.config/hypr/swap-or-move.sh d
 
-# Move Window (swap in direction)
-bind = $mainMod ALT, left, movewindow, l
-bind = $mainMod ALT, right, movewindow, r
-bind = $mainMod ALT, up, movewindow, u
-bind = $mainMod ALT, down, movewindow, d
+# Invade the neighbour in that direction: focused window becomes a tab of it,
+# creating the group if the neighbour is a plain window.
+bind = $mainMod ALT, left, moveintoorcreategroup, l
+bind = $mainMod ALT, right, moveintoorcreategroup, r
+bind = $mainMod ALT, up, moveintoorcreategroup, u
+bind = $mainMod ALT, down, moveintoorcreategroup, d
 
-# Move window to prev/next monitor
-bind = $mainMod CTRL, Prior, movewindow, mon:l
-bind = $mainMod CTRL, Next, movewindow, mon:r
+# Move window to prev/next monitor (SHIFT: CTRL + Prior/Next cycles tabs)
+bind = $mainMod SHIFT, Prior, movewindow, mon:l
+bind = $mainMod SHIFT, Next, movewindow, mon:r
 
 # Float center toggle with dim
 bind = $mainMod CTRL, end, exec, ~/.local/bin/toggle-float-center.sh
@@ -183,6 +184,12 @@ bind = $mainMod, T, togglegroup
 bind = $mainMod SHIFT, T, togglegroup
 bind = $mainMod, bracketleft, changegroupactive, b
 bind = $mainMod, bracketright, changegroupactive, f
+bind = $mainMod CTRL, Prior, changegroupactive, b
+bind = $mainMod CTRL, Next, changegroupactive, f
+bind = $mainMod ALT, Prior, changegroupactive, b
+bind = $mainMod ALT, Next, changegroupactive, f
+# NOTE: the .lua config also sweeps up one-window groups and makes CTRL+arrows
+# pop a tab out into its own pane; neither is expressible in plain .conf.
 
 # Split control (dwindle: togglesplit flips axis; preserve_split keeps it)
 # NOTE: degraded from hy3 makegroup h/v — dwindle can't preselect a direction, only flip.

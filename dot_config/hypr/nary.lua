@@ -42,9 +42,30 @@
 -- everything is in one horizontal row — the move bootstraps one by pairing the
 -- focused window with an adjacent sibling.
 --
+-- TABS — a leaf is a TILE, not a window
+--
+-- A tabbed group is several windows sharing one tile, and Hyprland hands it to
+-- the layout as a single target whose .window is only the visible tab. Keying
+-- leaves by that window would make the tile's identity change every time you
+-- cycle tabs (CGroup::setCurrent calls recalc), so a leaf carries the whole set
+-- of window ids on its tile and is matched on overlap.
+--
+-- Splitting and merging a tile leave that match genuinely ambiguous: when a tab
+-- pops out, one leaf faces two targets; when a window is tabbed into another,
+-- one target faces two leaves. Both are resolved by the same rule — THE FOCUSED
+-- WINDOW IS THE ONE THAT MOVED, so it yields the tile to the other side. A tile
+-- stays with the windows that stayed put, and the window that moved is placed
+-- as if it were new.
+--
+-- Where it is placed is something the layout cannot infer: Hyprland's own hint
+-- (the focal point passed to movedTarget) is dropped by the Lua layout API. So
+-- the keybinding says it in advance with `untab <dir>`, which is remembered
+-- against that tile until the window actually leaves it.
+--
 -- Registered as "nary"; activate with general.layout = "lua:nary".
 -- Commands (via hl.dsp.layout("<cmd>")):
 --   move l|r|u|d    step the focused window one insertion slot along an axis
+--   untab l|r|u|d   when the focused tab next leaves its tile, put it that side
 --   toggleorient    flip the focused window's parent container between h and v
 --
 -- Gaps are deliberately not applied here: Hyprland's WindowTarget insets each
@@ -58,7 +79,9 @@
 -- Hyprland instantiates one algorithm per space but they all share this single
 -- Lua module, so the tree must be partitioned per workspace — otherwise
 -- recalculating workspace 2 would reconcile away every window of workspace 1.
-local state = { trees = {} }
+-- pending holds at most one untab intent per workspace: where the window that
+-- is about to leave a tile should be put down. See cmd_untab.
+local state = { trees = {}, pending = {} }
 
 local function new_root()
     return { kind = "container", orient = "h", children = {} }
@@ -92,8 +115,33 @@ end
 local function is_leaf(node)      return node.kind == "leaf" end
 local function is_container(node) return node.kind == "container" end
 
+-- leaf.id is the tile's key: one live window id, used for canon and to address
+-- the tile. leaf.ids is every window currently on it — one entry unless the
+-- tile is a tabbed group. A leaf written by hand (tests, literals) may omit
+-- ids, which then means "just the key".
+local function leaf_ids(leaf)
+    return leaf.ids or { leaf.id }
+end
+
+-- Tiles are addressed by ANY window on them, so callers can pass the focused
+-- window's id without caring whether it is a tab.
+local function leaf_holds(leaf, id)
+    if leaf.id == id then return true end
+    for _, held in ipairs(leaf_ids(leaf)) do
+        if held == id then return true end
+    end
+    return false
+end
+
 local function copy(node)
-    if is_leaf(node) then return { kind = "leaf", id = node.id } end
+    if is_leaf(node) then
+        local ids
+        if node.ids then
+            ids = {}
+            for i, id in ipairs(node.ids) do ids[i] = id end
+        end
+        return { kind = "leaf", id = node.id, ids = ids }
+    end
     local children = {}
     for i, child in ipairs(node.children) do children[i] = copy(child) end
     return { kind = "container", orient = node.orient, children = children }
@@ -109,22 +157,34 @@ local function canon(node)
     return node.orient .. "(" .. table.concat(parts, " ") .. ")"
 end
 
-local function collect_ids(node, acc)
+local function collect_leaves(node, acc)
     if is_leaf(node) then
-        acc[node.id] = true
-        return
+        acc[#acc + 1] = node
+        return acc
     end
-    for _, child in ipairs(node.children) do collect_ids(child, acc) end
+    for _, child in ipairs(node.children) do collect_leaves(child, acc) end
+    return acc
 end
 
 local function find_leaf(node, id)
     if not is_container(node) then return nil end
     for i, child in ipairs(node.children) do
         if is_leaf(child) then
-            if child.id == id then return child, node, i end
+            if leaf_holds(child, id) then return child, node, i end
         else
             local l, p, idx = find_leaf(child, id)
             if l then return l, p, idx end
+        end
+    end
+end
+
+-- Locate a leaf by identity rather than by id, for callers holding the node.
+local function parent_of(node, leaf)
+    for i, child in ipairs(node.children) do
+        if child == leaf then return node, i end
+        if is_container(child) then
+            local parent, idx = parent_of(child, leaf)
+            if parent then return parent, idx end
         end
     end
 end
@@ -135,7 +195,7 @@ end
 local function chain_to(node, id)
     for i, child in ipairs(node.children) do
         if is_leaf(child) then
-            if child.id == id then return { node }, { i } end
+            if leaf_holds(child, id) then return { node }, { i } end
         else
             local nodes, idxs = chain_to(child, id)
             if nodes then
@@ -150,7 +210,7 @@ end
 local function remove_leaf(node, id)
     for i, child in ipairs(node.children) do
         if is_leaf(child) then
-            if child.id == id then
+            if leaf_holds(child, id) then
                 table.remove(node.children, i)
                 return true
             end
@@ -197,71 +257,176 @@ end
 -- Reconcile a tree with the windows Hyprland currently gives us
 --------------------------------------------------------------------------------
 
-local function target_id(target)
+-- Every window on a target: a group is one tile showing several, of which
+-- target.window is merely the visible tab. The visible one comes first, so it
+-- is the natural key for a tile that needs a new one.
+local function target_ids(target)
     local w = target.window
-    return w and tostring(w.stable_id) or ("idx:" .. tostring(target.index))
+    if not w then return { "idx:" .. tostring(target.index) } end
+
+    local primary = tostring(w.stable_id)
+    local ids     = { primary }
+
+    local group   = w.group
+    local members = group and group.members
+    if members then
+        if members.stable_id then members = { members } end -- a lone member is not wrapped
+        for _, m in ipairs(members) do
+            local id = m and m.stable_id and tostring(m.stable_id)
+            if id and id ~= primary then ids[#ids + 1] = id end
+        end
+    end
+    return ids
 end
 
 local function active_id(ctx)
     for _, target in ipairs(ctx.targets) do
         local w = target.window
-        if w and w.active then return target_id(target) end
+        if w and w.active then return tostring(w.stable_id) end
     end
     return nil
 end
 
+local function has_id(ids, wanted)
+    for _, id in ipairs(ids) do
+        if id == wanted then return true end
+    end
+    return false
+end
+
 -- Insert a brand-new leaf as a sibling right after the focused leaf, or append
 -- to root when there is no focus to anchor against.
-local function insert_new(root, id, focused)
+local function insert_new(root, leaf, focused)
     if focused then
         local _, parent, idx = find_leaf(root, focused)
         if parent then
-            table.insert(parent.children, idx + 1, { kind = "leaf", id = id })
+            table.insert(parent.children, idx + 1, leaf)
             return
         end
     end
-    table.insert(root.children, { kind = "leaf", id = id })
+    table.insert(root.children, leaf)
 end
 
--- Bring this space's tree in line with ctx.targets: drop windows that left,
--- add ones that arrived, and return the tree plus an id -> target map.
-local function reconcile(ctx)
-    local key  = space_key(ctx)
-    local root = tree_for(key)
+-- Put a leaf immediately beside another along an axis, splitting the anchor's
+-- own slot when the surrounding container runs the wrong way. Same "lands on
+-- the side it was sent towards" rule as bootstrap_axis.
+local function insert_beside(root, anchor, ax, delta, leaf)
+    local parent, idx = parent_of(root, anchor)
+    if not parent then return false end
 
-    local present, by_id = {}, {}
-    for _, target in ipairs(ctx.targets) do
-        local id = target_id(target)
-        present[id] = true
-        by_id[id] = target
+    if parent.orient == ax then
+        table.insert(parent.children, idx + (delta > 0 and 1 or 0), leaf)
+    else
+        parent.children[idx] = {
+            kind     = "container",
+            orient   = ax,
+            children = (delta > 0) and { anchor, leaf } or { leaf, anchor },
+        }
+    end
+    return true
+end
+
+-- Bring this space's tree in line with ctx.targets: tiles that went away are
+-- dropped, tiles that arrived are placed, and every surviving leaf adopts the
+-- window set its target now has. Returns the tree plus a leaf -> target map.
+--
+-- `settling` marks the recalculate pass (as opposed to the reconcile that
+-- precedes a command), which is the only place an untab intent may be spent.
+local function reconcile(ctx, settling)
+    local key     = space_key(ctx)
+    local root    = tree_for(key)
+    local focused = active_id(ctx)
+
+    local holder = {}
+    for _, leaf in ipairs(collect_leaves(root, {})) do
+        for _, id in ipairs(leaf_ids(leaf)) do holder[id] = leaf end
     end
 
-    local function drop_absent(node)
-        if is_leaf(node) then return present[node.id] end
+    -- The target holding the focused window is matched last, so on a split it
+    -- is the other side that keeps the tile. See the TABS note up top.
+    local entries, deferred = {}, {}
+    for _, target in ipairs(ctx.targets) do
+        local entry = { target = target, ids = target_ids(target) }
+        if focused and has_id(entry.ids, focused) then
+            deferred[#deferred + 1] = entry
+        else
+            entries[#entries + 1] = entry
+        end
+    end
+    for _, entry in ipairs(deferred) do entries[#entries + 1] = entry end
+
+    local claimed, place, arrived = {}, {}, {}
+
+    for _, entry in ipairs(entries) do
+        -- Candidates in id order, so the choice never depends on table order.
+        local candidates, seen = {}, {}
+        for _, id in ipairs(entry.ids) do
+            local leaf = holder[id]
+            if leaf and not claimed[leaf] and not seen[leaf] then
+                seen[leaf] = true
+                candidates[#candidates + 1] = leaf
+            end
+        end
+
+        -- Merging into a tile: the focused window's old leaf is the one it
+        -- vacated, so prefer any other candidate.
+        local pick
+        for _, leaf in ipairs(candidates) do
+            if not (focused and leaf_holds(leaf, focused)) then
+                pick = leaf
+                break
+            end
+        end
+        pick = pick or candidates[1]
+
+        if pick then
+            claimed[pick] = true
+            place[pick]   = entry.target
+            if not has_id(entry.ids, pick.id) then pick.id = entry.ids[1] end
+            pick.ids = entry.ids
+        else
+            arrived[#arrived + 1] = entry
+        end
+    end
+
+    local function drop_unclaimed(node)
+        if is_leaf(node) then return claimed[node] end
         local kept = {}
         for _, child in ipairs(node.children) do
-            if drop_absent(child) then kept[#kept + 1] = child end
+            if drop_unclaimed(child) then kept[#kept + 1] = child end
         end
         node.children = kept
         return true
     end
-    drop_absent(root)
+    drop_unclaimed(root)
+    root = normalize(root)
 
-    local existing = {}
-    collect_ids(root, existing)
-    local focused = active_id(ctx)
-    for _, target in ipairs(ctx.targets) do
-        local id = target_id(target)
-        if not existing[id] then
-            insert_new(root, id, focused)
-            existing[id] = true
-            focused = focused or id
+    -- An untab intent lives while its window is still on the anchor tile; the
+    -- pass where that stops being true is the one it was recorded for, and it
+    -- is spent (or discarded) there rather than carried any further.
+    local pending = state.pending[key]
+    local live    = pending and claimed[pending.anchor] and leaf_holds(pending.anchor, pending.id)
+    if settling and pending and not live then state.pending[key] = nil end
+
+    local anchor_focus = focused
+    for _, entry in ipairs(arrived) do
+        local leaf   = { kind = "leaf", id = entry.ids[1], ids = entry.ids }
+        local placed = false
+
+        if settling and pending and claimed[pending.anchor] and has_id(entry.ids, pending.id) then
+            placed = insert_beside(root, pending.anchor, pending.ax, pending.delta, leaf)
+            if placed then state.pending[key] = nil end
         end
+
+        if not placed then insert_new(root, leaf, anchor_focus) end
+
+        place[leaf]  = entry.target
+        anchor_focus = anchor_focus or entry.ids[1]
     end
 
     root = normalize(root)
     state.trees[key] = root
-    return root, by_id, key
+    return root, place, key
 end
 
 --------------------------------------------------------------------------------
@@ -284,9 +449,9 @@ local function slice(ctx, area, orient, n)
     return rects
 end
 
-local function layout_node(ctx, node, area, by_id)
+local function layout_node(ctx, node, area, place)
     if is_leaf(node) then
-        local target = by_id[node.id]
+        local target = place[node]
         if target then target:place(area) end
         return
     end
@@ -294,7 +459,7 @@ local function layout_node(ctx, node, area, by_id)
     if n == 0 then return end
     local rects = slice(ctx, area, node.orient, n)
     for i, child in ipairs(node.children) do
-        layout_node(ctx, child, rects[i], by_id)
+        layout_node(ctx, child, rects[i], place)
     end
 end
 
@@ -398,6 +563,9 @@ local function cmd_move(root, key, ctx, dir)
     local nodes, idxs = chain_to(work, id)
     if not nodes then return true end
 
+    -- What travels is the whole tile, tabs and all, not the focused window.
+    local moving = copy(nodes[#nodes].children[idxs[#idxs]])
+
     -- Innermost ancestor oriented along the axis of travel. Slots are
     -- enumerated within it; running off either end escapes one level outward.
     local si
@@ -418,7 +586,7 @@ local function cmd_move(root, key, ctx, dir)
     local scope, scope_path = nodes[si], {}
     for k = 1, si - 1 do scope_path[k] = idxs[k] end
 
-    local leaf = { kind = "leaf", id = id }
+    local leaf = moving
 
     -- Where a window is parked at the correct side of a container it wants to
     -- leave: drop it in beside that container, one level out.
@@ -489,6 +657,23 @@ local function cmd_move(root, key, ctx, dir)
     return true
 end
 
+-- Record where the focused tab should be put down when it leaves its tile.
+-- Nothing moves here: the caller dispatches the un-tab itself, and the intent
+-- is spent by the recalculate that follows (see reconcile).
+local function cmd_untab(root, key, ctx, dir)
+    local ax, delta = AXIS[dir], DELTA[dir]
+    if not ax then return "nary: untab expects l, r, u or d" end
+
+    local id = active_id(ctx)
+    if not id then return true end
+
+    local leaf = find_leaf(root, id)
+    if not leaf or #leaf_ids(leaf) < 2 then return true end -- not a tab: nothing will leave
+
+    state.pending[key] = { id = id, anchor = leaf, ax = ax, delta = delta }
+    return true
+end
+
 local function cmd_toggleorient(root, ctx)
     local id = active_id(ctx)
     if not id then return true end
@@ -506,10 +691,12 @@ local function dispatch(ctx, msg)
     local command, arg = msg:match("^(%S+)%s*(%S*)$")
     if command == "move" then
         return cmd_move(root, key, ctx, arg)
+    elseif command == "untab" then
+        return cmd_untab(root, key, ctx, arg)
     elseif command == "toggleorient" then
         return cmd_toggleorient(root, ctx)
     end
-    return "nary: expected 'move <l|r|u|d>' or 'toggleorient'"
+    return "nary: expected 'move <l|r|u|d>', 'untab <l|r|u|d>' or 'toggleorient'"
 end
 
 -- Exposed for the offline test harness; harmless under Hyprland.
@@ -519,13 +706,15 @@ local M = {
     dispatch  = dispatch,
     space_key = space_key,
     tree_for  = tree_for,
+    -- What recalculate does, minus the placing: the pass that settles arrivals.
+    settle    = function(ctx) return reconcile(ctx, true) end,
 }
 
 if hl and hl.layout then
     hl.layout.register("nary", {
         recalculate = function(ctx)
-            local root, by_id = reconcile(ctx)
-            layout_node(ctx, root, ctx.area, by_id)
+            local root, place = reconcile(ctx, true)
+            layout_node(ctx, root, ctx.area, place)
         end,
 
         layout_msg = dispatch,
