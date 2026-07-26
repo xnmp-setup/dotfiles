@@ -279,10 +279,10 @@ end
 ---- EXPOSE  (mission control) ----
 -----------------------------------
 -- F1 unfolds every tabbed group on the workspace into panes, so all of
--- them can be seen at once. The next window SELECTED — clicked, or
--- focused any other way — folds them all back exactly as they were, except that
--- one, which is left out as a pane of its own if it used to be a tab. Pressing
--- the key again folds with whatever is focused, for selecting without a click.
+-- them can be seen at once. The next window SELECTED — clicked, or focused any
+-- other way — folds them all back exactly as they were, with the selected one
+-- raised as the visible tab of its own strip. Pressing the key again folds with
+-- whatever is focused, for selecting without a click.
 --
 -- Selection is a focus change, so the unfolding's own focus churn (dissolving a
 -- group refocuses) has to be kept out of it: dispatches made here are flagged,
@@ -294,9 +294,10 @@ end
 -- because unfolding asked the layout to lay each set of tabs out as a row in
 -- tab order, starting from that tab (nary's `explode`).
 --
--- The selected pane is folded back in with the others and then taken out again
--- by the ordinary un-tab path, rather than being left out of the fold: sitting
--- between panes that are still merging leftwards, it would swallow them.
+-- Every pane folds back, the selection included and in its row position — it
+-- cannot be held aside and merged last, because a pane left sitting among panes
+-- still merging leftwards would swallow them. Raising it is a separate step,
+-- which is also how the other strips get the tab they had showing back.
 
 local exposed = nil   -- while unfolded: the groups to put back
 local armed   = false -- is a focus change a selection yet?
@@ -348,30 +349,35 @@ local function expose_unfold()
 end
 
 local function expose_fold()
-    local selected     = hl.get_active_window()
-    local groups       = exposed
-    exposed, armed     = nil, false
+    local selected = hl.get_active_window()
+    local sel_id   = selected and selected.stable_id
+    local groups   = exposed
+    exposed, armed = nil, false
 
     busy = true
     for _, group in ipairs(groups) do
+        local merged, raise = 0, 1 -- 1 is the anchor: the tab that was showing
+
         for _, w in ipairs(group.rest) do
             -- An expired window (closed while unfolded) reads as nil throughout.
             if w.mapped then
                 hl.dispatch(hl.dsp.window.move({ window = w, into_or_create_group = "left" }))
+                merged = merged + 1
+                if w.stable_id == sel_id then raise = merged + 1 end
             end
         end
-        if group.anchor.mapped then
-            hl.dispatch(hl.dsp.focus({ window = group.anchor })) -- restore the visible tab
+
+        -- Each merge inserts after the current tab and becomes it, so the strip
+        -- comes back as anchor, rest[1], rest[2]... and the tab to raise can be
+        -- named by position. Counting only the merges that happened keeps that
+        -- true when a window went away while unfolded.
+        if merged > 0 and group.anchor.mapped then
+            hl.dispatch(hl.dsp.group.active({ index = raise, window = group.anchor }))
         end
     end
 
-    -- The selection: back out of the strip it was just folded into. It is
-    -- folded in with the rest and taken out again rather than being held aside,
-    -- because a pane left sitting among panes still merging leftwards would
-    -- swallow them.
     if selected and selected.mapped then
         hl.dispatch(hl.dsp.focus({ window = selected }))
-        untab("right")
     end
     busy = false
 
@@ -468,7 +474,7 @@ hl.bind(mainMod .. " + ALT + Prior",  hl.dsp.group.prev())
 hl.bind(mainMod .. " + ALT + Next",   hl.dsp.group.next())
 
 -- Unfold every tab strip on the workspace into panes; selecting a pane folds
--- them back, keeping that one out on its own.
+-- them back with that one showing.
 hl.bind("F1", expose_toggle)
 
 -- Invade the neighbour in that direction: the focused window leaves its tile and
