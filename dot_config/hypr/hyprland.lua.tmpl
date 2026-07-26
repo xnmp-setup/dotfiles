@@ -1,0 +1,268 @@
+-- Hyprland Lua config (0.55+).
+--
+-- IMPORTANT: Hyprland prefers hyprland.lua over hyprland.conf — when both
+-- exist, the .conf is never read (see Jeremy::getMainConfigPath). The .conf
+-- template is kept in chezmoi purely as a fallback; to go back to it, remove
+-- ~/.config/hypr/hyprland.lua.
+--
+-- Layout is "lua:nary" (see nary.lua): an N-ary tiling tree, so three windows
+-- can be equal peers rather than dwindle's forced binary nesting.
+
+require("nary")
+
+------------------
+---- MONITORS ----
+------------------
+
+-- catch-all
+hl.monitor({ output = "", mode = "preferred", position = "auto", scale = 1 })
+
+{{ if ne .chezmoi.hostname "t14s" -}}
+-- 1. Top Monitor (HDMI-A-1)
+hl.monitor({ output = "HDMI-A-1", mode = "2560x1440@60", position = "300x0", scale = 1 })
+
+-- 2. Main Ultrawide (DP-2) - Starts at Y=1440
+hl.monitor({ output = "DP-2", mode = "3440x1440@144", position = "0x1440", scale = 1 })
+
+-- 3. Right 4K (DP-1) - Vertically Centered
+hl.monitor({ output = "DP-1", mode = "3840x2160@60", position = "3440x1296", scale = 1.25 })
+{{ else -}}
+-- t14s: the catch-all above handles eDP-1 and any external at its native mode —
+-- the desktop monitor fleet would force impossible modes and phantom-offset
+-- geometry here.
+{{ end }}
+
+-------------------------------
+---- ENVIRONMENT VARIABLES ----
+-------------------------------
+
+hl.env("ELECTRON_OZONE_PLATFORM_HINT", "auto")
+hl.env("XDG_CURRENT_DESKTOP", "GNOME")
+
+
+-------------------------
+---- WORKSPACE RULES ----
+-------------------------
+
+{{ if ne .chezmoi.hostname "t14s" -}}
+hl.workspace_rule({ workspace = "1", monitor = "DP-2", default = true })
+hl.workspace_rule({ workspace = "2", monitor = "DP-2" })
+hl.workspace_rule({ workspace = "3", monitor = "DP-2" })
+hl.workspace_rule({ workspace = "4", monitor = "DP-2" })
+hl.workspace_rule({ workspace = "5", monitor = "DP-2" })
+{{ else -}}
+-- t14s: single display, no per-monitor pinning.
+{{ end }}
+
+-----------------------
+---- LOOK AND FEEL ----
+-----------------------
+
+hl.config({
+    general = {
+        gaps_in     = 5,
+        gaps_out    = 10,
+        border_size = 2,
+
+        -- Cyan/Green active border for that "terminal" feel
+        col = {
+            active_border   = { colors = { "rgba(33ccffee)", "rgba(00ff99ee)" }, angle = 45 },
+            inactive_border = "rgba(595959aa)",
+        },
+
+        layout = "lua:nary",
+    },
+
+    decoration = {
+        rounding     = 3, -- Sharp corners = faster visual scan
+        dim_inactive = false,
+        dim_strength = 0.4,
+        blur = {
+            enabled = true,
+            size    = 3,
+            passes  = 1,
+        },
+    },
+
+    cursor = {
+        no_warps = true,
+    },
+
+    input = {
+        kb_layout                   = "us",
+        follow_mouse                = 0,
+        float_switch_override_focus = 0,
+        sensitivity                 = 0, -- Raw input, like turning off mouse accel in StarCraft
+    },
+
+    -- Native tabbed groups (replaces hy3 tabs)
+    group = {
+        col = {
+            border_active   = { colors = { "rgba(33ccffee)", "rgba(00ff99ee)" }, angle = 45 },
+            border_inactive = "rgba(595959aa)",
+        },
+        groupbar = {
+            enabled       = true,
+            font_size     = 10,
+            height        = 15,
+            render_titles = true,
+            gradients     = true,
+        },
+    },
+
+    animations = {
+        enabled = true,
+    },
+})
+
+
+--------------------
+---- ANIMATIONS ----
+--------------------
+
+hl.curve("fastBezier", { type = "bezier", points = { { 0.05, 0.9 }, { 0.1, 1.05 } } })
+
+hl.animation({ leaf = "windows",          enabled = true, speed = 2, bezier = "fastBezier" })
+hl.animation({ leaf = "workspaces",       enabled = true, speed = 2, bezier = "default" })
+hl.animation({ leaf = "specialWorkspace", enabled = true, speed = 3, bezier = "fastBezier", style = "slidefadevert -50%" })
+
+
+-------------------
+---- AUTOSTART ----
+-------------------
+
+hl.on("hyprland.start", function()
+    -- Parramatta, Australia (Lat -33.8, Lon 151.0); 6500K day -> 3500K night.
+    hl.exec_cmd("hyprpaper")
+    hl.exec_cmd("vicinae server")
+    hl.exec_cmd("wlsunset -l -33.87 -L 151.21 -t 3500 -T 6500")
+    hl.exec_cmd("dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP")
+    hl.exec_cmd("gnome-keyring-daemon --start --components=secrets")
+    hl.exec_cmd("~/.local/bin/scratchpad-autohide.sh lite-xl ghostty-drop ytmusic chrome-drop")
+    hl.exec_cmd("~/.config/hypr/imv-splash.sh")
+    hl.exec_cmd("wezterm", { workspace = "1" })
+    hl.exec_cmd("google-chrome-stable", { workspace = "1" })
+    hl.exec_cmd("systemctl --user start hypr-session-save.service")
+{{ if eq .chezmoi.hostname "t14s" }}
+    -- NixOS laptop: polkit agent is not autostarted by anything else
+    hl.exec_cmd("systemctl --user start hyprpolkitagent")
+{{- end }}
+end)
+
+
+----------------------
+---- WINDOW RULES ----
+----------------------
+-- match strings are full-match regexes; prefix with "negative:" to invert.
+
+hl.window_rule({ name = "litexl-float",  match = { class = "com.lite_xl.LiteXL" }, float = true })
+hl.window_rule({ name = "litexl-size",   match = { class = "com.lite_xl.LiteXL" }, size = "25% 65%" })
+hl.window_rule({ name = "litexl-center", match = { class = "com.lite_xl.LiteXL" }, center = true })
+
+hl.window_rule({ name = "obsidian-opacity",  match = { class = "obsidian" },                opacity = "0.93 0.93" })
+hl.window_rule({ name = "code-opacity",      match = { class = "^code$" },                  opacity = "0.93 0.93" })
+hl.window_rule({ name = "chrome-opacity",    match = { class = "^google-chrome$" },         opacity = "0.93 0.93" })
+hl.window_rule({ name = "zeddev-opacity",    match = { class = "dev.zed.Zed-Dev" },         opacity = "0.93 0.93" })
+hl.window_rule({ name = "zed-opacity",       match = { class = "dev.zed.Zed$" },            opacity = "0.93 0.93" })
+hl.window_rule({ name = "tauriexpl-opacity", match = { class = "tauri-explorer" },          opacity = "0.9 0.9" })
+hl.window_rule({ name = "ghostty-opacity",   match = { class = "com.mitchellh.ghostty" },   opacity = "0.9 0.9" })
+
+hl.window_rule({ name = "imv-float",  match = { class = "^imv$" }, float = true })
+hl.window_rule({ name = "imv-center", match = { class = "^imv$" }, center = true })
+hl.window_rule({ name = "imv-size",   match = { class = "^imv$" }, size = "75% 75%" })
+
+hl.window_rule({ name = "thunar-dialog-float",  match = { class = "[Tt]hunar", title = "negative:.*[Tt]hunar.*" }, float = true })
+hl.window_rule({ name = "thunar-dialog-center", match = { class = "[Tt]hunar", title = "negative:.*[Tt]hunar.*" }, center = true })
+
+
+---------------------
+---- KEYBINDINGS ----
+---------------------
+
+local mainMod = "SUPER"
+
+-- Tools
+hl.bind(mainMod .. " + RETURN",   hl.dsp.exec_cmd("wezterm"))
+hl.bind(mainMod .. " + SPACE",    hl.dsp.exec_cmd("vicinae toggle"))
+hl.bind(mainMod .. " + CTRL + L", hl.dsp.exec_cmd("hyprlock"))
+hl.bind(mainMod .. " + CTRL + R", hl.dsp.exec_cmd("~/.local/bin/hypr-session-restore.sh"))
+hl.bind("F6", hl.dsp.exec_cmd("~/.local/bin/toggle-scratchpad.sh chrome-drop 1800 1100 --class google-chrome --singleton google-chrome-stable --new-window"))
+hl.bind("F7", hl.dsp.exec_cmd("~/.local/bin/toggle-scratchpad.sh ytmusic 1400 900 --class \"YouTube Music Desktop App\" youtube-music-desktop-app"))
+hl.bind("F9", hl.dsp.exec_cmd("~/.local/bin/toggle-scratchpad.sh ghostty-drop 1600 1000 --class com.mitchellh.ghostty 920 1440 ghostty"))
+hl.bind("F10", hl.dsp.exec_cmd("~/.local/bin/toggle-scratchpad.sh lite-xl 900 600 --class com.lite_xl.LiteXL lite-xl"))
+hl.bind(mainMod .. " + E",         hl.dsp.exec_cmd("~/.config/hypr/open-explorer-cwd.sh"))
+hl.bind(mainMod .. " + SHIFT + S", hl.dsp.exec_cmd("hyprshot -m region --clipboard-only"))
+hl.bind("CTRL + SHIFT + V",        hl.dsp.exec_cmd("~/.config/hypr/clip2path"))
+hl.bind("CTRL + SHIFT + C",        hl.dsp.exec_cmd("~/Repos/obsidian-capture/hotkey/capture-linux.sh"))
+
+-- Move Focus
+hl.bind(mainMod .. " + left",  hl.dsp.focus({ direction = "left" }))
+hl.bind(mainMod .. " + right", hl.dsp.focus({ direction = "right" }))
+hl.bind(mainMod .. " + up",    hl.dsp.focus({ direction = "up" }))
+hl.bind(mainMod .. " + down",  hl.dsp.focus({ direction = "down" }))
+
+-- Move Window — steps one insertion slot through the nary tree. Repeatedly
+-- pressing right walks: swap with sibling -> pop out of the group -> cross the
+-- row -> join the next neighbour -> swap inside it -> pop out again.
+hl.bind(mainMod .. " + CTRL + left",  hl.dsp.layout("move l"))
+hl.bind(mainMod .. " + CTRL + right", hl.dsp.layout("move r"))
+hl.bind(mainMod .. " + CTRL + up",    hl.dsp.layout("move u"))
+hl.bind(mainMod .. " + CTRL + down",  hl.dsp.layout("move d"))
+
+-- Move window to prev/next monitor (nary is per-workspace, so crossing
+-- monitors stays an explicit action rather than an edge overflow).
+hl.bind(mainMod .. " + CTRL + Prior", hl.dsp.window.move({ monitor = "l" }))
+hl.bind(mainMod .. " + CTRL + Next",  hl.dsp.window.move({ monitor = "r" }))
+
+-- Float center toggle with dim
+hl.bind(mainMod .. " + CTRL + end", hl.dsp.exec_cmd("~/.local/bin/toggle-float-center.sh"))
+
+-- Mouse move/resize. `mouse = true` is inert in 0.55.4's Lua path (upstream's
+-- own example config passes it); the drag behaviour comes from the mouse:NNN
+-- key plus the drag/resize dispatchers.
+hl.bind("SUPER + mouse:272", hl.dsp.window.drag(),   { mouse = true })
+hl.bind("SUPER + mouse:273", hl.dsp.window.resize(), { mouse = true })
+
+-- Flip the focused window's container between rows and columns.
+hl.bind(mainMod .. " + comma",        hl.dsp.layout("toggleorient"))
+hl.bind(mainMod .. " + slash",        hl.dsp.layout("toggleorient"))
+hl.bind(mainMod .. " + CTRL + comma", hl.dsp.layout("toggleorient"))
+hl.bind(mainMod .. " + CTRL + slash", hl.dsp.layout("toggleorient"))
+hl.bind(mainMod .. " + H",            hl.dsp.layout("toggleorient"))
+hl.bind(mainMod .. " + Y",            hl.dsp.layout("toggleorient"))
+
+-- Tab Groups (native groups are tabbed)
+hl.bind(mainMod .. " + T",            hl.dsp.group.toggle())
+hl.bind(mainMod .. " + SHIFT + T",    hl.dsp.group.toggle())
+hl.bind(mainMod .. " + bracketleft",  hl.dsp.group.prev())
+hl.bind(mainMod .. " + bracketright", hl.dsp.group.next())
+
+-- Resize
+hl.bind(mainMod .. " + CTRL + SHIFT + right", hl.dsp.window.resize({ x = 50,  y = 0,   relative = true }), { repeating = true })
+hl.bind(mainMod .. " + CTRL + SHIFT + left",  hl.dsp.window.resize({ x = -50, y = 0,   relative = true }), { repeating = true })
+hl.bind(mainMod .. " + CTRL + SHIFT + down",  hl.dsp.window.resize({ x = 0,   y = 50,  relative = true }), { repeating = true })
+hl.bind(mainMod .. " + CTRL + SHIFT + up",    hl.dsp.window.resize({ x = 0,   y = -50, relative = true }), { repeating = true })
+hl.bind(mainMod .. " + CTRL + equal", hl.dsp.exec_cmd("~/.config/hypr/accel-resize.sh grow"),   { repeating = true })
+hl.bind(mainMod .. " + CTRL + minus", hl.dsp.exec_cmd("~/.config/hypr/accel-resize.sh shrink"), { repeating = true })
+
+-- Window State
+hl.bind(mainMod .. " + Q",      hl.dsp.window.close())
+hl.bind("ALT + F4",             hl.dsp.window.close())
+hl.bind("CTRL + Escape",        hl.dsp.window.close())
+hl.bind(mainMod .. " + Escape", hl.dsp.window.close())
+hl.bind(mainMod .. " + F",      hl.dsp.window.fullscreen({ mode = "fullscreen" }))
+hl.bind(mainMod .. " + grave",  hl.dsp.focus({ workspace = "previous" }))
+
+-- Media Keys
+hl.bind("XF86AudioPlay", hl.dsp.exec_cmd("playerctl play-pause"), { locked = true })
+hl.bind("XF86AudioNext", hl.dsp.exec_cmd("playerctl next"),       { locked = true })
+hl.bind("XF86AudioPrev", hl.dsp.exec_cmd("playerctl previous"),   { locked = true })
+hl.bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+"), { locked = true, repeating = true })
+hl.bind("XF86AudioLowerVolume", hl.dsp.exec_cmd("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"), { locked = true, repeating = true })
+hl.bind("XF86AudioMute", hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"), { locked = true })
+
+-- Workspace Switching (1-5) & Move Window to Workspace (1-5)
+for i = 1, 5 do
+    hl.bind(mainMod .. " + " .. i,        hl.dsp.focus({ workspace = i }))
+    hl.bind(mainMod .. " + CTRL + " .. i, hl.dsp.window.move({ workspace = i }))
+end
