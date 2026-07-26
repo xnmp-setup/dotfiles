@@ -88,6 +88,15 @@ hl.config({
         no_warps = true,
     },
 
+    misc = {
+        -- What shows through while a window is catching up with a resize.
+        -- Hyprland's default is #111111, which reads as a grey glitch against
+        -- this palette; the terminal background makes it read as depth.
+        -- (render:expand_undersized_textures, which stretches the stale buffer
+        -- rather than exposing this at all, is already on by default.)
+        background_color = "rgb(0e1330)",
+    },
+
     input = {
         kb_layout                   = "us",
         follow_mouse                = 0,
@@ -249,6 +258,135 @@ local function ungroup()
     if w and w.group then hl.dispatch(hl.dsp.group.toggle()) end
 end
 
+-- Take the focused window out of its tab strip and give it a pane on the named
+-- side. nary has to be told which side first: Hyprland's own hint for this (the
+-- focal point handed to movedTarget) is discarded by the Lua layout API, so
+-- without the message the pane is merely adopted wherever the tree puts it.
+local DIR_SHORT = { left = "l", right = "r", up = "u", down = "d" }
+
+local function untab(dir)
+    local w = hl.get_active_window()
+    if not (w and w.group and w.group.size > 1) then return false end
+
+    hl.dispatch(hl.dsp.layout("untab " .. DIR_SHORT[dir]))
+    hl.dispatch(hl.dsp.window.move({ out_of_group = dir }))
+    dissolve_lone_groups() -- the tile it left may now be a group of one
+    return true
+end
+
+
+-----------------------------------
+---- EXPOSE  (mission control) ----
+-----------------------------------
+-- F1 unfolds every tabbed group on the workspace into panes, so all of
+-- them can be seen at once. The next window SELECTED — clicked, or
+-- focused any other way — folds them all back exactly as they were, except that
+-- one, which is left out as a pane of its own if it used to be a tab. Pressing
+-- the key again folds with whatever is focused, for selecting without a click.
+--
+-- Selection is a focus change, so the unfolding's own focus churn (dissolving a
+-- group refocuses) has to be kept out of it: dispatches made here are flagged,
+-- and the listener only arms once the unfold has settled.
+--
+-- Hyprland cannot build a group from a list of windows: the only way in is
+-- moveintogroup, which merges whatever lies in a DIRECTION. So folding back
+-- sends each pane leftwards at the tab that stayed behind, which works only
+-- because unfolding asked the layout to lay each set of tabs out as a row in
+-- tab order, starting from that tab (nary's `explode`).
+--
+-- The selected pane is folded back in with the others and then taken out again
+-- by the ordinary un-tab path, rather than being left out of the fold: sitting
+-- between panes that are still merging leftwards, it would swallow them.
+
+local exposed = nil   -- while unfolded: the groups to put back
+local armed   = false -- is a focus change a selection yet?
+local busy    = false -- ... or is it one of ours?
+
+local function tabbed_groups()
+    local ws = hl.get_active_workspace()
+    local seen, groups = {}, {}
+
+    for _, w in ipairs(hl.get_windows() or {}) do
+        local group = w.group
+        if group and group.size > 1 and group.current and ws and w.workspace and w.workspace.id == ws.id then
+            local anchor = group.current
+            local key    = tostring(anchor.stable_id)
+
+            if not seen[key] then
+                seen[key] = true
+
+                local members = group.members
+                if members and members.stable_id then members = { members } end
+
+                -- In group order, minus the visible tab: exactly the windows
+                -- `explode` lays out beside it, in the same order.
+                local rest = {}
+                for _, m in ipairs(members or {}) do
+                    if m.stable_id and m.stable_id ~= anchor.stable_id then rest[#rest + 1] = m end
+                end
+
+                groups[#groups + 1] = { anchor = anchor, rest = rest }
+            end
+        end
+    end
+    return groups
+end
+
+local function expose_unfold()
+    local groups = tabbed_groups()
+    if #groups == 0 then return end
+
+    busy = true
+    hl.dispatch(hl.dsp.layout("explode"))
+    for _, group in ipairs(groups) do
+        hl.dispatch(hl.dsp.group.toggle({ window = group.anchor }))
+    end
+    busy = false
+
+    exposed, armed = groups, false
+    hl.timer(function() armed = (exposed ~= nil) end, { timeout = 120, type = "oneshot" })
+end
+
+local function expose_fold()
+    local selected     = hl.get_active_window()
+    local groups       = exposed
+    exposed, armed     = nil, false
+
+    busy = true
+    for _, group in ipairs(groups) do
+        for _, w in ipairs(group.rest) do
+            -- An expired window (closed while unfolded) reads as nil throughout.
+            if w.mapped then
+                hl.dispatch(hl.dsp.window.move({ window = w, into_or_create_group = "left" }))
+            end
+        end
+        if group.anchor.mapped then
+            hl.dispatch(hl.dsp.focus({ window = group.anchor })) -- restore the visible tab
+        end
+    end
+
+    -- The selection: back out of the strip it was just folded into. It is
+    -- folded in with the rest and taken out again rather than being held aside,
+    -- because a pane left sitting among panes still merging leftwards would
+    -- swallow them.
+    if selected and selected.mapped then
+        hl.dispatch(hl.dsp.focus({ window = selected }))
+        untab("right")
+    end
+    busy = false
+
+    dissolve_lone_groups()
+end
+
+-- Any focus change once unfolded IS the selection.
+hl.on("window.active", function()
+    if exposed and armed and not busy then expose_fold() end
+end)
+
+local function expose_toggle()
+    if exposed then expose_fold() else expose_unfold() end
+end
+
 ---------------------
 ---- KEYBINDINGS ----
 ---------------------
@@ -282,25 +420,12 @@ hl.bind(mainMod .. " + down",  hl.dsp.focus({ direction = "down" }))
 -- A tab has no slot of its own to step through — its whole group occupies one
 -- leaf — so for a tabbed window the same key means the other escape: leave the
 -- tab strip and take a pane of its own on that side. Inverse of SUPER + ALT.
--- The window lands directly beside the tile it was a tab of, on the side named.
--- nary has to be told which side first: Hyprland's own hint for this (the focal
--- point handed to movedTarget) is discarded by the Lua layout API, so without
--- the message the pane is merely adopted wherever the tree happens to put it.
-local DIR_SHORT = { left = "l", right = "r", up = "u", down = "d" }
-
+-- A tab leaves its strip for a pane on that side (see untab); anything else
+-- steps through the tree as before.
 local function untab_or_step(dir)
-    local hint = hl.dsp.layout("untab " .. DIR_SHORT[dir])
-    local pop  = hl.dsp.window.move({ out_of_group = dir })
     local step = hl.dsp.layout("move " .. DIR_SHORT[dir])
     return function()
-        local w = hl.get_active_window()
-        if w and w.group and w.group.size > 1 then
-            hl.dispatch(hint)
-            hl.dispatch(pop)
-            dissolve_lone_groups() -- the tab we left may now be a group of one
-        else
-            hl.dispatch(step)
-        end
+        if not untab(dir) then hl.dispatch(step) end
     end
 end
 
@@ -341,6 +466,10 @@ hl.bind(mainMod .. " + CTRL + Prior", hl.dsp.group.prev())
 hl.bind(mainMod .. " + CTRL + Next",  hl.dsp.group.next())
 hl.bind(mainMod .. " + ALT + Prior",  hl.dsp.group.prev())
 hl.bind(mainMod .. " + ALT + Next",   hl.dsp.group.next())
+
+-- Unfold every tab strip on the workspace into panes; selecting a pane folds
+-- them back, keeping that one out on its own.
+hl.bind("F1", expose_toggle)
 
 -- Invade the neighbour in that direction: the focused window leaves its tile and
 -- becomes a tab of the window it lands on, creating that group if the neighbour

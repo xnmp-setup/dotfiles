@@ -57,15 +57,28 @@
 -- stays with the windows that stayed put, and the window that moved is placed
 -- as if it were new.
 --
--- Where it is placed is something the layout cannot infer: Hyprland's own hint
--- (the focal point passed to movedTarget) is dropped by the Lua layout API. So
--- the keybinding says it in advance with `untab <dir>`, which is remembered
--- against that tile until the window actually leaves it.
+-- PLACEMENT INTENTS
+--
+-- Where a departing window is put down is something the layout cannot infer:
+-- Hyprland's own hint (the focal point passed to movedTarget) is dropped by the
+-- Lua layout API. So the keybinding says it in advance. An intent names the
+-- windows about to leave a tile and where they go as they arrive; it is
+-- recorded during a command and spent during recalculate, and has to outlive
+-- one of those, since Hyprland runs a recalculate as soon as the command
+-- returns — before the keybinding has dispatched anything.
+--
+-- `untab` names one window. `explode` names every hidden tab of every tabbed
+-- tile at once, which is how the whole workspace can be unfolded into panes and
+-- folded back again: each set of tabs stays where its tile was, in tab order,
+-- beside the tab that was visible, which keeps the tile. Adjacency is the point
+-- — Hyprland can only build a group out of what lies in a DIRECTION, so folding
+-- back means sending each pane at the one that stayed behind.
 --
 -- Registered as "nary"; activate with general.layout = "lua:nary".
 -- Commands (via hl.dsp.layout("<cmd>")):
 --   move l|r|u|d    step the focused window one insertion slot along an axis
 --   untab l|r|u|d   when the focused tab next leaves its tile, put it that side
+--   explode         unfold every tabbed tile in place as its tabs are freed
 --   toggleorient    flip the focused window's parent container between h and v
 --
 -- Gaps are deliberately not applied here: Hyprland's WindowTarget insets each
@@ -79,8 +92,8 @@
 -- Hyprland instantiates one algorithm per space but they all share this single
 -- Lua module, so the tree must be partitioned per workspace — otherwise
 -- recalculating workspace 2 would reconcile away every window of workspace 1.
--- pending holds at most one untab intent per workspace: where the window that
--- is about to leave a tile should be put down. See cmd_untab.
+-- pending holds a workspace's placement intents: where windows that are about
+-- to leave a tile should be put down when they arrive. See PLACEMENT INTENTS.
 local state = { trees = {}, pending = {} }
 
 local function new_root()
@@ -337,8 +350,11 @@ local function reconcile(ctx, settling)
     local root    = tree_for(key)
     local focused = active_id(ctx)
 
-    local holder = {}
+    local intents = state.pending[key]
+
+    local holder, in_tree = {}, {}
     for _, leaf in ipairs(collect_leaves(root, {})) do
+        in_tree[leaf] = true
         for _, id in ipairs(leaf_ids(leaf)) do holder[id] = leaf end
     end
 
@@ -357,35 +373,57 @@ local function reconcile(ctx, settling)
 
     local claimed, place, arrived = {}, {}, {}
 
+    local function take(entry, leaf)
+        claimed[leaf] = true
+        place[leaf]   = entry.target
+        entry.taken   = true
+        if not has_id(entry.ids, leaf.id) then leaf.id = entry.ids[1] end
+        leaf.ids = entry.ids
+    end
+
+    -- An unfolding tile stays with the tab that was visible on it, whatever
+    -- order its windows are reported in, so the rest can be laid out around it.
+    if intents then
+        for _, intent in ipairs(intents) do
+            if intent.keeper and in_tree[intent.origin] and not claimed[intent.origin] then
+                for _, entry in ipairs(entries) do
+                    if not entry.taken and entry.ids[1] == intent.keeper then
+                        take(entry, intent.origin)
+                        break
+                    end
+                end
+            end
+        end
+    end
+
     for _, entry in ipairs(entries) do
-        -- Candidates in id order, so the choice never depends on table order.
-        local candidates, seen = {}, {}
-        for _, id in ipairs(entry.ids) do
-            local leaf = holder[id]
-            if leaf and not claimed[leaf] and not seen[leaf] then
-                seen[leaf] = true
-                candidates[#candidates + 1] = leaf
+        if not entry.taken then
+            -- Candidates in id order, so the choice never depends on table order.
+            local candidates, seen = {}, {}
+            for _, id in ipairs(entry.ids) do
+                local leaf = holder[id]
+                if leaf and not claimed[leaf] and not seen[leaf] then
+                    seen[leaf] = true
+                    candidates[#candidates + 1] = leaf
+                end
             end
-        end
 
-        -- Merging into a tile: the focused window's old leaf is the one it
-        -- vacated, so prefer any other candidate.
-        local pick
-        for _, leaf in ipairs(candidates) do
-            if not (focused and leaf_holds(leaf, focused)) then
-                pick = leaf
-                break
+            -- Merging into a tile: the focused window's old leaf is the one it
+            -- vacated, so prefer any other candidate.
+            local pick
+            for _, leaf in ipairs(candidates) do
+                if not (focused and leaf_holds(leaf, focused)) then
+                    pick = leaf
+                    break
+                end
             end
-        end
-        pick = pick or candidates[1]
+            pick = pick or candidates[1]
 
-        if pick then
-            claimed[pick] = true
-            place[pick]   = entry.target
-            if not has_id(entry.ids, pick.id) then pick.id = entry.ids[1] end
-            pick.ids = entry.ids
-        else
-            arrived[#arrived + 1] = entry
+            if pick then
+                take(entry, pick)
+            else
+                arrived[#arrived + 1] = entry
+            end
         end
     end
 
@@ -401,27 +439,54 @@ local function reconcile(ctx, settling)
     drop_unclaimed(root)
     root = normalize(root)
 
-    -- An untab intent lives while its window is still on the anchor tile; the
-    -- pass where that stops being true is the one it was recorded for, and it
-    -- is spent (or discarded) there rather than carried any further.
-    local pending = state.pending[key]
-    local live    = pending and claimed[pending.anchor] and leaf_holds(pending.anchor, pending.id)
-    if settling and pending and not live then state.pending[key] = nil end
-
     local anchor_focus = focused
     for _, entry in ipairs(arrived) do
         local leaf   = { kind = "leaf", id = entry.ids[1], ids = entry.ids }
         local placed = false
 
-        if settling and pending and claimed[pending.anchor] and has_id(entry.ids, pending.id) then
-            placed = insert_beside(root, pending.anchor, pending.ax, pending.delta, leaf)
-            if placed then state.pending[key] = nil end
+        -- A window an intent was waiting for: put it beside the last one placed
+        -- for that tile, so a tile unfolds in order rather than in a heap.
+        if settling and intents then
+            for _, intent in ipairs(intents) do
+                if claimed[intent.origin] then
+                    for _, id in ipairs(entry.ids) do
+                        if intent.ids[id] then
+                            placed = insert_beside(root, intent.after, intent.ax, intent.delta, leaf)
+                            if placed then
+                                intent.ids[id] = nil
+                                intent.after   = leaf
+                            end
+                            break
+                        end
+                    end
+                end
+                if placed then break end
+            end
         end
 
         if not placed then insert_new(root, leaf, anchor_focus) end
 
         place[leaf]  = entry.target
         anchor_focus = anchor_focus or entry.ids[1]
+    end
+
+    -- An intent lives while windows it is waiting for are still on their tile.
+    -- The pass where that stops being true is the one it was recorded for: it
+    -- is spent there, and whatever is left of it is discarded rather than
+    -- carried any further.
+    if settling and intents then
+        local kept = {}
+        for _, intent in ipairs(intents) do
+            if claimed[intent.origin] then
+                for id in pairs(intent.ids) do
+                    if leaf_holds(intent.origin, id) then
+                        kept[#kept + 1] = intent
+                        break
+                    end
+                end
+            end
+        end
+        state.pending[key] = (#kept > 0) and kept or nil
     end
 
     root = normalize(root)
@@ -670,7 +735,31 @@ local function cmd_untab(root, key, ctx, dir)
     local leaf = find_leaf(root, id)
     if not leaf or #leaf_ids(leaf) < 2 then return true end -- not a tab: nothing will leave
 
-    state.pending[key] = { id = id, anchor = leaf, ax = ax, delta = delta }
+    state.pending[key] = { {
+        origin = leaf, after = leaf, ax = ax, delta = delta, ids = { [id] = true },
+    } }
+    return true
+end
+
+-- Every tabbed tile is about to be dissolved into its windows. Keep each set of
+-- tabs where its tile was, in tab order, beside the tab that was visible — both
+-- so the unfolding reads as the tile opening up, and so that folding back has
+-- an unobstructed direction to send each pane in (see PLACEMENT INTENTS).
+local function cmd_explode(root, key)
+    local intents = {}
+    for _, leaf in ipairs(collect_leaves(root, {})) do
+        local ids = leaf_ids(leaf)
+        if #ids > 1 then
+            local waiting = {}
+            for i = 2, #ids do waiting[ids[i]] = true end
+            intents[#intents + 1] = {
+                origin = leaf, after = leaf, ax = "h", delta = 1,
+                ids    = waiting,
+                keeper = ids[1],
+            }
+        end
+    end
+    state.pending[key] = (#intents > 0) and intents or nil
     return true
 end
 
@@ -693,10 +782,12 @@ local function dispatch(ctx, msg)
         return cmd_move(root, key, ctx, arg)
     elseif command == "untab" then
         return cmd_untab(root, key, ctx, arg)
+    elseif command == "explode" then
+        return cmd_explode(root, key)
     elseif command == "toggleorient" then
         return cmd_toggleorient(root, ctx)
     end
-    return "nary: expected 'move <l|r|u|d>', 'untab <l|r|u|d>' or 'toggleorient'"
+    return "nary: expected 'move <l|r|u|d>', 'untab <l|r|u|d>', 'explode' or 'toggleorient'"
 end
 
 -- Exposed for the offline test harness; harmless under Hyprland.

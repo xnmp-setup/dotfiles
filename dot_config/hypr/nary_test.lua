@@ -336,6 +336,41 @@ check("an untabbed window with no intent is adopted, not placed",
     untab(nil), "h(2 1 9)")
 
 --------------------------------------------------------------------------------
+-- explode: unfolding every tabbed tile in place, and folding it back
+--------------------------------------------------------------------------------
+
+-- Unfold the tile holding tabs 2, 8 and 9 (2 visible) out of `root`, reporting
+-- the freed windows in `order`, and return the resulting layout.
+local function unfold(root, order, focus)
+    nary.state.trees[KEY] = root
+    nary.settle(ctx_of({ "1", { "2", "8", "9" } }, focus))
+    nary.dispatch(ctx_of({ "1", { "2", "8", "9" } }, focus), "explode")
+    nary.settle(ctx_of({ "1", { "2", "8", "9" } }, focus)) -- the message's own recalculate
+    nary.settle(ctx_of(order, focus))                      -- the group dissolved
+    return nary.canon(nary.state.trees[KEY])
+end
+
+check("tabs unfold where their tile was, in tab order",
+    unfold(C("h", L("1"), L("2")), { "1", "2", "8", "9" }, "1"), "h(1 2 8 9)")
+
+check("a tile in a column unfolds into a row of its own",
+    unfold(C("v", L("1"), L("2")), { "1", "2", "8", "9" }, "1"), "v(1 h(2 8 9))")
+
+-- Which window keeps the tile must not depend on the order Hyprland happens to
+-- report the freed windows in: it is the tab that was visible.
+check("the unfolded tile stays with the tab that was visible",
+    unfold(C("h", L("1"), L("2")), { "8", "9", "2", "1" }, "1"), "h(1 2 8 9)")
+
+do
+    -- Folding back: each pane is merged into the tile, which stays put — this
+    -- is the reconcile side of what the expose keybinding dispatches.
+    nary.state.trees[KEY] = C("h", L("1"), L("2"), L("8"), L("9"))
+    nary.settle(ctx_of({ "1", { "8", "2" }, "9" }, "8"))
+    check("a pane folded back into its tile leaves the tile in place",
+        nary.canon(nary.state.trees[KEY]), "h(1 2 9)")
+end
+
+--------------------------------------------------------------------------------
 -- toggleorient and bad input
 --------------------------------------------------------------------------------
 
