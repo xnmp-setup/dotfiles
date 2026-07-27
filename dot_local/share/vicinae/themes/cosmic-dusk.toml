@@ -1,0 +1,32 @@
+# Cosmic Dusk - Sci-fi planet sunrise
+# Deep indigo base with warm coral accents, matching Ghostty/Tauri Explorer themes
+
+[meta]
+version = 1
+name = "Cosmic Dusk"
+description = "Deep indigo with warm coral sunrise accents"
+variant = "dark"
+
+[colors.core]
+background = "#0e1330"
+foreground = "#d8dce8"
+secondary_background = "#0a0e28"
+border = "#2a3060"
+accent = "#d4607a"
+
+[colors.accents]
+blue = "#6a7acc"
+green = "#69db7c"
+magenta = "#b09ac0"
+orange = "#e87898"
+purple = "#c4b0d8"
+red = "#d4607a"
+yellow = "#fbbf24"
+cyan = "#7aadcc"
+
+[colors.list.item.selection]
+background = { name = "#2a3060", opacity = 0.55 }
+secondary_background = "#151a42"
+
+[colors.list.item.hover]
+background = { name = "#2a3060", opacity = 0.35 }
