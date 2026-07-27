@@ -71,6 +71,8 @@ export PATH="$HOME/go/bin:$PATH"
 export PATH="$PATH:/opt/homebrew/bin"
 export PATH="$HOME/.npm-global/bin:$PATH"
 export PATH="$HOME/.cargo/bin:$PATH"
+# Native installers (claude's among them) drop binaries here.
+export PATH="$HOME/.local/bin:$PATH"
 export CLAUDE_CODE_ENABLE_LSP=1
 export CLAUDE_CODE_NO_FLICKER=1
 [[ -x "$HOME/.atuin/bin/atuin" ]] && export PATH="$HOME/.atuin/bin:$PATH"
@@ -853,3 +855,5 @@ cc-glm() {
 }
 alias ccr-glm="cc-glm --resume"
 # ---------------------------------------------------------------------------
+
+alias nix-rebuild="sudo nixos-rebuild switch --flake ~/Repos/nixos-t14s#t14s"
