@@ -291,6 +291,7 @@ alias ccf="claude --permission-mode auto --model fable"
 alias cco="claude --permission-mode auto --model opus"
 alias cch="claude --permission-mode auto --model haiku"
 alias ccr="claude --resume --permission-mode auto"
+alias ccw="claude --permission-mode auto --worktree"
 alias ccc="claude --continue --permission-mode auto"
 alias cc-dsp='docker sandbox run claude . --dangerously-skip-permissions'
 alias m="micro"
@@ -834,3 +835,20 @@ if [[ -n "$WEZTERM_PANE" ]]; then
   add-zsh-hook -Uz chpwd __wezterm_osc7
   __wezterm_osc7
 fi
+
+# --- Claude Code against Z.ai GLM Coding Plan -------------------------------
+# Isolated config root: separate session history, no Anthropic credential
+# fallback. `claude` stays on Anthropic; `cc-glm` talks only to Z.ai.
+cc-glm() {
+  local d="$HOME/.cc-glm"
+  [[ -r "$d/.env" ]] && source "$d/.env"
+  if [[ -z "$ZAI_API_KEY" ]]; then
+    print -u2 "cc-glm: ZAI_API_KEY unset — add it to $d/.env"
+    return 1
+  fi
+  CLAUDE_CONFIG_DIR="$d" \
+  ANTHROPIC_AUTH_TOKEN="$ZAI_API_KEY" \
+  ANTHROPIC_API_KEY= \
+  claude --permission-mode auto "$@"
+}
+# ---------------------------------------------------------------------------

@@ -100,7 +100,8 @@
     "typescript-lsp@claude-plugins-official": true,
     "pyright-lsp@claude-plugins-official": true,
     "svelte-lsp@local": true,
-    "oh-my-claudecode@omc": false
+    "oh-my-claudecode@omc": false,
+    "i-have-adhd@i-have-adhd": true
   },
   "extraKnownMarketplaces": {
     "local": {
@@ -113,6 +114,13 @@
       "source": {
         "source": "git",
         "url": "https://github.com/Yeachan-Heo/oh-my-claudecode.git"
+      }
+    },
+    "i-have-adhd": {
+      "source": {
+        "source": "github",
+        "repo": "ayghri/i-have-adhd",
+        "path": "/home/chong/Repos/keifu/i-have-adhd"
       }
     }
   },
