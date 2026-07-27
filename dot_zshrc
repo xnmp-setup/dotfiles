@@ -851,4 +851,5 @@ cc-glm() {
   ANTHROPIC_API_KEY= \
   claude --permission-mode auto "$@"
 }
+alias ccr-glm="cc-glm --resume"
 # ---------------------------------------------------------------------------
