@@ -314,6 +314,17 @@ local function reattach_bg_tab()
   end)
 end
 
+-- ---------- Session restore (windows, tabs, split layout, cwd) ----------
+-- Restore the previous session on launch, Chrome-style: windows, their tabs,
+-- each tab's split layout and each pane's cwd, with focus where you left it.
+-- Running programs are deliberately NOT re-executed. Background (bg-N) tabs are
+-- excluded — they already outlive the GUI in their own mux-server.
+--
+-- Lives in sessionstore.lua (the mux/filesystem adapter), over session.lua (the
+-- pure, unit-tested state + split-layout logic). Shares BG_SOCK_DIR so the
+-- session file sits beside the bg-tab sockets.
+require('sessionstore').setup { dir = BG_SOCK_DIR }
+
 -- Last known tab title — format-tab-title stashes here so overlays (InputSelector
 -- etc.) that blank the active pane don't cause a flicker to an empty title.
 local last_tab_title = {}
