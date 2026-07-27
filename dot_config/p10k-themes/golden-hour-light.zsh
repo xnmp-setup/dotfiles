@@ -22,43 +22,9 @@ typeset -g POWERLEVEL9K_STATUS_ERROR_PIPE_FOREGROUND=124
 
 typeset -g POWERLEVEL9K_CHEZMOI_SHELL_FOREGROUND=124  # red
 
-# Override git formatter colors (hardcoded in p10k.zsh)
-function my_git_formatter() {
-  emulate -L zsh
-  if [[ -n $P9K_CONTENT ]]; then
-    typeset -g my_git_format=$P9K_CONTENT
-    return
-  fi
-  if (( $1 )); then
-    local       meta='%f'
-    local      clean='%28F'    # forest green
-    local   modified='%166F'   # burnt orange
-    local  untracked='%94F'    # amber-brown
-    local conflicted='%124F'   # deep red
-  else
-    local       meta='%244F'
-    local      clean='%244F'
-    local   modified='%244F'
-    local  untracked='%244F'
-    local conflicted='%244F'
-  fi
-  local res
-  if [[ -n $VCS_STATUS_LOCAL_BRANCH ]]; then
-    local branch=${(V)VCS_STATUS_LOCAL_BRANCH}
-    (( $#branch > 32 )) && branch[13,-13]="…"
-    res+="${clean}${(g::)POWERLEVEL9K_VCS_BRANCH_ICON}${branch//\%/%%}"
-  fi
-  if [[ -n $VCS_STATUS_TAG && -z $VCS_STATUS_LOCAL_BRANCH ]]; then
-    local tag=${(V)VCS_STATUS_TAG}
-    (( $#tag > 32 )) && tag[13,-13]="…"
-    res+="${meta}#${clean}${tag//\%/%%}"
-  fi
-  [[ -z $VCS_STATUS_LOCAL_BRANCH && -z $VCS_STATUS_TAG ]] &&
-    res+="${meta}@${clean}${VCS_STATUS_COMMIT[1,8]}"
-  if [[ -n ${VCS_STATUS_REMOTE_BRANCH:#$VCS_STATUS_LOCAL_BRANCH} ]]; then
-    res+="${meta}:${clean}${(V)VCS_STATUS_REMOTE_BRANCH//\%/%%}"
-  fi
-  [[ -n $VCS_STATUS_ACTION     ]] && res+=" ${conflicted}${VCS_STATUS_ACTION}"
-  typeset -g my_git_format=$res
-}
-functions -M my_git_formatter 2>/dev/null
+# Git formatter colors (formatter itself lives in ~/.p10k.zsh)
+typeset -g MY_GIT_COLOR_META='%f'
+typeset -g MY_GIT_COLOR_CLEAN='%28F'  # forest green
+typeset -g MY_GIT_COLOR_MODIFIED='%166F'  # burnt orange
+typeset -g MY_GIT_COLOR_UNTRACKED='%94F'  # amber-brown
+typeset -g MY_GIT_COLOR_CONFLICTED='%124F'  # deep red
