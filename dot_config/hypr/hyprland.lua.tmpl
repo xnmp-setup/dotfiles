@@ -8,7 +8,7 @@
 -- Layout is "lua:nary" (see nary.lua): an N-ary tiling tree, so three windows
 -- can be equal peers rather than dwindle's forced binary nesting.
 
-require("nary")
+local nary = require("nary")
 
 local theme      = require("theme")
 local scratchpad = require("scratchpad")
@@ -460,9 +460,83 @@ hl.bind(mainMod .. " + right", hl.dsp.focus({ direction = "right" }))
 hl.bind(mainMod .. " + up",    hl.dsp.focus({ direction = "up" }))
 hl.bind(mainMod .. " + down",  hl.dsp.focus({ direction = "down" }))
 
+-- CROSSING MONITORS
+--
+-- nary's tree covers one workspace, so the workspace edge is exactly where the
+-- next monitor begins: a move with nowhere left to go inside the tree is a move
+-- off the side of the screen, and hands the window over.
+--
+-- "Nowhere left to go" is read off the layout rather than guessed at from
+-- geometry. A tile flush against the edge often still has somewhere to go —
+-- pressing up out of a row takes a band across the whole workspace — and only
+-- the tree knows which case this is. So the move is dispatched and the layout
+-- asked whether anything changed.
+local function layout_shape()
+    local ws = hl.get_active_workspace()
+    return ws and ws.id and nary.shape(nary.space(ws.id)) or nil
+end
+
+-- The monitor next along the axis of travel. Nearest centre wins, with sideways
+-- offset counting double, so the display stacked above the ultrawide is not
+-- also "to the right" of it.
+local function monitor_in(dir)
+    local from = hl.get_active_monitor()
+    if not from then return nil end
+
+    local horizontal = (dir == "left" or dir == "right")
+    local ahead      = (dir == "right" or dir == "down") and 1 or -1
+
+    -- width/height are the mode's pixels; the layout coordinates monitors are
+    -- positioned in are those divided by the scale.
+    local function centre(m)
+        local scale = m.scale or 1
+        return (m.x or 0) + (m.width or 0) / scale / 2,
+               (m.y or 0) + (m.height or 0) / scale / 2
+    end
+
+    local fx, fy = centre(from)
+    local best, best_cost
+
+    for _, m in ipairs(hl.get_monitors() or {}) do
+        if m.id ~= from.id then
+            local x, y   = centre(m)
+            local along  = horizontal and (x - fx) or (y - fy)
+            local across = horizontal and (y - fy) or (x - fx)
+
+            if along * ahead > 0 then
+                local cost = math.abs(along) + math.abs(across) * 2
+                if not best_cost or cost < best_cost then best, best_cost = m, cost end
+            end
+        end
+    end
+    return best
+end
+
+-- Hand the focused window to the monitor that way, entering by the edge it
+-- crossed: `enter` tells that workspace's tree to take it as a division of the
+-- whole workspace on the near side, rather than as a neighbour of whatever
+-- happens to be focused over there. False when there is no monitor that way —
+-- the single-display case, where these keys stay within-workspace moves.
+local function cross_monitor(dir)
+    local mon = monitor_in(dir)
+    local ws  = mon and mon.active_workspace
+    if not (ws and ws.id) then return false end
+
+    hl.dispatch(hl.dsp.layout(("enter %s %s"):format(DIR_SHORT[dir], nary.space(ws.id))))
+    hl.dispatch(hl.dsp.window.move({ workspace = tostring(ws.id) }))
+    return true
+end
+
+local function step_or_cross(dir)
+    local before = layout_shape()
+    hl.dispatch(hl.dsp.layout("move " .. DIR_SHORT[dir]))
+    if before and layout_shape() == before then cross_monitor(dir) end
+end
+
 -- Move Window — steps one insertion slot through the nary tree. Repeatedly
 -- pressing right walks: swap with sibling -> pop out of the group -> cross the
--- row -> join the next neighbour -> swap inside it -> pop out again.
+-- row -> join the next neighbour -> swap inside it -> pop out again -> off the
+-- edge onto the next monitor.
 --
 -- A tab has no slot of its own to step through — its whole group occupies one
 -- leaf — so for a tabbed window the same key means the other escape: leave the
@@ -470,9 +544,8 @@ hl.bind(mainMod .. " + down",  hl.dsp.focus({ direction = "down" }))
 -- A tab leaves its strip for a pane on that side (see untab); anything else
 -- steps through the tree as before.
 local function untab_or_step(dir)
-    local step = hl.dsp.layout("move " .. DIR_SHORT[dir])
     return function()
-        if not untab(dir) then hl.dispatch(step) end
+        if not untab(dir) then step_or_cross(dir) end
     end
 end
 
@@ -486,11 +559,11 @@ hl.bind(mainMod .. " + CTRL + down",  untab_or_step("down"))
 -- tiles — CTRL alone only looks different because it spends the keypress on
 -- escaping the strip first — so adding ALT is just declining that escape.
 for _, dir in ipairs({ "left", "right", "up", "down" }) do
-    hl.bind(mainMod .. " + CTRL + ALT + " .. dir, hl.dsp.layout("move " .. DIR_SHORT[dir]))
+    hl.bind(mainMod .. " + CTRL + ALT + " .. dir, function() step_or_cross(dir) end)
 end
 
--- Move window to prev/next monitor (nary is per-workspace, so crossing
--- monitors stays an explicit action rather than an edge overflow).
+-- Move window straight to the prev/next monitor, without walking the tree to
+-- the edge first.
 -- SHIFT, not CTRL: CTRL + Prior/Next cycles tabs within a group.
 hl.bind(mainMod .. " + SHIFT + Prior", hl.dsp.window.move({ monitor = "l" }))
 hl.bind(mainMod .. " + SHIFT + Next",  hl.dsp.window.move({ monitor = "r" }))
@@ -651,10 +724,46 @@ end)
 -- Invade the neighbour in that direction: the focused window leaves its tile and
 -- becomes a tab of the window it lands on, creating that group if the neighbour
 -- is a plain window. SUPER + T dissolves the group again.
-hl.bind(mainMod .. " + ALT + left",  hl.dsp.window.move({ into_or_create_group = "left" }))
-hl.bind(mainMod .. " + ALT + right", hl.dsp.window.move({ into_or_create_group = "right" }))
-hl.bind(mainMod .. " + ALT + up",    hl.dsp.window.move({ into_or_create_group = "up" }))
-hl.bind(mainMod .. " + ALT + down",  hl.dsp.window.move({ into_or_create_group = "down" }))
+--
+-- The neighbour may be on the next monitor. Hyprland only ever looks for one on
+-- the current workspace, so crossing is done by hand: the window is handed over
+-- as a division of that whole workspace, which leaves everything already there
+-- squarely in the same direction, and the same invade is dispatched again. What
+-- it lands on is therefore the division against the boundary — the window that
+-- WAS across it.
+--
+-- Whether the first invade found anything is read off the tile the window is
+-- on: a merge changes the set of windows sharing it, and nothing else here can.
+local function tile_of(w)
+    local members = w and w.group and w.group.members
+    if not members then return "" end
+    if members.stable_id then members = { members } end -- a lone member is not wrapped
+
+    local ids = {}
+    for _, m in ipairs(members) do ids[#ids + 1] = tostring(m.stable_id) end
+    table.sort(ids)
+    return table.concat(ids, ",")
+end
+
+local function invade(dir)
+    return function()
+        local w = hl.get_active_window()
+        if not w then return end
+
+        local before = tile_of(w)
+        hl.dispatch(hl.dsp.window.move({ into_or_create_group = dir }))
+        if tile_of(hl.get_active_window()) ~= before then return end
+
+        if cross_monitor(dir) then
+            hl.dispatch(hl.dsp.window.move({ into_or_create_group = dir }))
+        end
+    end
+end
+
+hl.bind(mainMod .. " + ALT + left",  invade("left"))
+hl.bind(mainMod .. " + ALT + right", invade("right"))
+hl.bind(mainMod .. " + ALT + up",    invade("up"))
+hl.bind(mainMod .. " + ALT + down",  invade("down"))
 
 -- Resize. Tiled windows go through nary's own `resize`, not window.resize: the
 -- Lua layout API has no resize hook at all (a provider is only recalculate +
