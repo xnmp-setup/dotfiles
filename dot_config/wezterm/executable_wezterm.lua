@@ -425,9 +425,13 @@ config.color_schemes = {
     brights = { '#304b66', '#fc644d', '#7afde1', '#fff09b', '#6c9bf5', '#ff4fa1', '#64e0ff', '#ffffff' },
   },
 }
--- config.color_scheme = 'Horizon Dark (Gogh)'
-config.color_scheme = 'Horizon Dark (Gogh)'
-config.font_size = 16 -- matches Ghostty's font-size = 16
+-- NOTE: the "Set Theme..." palette entry persists your choice by rewriting the
+-- color_scheme line in wezterm.config_file — i.e. in the APPLIED file, not this
+-- source. So a `chezmoi apply` will reset the theme to whatever is written here.
+-- Keep this line in sync with your current theme (or re-pick from the palette
+-- after applying).
+config.color_scheme = 'Cosmic Dusk'
+config.font_size = 14
 config.window_background_opacity = 0.92
 config.window_padding = { left = 10, right = 10, top = 6, bottom = 6 }
 
