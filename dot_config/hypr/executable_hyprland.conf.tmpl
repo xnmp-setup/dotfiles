@@ -143,7 +143,10 @@ $mainMod = SUPER
 # Tools
 bind = $mainMod, RETURN, exec, wezterm
 bind = $mainMod, SPACE, exec, vicinae toggle
-bind = $mainMod CTRL, L, exec, hyprlock
+# lock.sh, not hyprlock directly: it wraps the lock to expire the cached sudo
+# ticket on the way out. Safe everywhere — where the sudo side of that rule
+# isn't installed the wrapper detects it and is a plain hyprlock.
+bind = $mainMod CTRL, L, exec, ~/.config/hypr/lock.sh
 bind = $mainMod CTRL, R, exec, ~/.local/bin/hypr-session-restore.sh
 bind = $mainMod, E, exec, ~/.config/hypr/open-explorer-cwd.sh
 bind = $mainMod SHIFT, S, exec, hyprshot -m region --clipboard-only

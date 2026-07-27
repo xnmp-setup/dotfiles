@@ -444,7 +444,10 @@ local mainMod = "SUPER"
 -- Tools
 hl.bind(mainMod .. " + RETURN",   hl.dsp.exec_cmd("wezterm"))
 hl.bind(mainMod .. " + SPACE",    hl.dsp.exec_cmd("vicinae toggle"))
-hl.bind(mainMod .. " + CTRL + L", hl.dsp.exec_cmd("hyprlock"))
+-- lock.sh, not hyprlock directly: it wraps the lock to expire the cached sudo
+-- ticket on the way out. Safe everywhere — where the sudo side of that rule
+-- isn't installed the wrapper detects it and is a plain hyprlock.
+hl.bind(mainMod .. " + CTRL + L", hl.dsp.exec_cmd("~/.config/hypr/lock.sh"))
 hl.bind(mainMod .. " + CTRL + R", hl.dsp.exec_cmd("~/.local/bin/hypr-session-restore.sh"))
 hl.bind(mainMod .. " + E",         hl.dsp.exec_cmd("~/.config/hypr/open-explorer-cwd.sh"))
 hl.bind(mainMod .. " + SHIFT + S", hl.dsp.exec_cmd("hyprshot -m region --clipboard-only"))
