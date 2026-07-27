@@ -6,3 +6,23 @@
 
 [push]
 	autoSetupRemote = true
+
+# Let gh answer for GitHub over HTTPS, so the PAT lives in the OS credential
+# store (gnome-keyring here, Keychain on mac, WSL's store on Windows) and never
+# in a file. Works on every machine this repo lands on, hence no OS branch —
+# gh is the one credential helper available on all of them.
+#
+# Set here rather than with `gh auth setup-git`: that writes ~/.gitconfig, which
+# chezmoi owns, so the next apply would revert it — and it hardcodes gh's
+# absolute path, which on NixOS is a /nix/store entry that dies on the next gh
+# upgrade or store GC. Plain `gh` off PATH is what survives.
+#
+# The empty `helper =` first clears any helper inherited from a system-level
+# gitconfig (WSL images tend to preset one), so GitHub auth resolves the same
+# way everywhere instead of depending on what the machine came with.
+[credential "https://github.com"]
+	helper =
+	helper = !gh auth git-credential
+[credential "https://gist.github.com"]
+	helper =
+	helper = !gh auth git-credential
