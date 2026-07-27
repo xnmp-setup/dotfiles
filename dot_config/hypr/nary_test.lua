@@ -336,6 +336,56 @@ check("an untabbed window with no intent is adopted, not placed",
     untab(nil), "h(2 1 9)")
 
 --------------------------------------------------------------------------------
+-- enter: a window crossing in from another monitor
+--------------------------------------------------------------------------------
+
+-- Announce window 9 crossing into this space travelling `dir`, then let it
+-- arrive after `settles` intervening passes, and report the layout. The space
+-- is deliberately busy and asymmetric: a window that was merely adopted would
+-- land beside the focused tile (1), so each direction is a claim about the edge
+-- it came in by.
+local function enter(root, dir, settles)
+    nary.state.trees[KEY] = root
+    nary.state.pending[KEY] = nil
+    if dir then
+        nary.dispatch(ctx_of({ "1", "2" }, "1"), "enter " .. dir .. " " .. KEY)
+    end
+    for _ = 1, (settles or 0) do
+        nary.settle(ctx_of({ "1", "2" }, "1"))
+    end
+    nary.settle(ctx_of({ "1", "2", "9" }, "1"))
+    return nary.canon(nary.state.trees[KEY])
+end
+
+local ROW = C("h", L("1"), L("2"))
+
+check("a window travelling right comes in at the left edge",  enter(ROW, "r"), "h(9 1 2)")
+check("a window travelling left comes in at the right edge",  enter(ROW, "l"), "h(1 2 9)")
+check("a window travelling down comes in at the top edge",    enter(ROW, "d"), "v(9 h(1 2))")
+check("a window travelling up comes in at the bottom edge",   enter(ROW, "u"), "v(h(1 2) 9)")
+
+-- The arrival divides the whole workspace, not the row it lands in: crossing
+-- into a column of two must not make the newcomer a third of it.
+check("crossing in divides the workspace, whatever shape it is",
+    enter(C("v", L("1"), L("2")), "r"), "h(9 v(1 2))")
+
+-- Hyprland recalculates as soon as the message returns, before the window has
+-- been sent; the intent has to outlive that pass.
+check("the intent survives the recalculate that follows the message",
+    enter(ROW, "r", 1), "h(9 1 2)")
+
+-- ... but not indefinitely, or the next unrelated window opened over there
+-- would be caught by it.
+check("an intent nothing arrives for expires",
+    enter(ROW, "r", 2), "h(1 9 2)")
+
+check("without an intent the window is adopted, not placed",
+    enter(ROW, nil), "h(1 9 2)")
+
+check("enter with a malformed argument is rejected",
+    type(nary.dispatch(ctx_of({ "1" }, "1"), "enter sideways")), "string")
+
+--------------------------------------------------------------------------------
 -- explode: unfolding every tabbed tile in place, and folding it back
 --------------------------------------------------------------------------------
 

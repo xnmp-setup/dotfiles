@@ -72,6 +72,12 @@
 -- one of those, since Hyprland runs a recalculate as soon as the command
 -- returns — before the keybinding has dispatched anything.
 --
+-- `enter` is the same idea for a window arriving from ANOTHER SPACE: a window
+-- pushed off the edge of one monitor should come in at the edge it crossed,
+-- as a division of the whole workspace, rather than beside whatever happens to
+-- be focused over there. The intent is recorded against the space it is aimed
+-- at, before the window is sent.
+--
 -- `untab` names one window and a side. `explode` names a tile and a column
 -- count, unfolding its tabs into a grid that fills the tile's own slot, in tab
 -- order, around the tab that was visible — which is how the whole workspace can
@@ -84,6 +90,8 @@
 --   move l|r|u|d    step the focused window one insertion slot along an axis
 --   resize <dx> <dy> grow/shrink the focused TILE by that many pixels per axis
 --   untab l|r|u|d   when the focused tab next leaves its tile, put it that side
+--   enter l|r|u|d <space>  a window is crossing into <space> travelling that
+--                   way; land it as a division at the edge it comes in by
 --   explode         unfold every tabbed tile in place as its tabs are freed
 --   toggleorient    flip the focused window's parent container between h and v
 --
@@ -109,13 +117,15 @@ end
 -- ctx carries no space identity, so derive it from the windows being laid out.
 -- Hyprland skips the Lua callback entirely when a space has no targets, so
 -- there is always at least one window to ask.
+local function space_of(ws_id) return "ws:" .. tostring(ws_id) end
+
 local function space_key(ctx)
     for _, target in ipairs(ctx.targets) do
         local w  = target.window
         local ws = w and w.workspace
-        if ws and ws.id then return "ws:" .. tostring(ws.id) end
+        if ws and ws.id then return space_of(ws.id) end
     end
-    return "ws:unknown"
+    return space_of("unknown")
 end
 
 local function tree_for(key)
@@ -358,6 +368,19 @@ local function insert_beside(root, anchor, ax, delta, leaf, confine)
     return container
 end
 
+-- Where a window arriving from another space is put down: at one end of the
+-- root, as a peer of everything already on the workspace. A tree that runs the
+-- wrong way is pushed down a level first, so the arrival divides the workspace
+-- rather than joining a row it was never part of.
+local function place_at_edge(root, intent, leaf)
+    if #root.children > 1 and root.orient ~= intent.ax then
+        root.children = { { kind = "container", orient = root.orient, children = root.children } }
+    end
+    root.orient = intent.ax
+    table.insert(root.children, (intent.delta > 0) and #root.children + 1 or 1, leaf)
+    return true
+end
+
 -- Where a window that has left a tile is put down. An intent either names a
 -- direction (untab: straight beside the tile) or a grid (explode: row-major
 -- around it, the tile keeping cell 0, every row a row of the tile's own slot).
@@ -495,7 +518,7 @@ local function reconcile(ctx, settling)
         -- for that tile, so a tile unfolds in order rather than in a heap.
         if settling and intents then
             for _, intent in ipairs(intents) do
-                if claimed[intent.origin] then
+                if not intent.edge and claimed[intent.origin] then
                     for _, id in ipairs(entry.ids) do
                         if intent.ids[id] then
                             placed = place_for(root, intent, leaf)
@@ -505,6 +528,18 @@ local function reconcile(ctx, settling)
                     end
                 end
                 if placed then break end
+            end
+
+            -- A window from another space, if nothing on this one was expecting
+            -- it: it crossed a monitor boundary, so it comes in at that edge.
+            if not placed then
+                for _, intent in ipairs(intents) do
+                    if intent.edge then
+                        placed = place_at_edge(root, intent, leaf)
+                        intent.spent = true
+                        break
+                    end
+                end
             end
         end
 
@@ -521,7 +556,14 @@ local function reconcile(ctx, settling)
     if settling and intents then
         local kept = {}
         for _, intent in ipairs(intents) do
-            if claimed[intent.origin] then
+            if intent.edge then
+                -- An arrival intent names a window that is not here yet, so no
+                -- tile can vouch for it. It is bounded by passes instead: long
+                -- enough to outlive the recalculate the message itself causes,
+                -- short enough not to catch some later, unrelated window.
+                intent.grace = intent.grace - 1
+                if not intent.spent and intent.grace > 0 then kept[#kept + 1] = intent end
+            elseif claimed[intent.origin] then
                 for id in pairs(intent.ids) do
                     if leaf_holds(intent.origin, id) then
                         kept[#kept + 1] = intent
@@ -824,6 +866,27 @@ local function cmd_untab(root, key, ctx, dir)
     return true
 end
 
+-- A window is about to be sent into <space> travelling in <dir>: park it at the
+-- edge it comes in by — the far side from where it is heading — as a division
+-- of that whole workspace. Nothing moves here; the caller sends the window.
+--
+-- The space is named rather than derived, because the command necessarily runs
+-- while the window is still on the space it is leaving.
+local function cmd_enter(args)
+    local dir, space = args:match("^(%S+)%s+(%S+)$")
+    local ax, delta  = AXIS[dir or ""], DELTA[dir or ""]
+    if not (ax and space) then return "nary: enter expects '<l|r|u|d> <space>'" end
+
+    local intents = state.pending[space] or {}
+    for i = #intents, 1, -1 do -- one arrival at a time; a repeat replaces it
+        if intents[i].edge then table.remove(intents, i) end
+    end
+
+    intents[#intents + 1] = { edge = true, ax = ax, delta = -delta, grace = 2 }
+    state.pending[space] = intents
+    return true
+end
+
 -- The tile holding <window> is about to be dissolved into its windows: unfold
 -- them into a <columns>-wide grid filling that tile's slot, in tab order, with
 -- the tab that was visible keeping cell 0. Caller picks the column count, since
@@ -936,13 +999,15 @@ local function dispatch(ctx, msg)
         return cmd_resize(root, ctx, args)
     elseif command == "untab" then
         return cmd_untab(root, key, ctx, args)
+    elseif command == "enter" then
+        return cmd_enter(args)
     elseif command == "explode" then
         return cmd_explode(root, key, args)
     elseif command == "toggleorient" then
         return cmd_toggleorient(root, ctx)
     end
     return "nary: expected 'move <l|r|u|d>', 'resize <dx> <dy>', 'untab <l|r|u|d>', " ..
-           "'explode <window> <columns>' or 'toggleorient'"
+           "'enter <l|r|u|d> <space>', 'explode <window> <columns>' or 'toggleorient'"
 end
 
 local function recalculate(ctx)
@@ -950,11 +1015,19 @@ local function recalculate(ctx)
     layout_node(ctx, root, ctx.area, place)
 end
 
--- Exposed for the offline test harness; harmless under Hyprland.
+-- Exposed for the offline test harness, plus the two the config itself uses:
+-- `space` to name a workspace's tree (an `enter` intent is aimed at a space the
+-- keybinding is not on), and `shape` to tell a command that rearranged the
+-- workspace from one that ran out of room and should cross to the next monitor.
 local M = {
     state       = state,
     canon       = canon,
     dispatch    = dispatch,
+    space       = space_of,
+    shape       = function(key)
+        local root = state.trees[key]
+        return root and canon(root) or ""
+    end,
     -- The full pass, so tests can assert on the geometry windows are given
     -- rather than on the shape of the tree behind it.
     recalculate = recalculate,
