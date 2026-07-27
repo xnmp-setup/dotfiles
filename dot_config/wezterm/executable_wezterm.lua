@@ -543,15 +543,19 @@ config.keys = {
   end) },
   -- Esc: interrupt handling. A user interrupt (Esc mid-response) fires no Claude
   -- Code hook, so the claude_status var stays stuck on 'working' and the tab
-  -- keeps spinning. Intercept Esc here: if the pane is running claude, mark it
-  -- 'done' in pane_status (the tab bar's source of truth) so it drops to idle
-  -- immediately. Always forward the Esc to the app afterwards, so this is purely
-  -- additive — Claude still receives the interrupt and does whatever it normally
-  -- would. A fresh prompt's 'working' var write overrides 'done' right back.
+  -- keeps spinning. Intercept Esc here: if the pane is running claude AND it's
+  -- currently 'working', mark it 'done' in pane_status (the tab bar's source of
+  -- truth) so it drops to idle immediately. The 'working' guard is what keeps
+  -- non-interrupt uses of Esc from touching state: dismissing a /btw overlay
+  -- (or any Esc from an already-idle prompt) leaves status untouched, since only
+  -- a genuinely in-progress response is 'working'. Always forward the Esc to the
+  -- app afterwards, so this is purely additive — Claude still receives the
+  -- interrupt. A fresh prompt's 'working' var write overrides 'done' right back.
   { key = 'Escape', mods = 'NONE', action = wezterm.action_callback(function(window, pane)
     local proc = pane:get_foreground_process_name() or ''
-    if proc:find('claude') then
-      pane_status[pane:pane_id()] = 'done'
+    local pid = pane:pane_id()
+    if proc:find('claude') and claude_status_of(pid, pane:get_user_vars()) == 'working' then
+      pane_status[pid] = 'done'
     end
     window:perform_action(act.SendKey { key = 'Escape' }, pane)
   end) },
