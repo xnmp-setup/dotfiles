@@ -1,0 +1,16 @@
+# Lifecycle hooks are off by default; without this Codex silently ignores
+# ~/.codex/hooks.json (which drives the WezTerm tab status — see that file).
+[features]
+hooks = true
+
+[projects."/home/chong/Repos/tauri-explorer"]
+trust_level = "trusted"
+
+[projects."/home/chong/Repos/autonomous-issue-agent"]
+trust_level = "trusted"
+
+[projects."/home/chong/.local/share/chezmoi"]
+trust_level = "trusted"
+
+[tui.model_availability_nux]
+"gpt-5.6-sol" = 4

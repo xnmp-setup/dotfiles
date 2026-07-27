@@ -1,0 +1,50 @@
+{
+  "description": "Mirror Codex session state into the WezTerm tab bar (see ~/.local/bin/wezterm-agent-status). Same states and same script as the Claude Code hooks in ~/.claude/settings.json, so both agents' tabs read identically.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "~/.local/bin/wezterm-agent-status working" }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "~/.local/bin/wezterm-agent-status working" }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "~/.local/bin/wezterm-agent-status working" }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "~/.local/bin/wezterm-agent-status attention" }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "~/.local/bin/wezterm-agent-status done" }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          { "type": "command", "command": "~/.local/bin/wezterm-agent-status done" }
+        ]
+      }
+    ]
+  }
+}
