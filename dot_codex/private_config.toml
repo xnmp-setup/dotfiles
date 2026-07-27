@@ -1,3 +1,8 @@
+# Lifecycle hooks are off by default; without this Codex silently ignores
+# ~/.codex/hooks.json (which drives the WezTerm tab status — see that file).
+[features]
+hooks = true
+
 [projects."/home/chong/Repos/tauri-explorer"]
 trust_level = "trusted"
 

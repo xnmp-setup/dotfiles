@@ -335,13 +335,16 @@ local last_tab_title = {}
 -- (before any focus event) → treated as focused so nothing dims on first paint.
 local window_focus = {}
 
--- Per-pane Claude status, keyed by pane-id. This is the SOURCE OF TRUTH the tab
--- bar reads — NOT the raw claude_status user var — because the var gets stuck.
+-- Per-pane coding-agent status (Claude Code or Codex), keyed by pane-id. This is
+-- the SOURCE OF TRUTH the tab bar reads — NOT the raw agent_status user var —
+-- because the var gets stuck.
 --
--- The claude_status OSC var is set by ~/.claude/hooks/wezterm_status.sh on hook
--- events (working / attention / done). But a user INTERRUPT (Esc mid-response)
--- fires no Claude Code hook, so the var stays "working" forever and the spinner
--- animates on a tab that's actually idle. We can't fix that from the hook side.
+-- The agent_status OSC var is set by ~/.local/bin/wezterm-agent-status on hook
+-- events (working / attention / done); both agents run the same script, wired up
+-- in ~/.claude/settings.json and ~/.codex/hooks.json respectively. But a user
+-- INTERRUPT (Esc mid-response) fires no hook in either agent, so the var stays
+-- "working" forever and the spinner animates on a tab that's actually idle. We
+-- can't fix that from the hook side.
 --
 -- Instead: the user-var-changed handler mirrors every var write into this table
 -- (so normal hook-driven transitions, including working again on the next
@@ -351,21 +354,137 @@ local window_focus = {}
 -- background watchdog. Keyed by pane_id; nil → fall back to the var / no status.
 local pane_status = {}
 
--- Resolve a pane's effective Claude status: the table (source of truth) wins,
+-- Resolve a pane's effective agent status: the table (source of truth) wins,
 -- else the raw user var (covers panes that set the var before this session's
 -- user-var-changed handler had seen them, e.g. a config reload mid-session).
-local function claude_status_of(pane_id, user_vars)
-  return pane_status[pane_id] or (user_vars or {}).claude_status
+-- claude_status is the var's former, Claude-only name — still read so agent
+-- sessions started before this config landed keep reporting until they exit.
+local function agent_status_of(pane_id, user_vars)
+  local vars = user_vars or {}
+  return pane_status[pane_id] or vars.agent_status or vars.claude_status
 end
 
--- Mirror every claude_status var write into pane_status. Fires on each OSC
+-- Mirror every agent_status var write into pane_status. Fires on each OSC
 -- SetUserVar receipt, so a fresh 'working' on the next prompt overrides an
 -- Esc-set 'done' automatically.
 wezterm.on('user-var-changed', function(window, pane, name, value)
-  if name == 'claude_status' then
+  if name == 'agent_status' or name == 'claude_status' then
     pane_status[pane:pane_id()] = value
   end
 end)
+
+-- Runtimes that run an agent as a SCRIPT, so the process name is the runtime and
+-- says nothing about which agent (if any) it is hosting — see agent_of_proc.
+local JS_RUNTIMES = { node = 1, bun = 1, deno = 1 }
+
+local function agent_named_in(s)
+  if not s or s == '' then return nil end
+  if s:find('claude') then return 'claude' end
+  if s:find('codex') then return 'codex' end
+  return nil
+end
+
+-- Which coding agent (if any) a pane's foreground process is: 'claude' | 'codex'
+-- | nil. Drives both the Esc interrupt fix-up and the tab-bar status styling, so
+-- adding an agent is a one-line change in agent_named_in.
+--
+-- The process path alone is NOT enough. Only a natively-installed Claude Code
+-- names itself in its executable path (~/.local/share/claude/versions/<ver>);
+-- Codex — and an npm-installed Claude Code — run as a node script, so the
+-- executable is .../bin/node and the agent's name appears only in the ARGV:
+--     node /home/you/.nvm/versions/node/vX/bin/codex
+-- Matching the path alone therefore silently missed every Codex pane, which then
+-- fell through to the generic per-app icon and rendered as APP_ICONS.node — the
+-- Node.js hexagon, static and status-less. So when the foreground process is a JS
+-- runtime, fall back to scanning argv.
+--
+-- argv is fetched through a callback, not passed in, so the (cheap but non-zero)
+-- /proc read only happens for panes that are actually running a JS runtime —
+-- format-tab-title calls this for every tab on every repaint.
+--
+-- Known imprecision: `node ~/Repos/codex-experiments/x.js` would read as a Codex
+-- pane. It only costs a wrong tab icon, and requires a JS runtime whose argv
+-- names an agent, so it's not worth a heavier check.
+local function agent_of_proc(proc, argv_fn)
+  if not proc or proc == '' then return nil end
+  local direct = agent_named_in(proc)
+  if direct then return direct end
+
+  local pname = (proc:match('[^/\\]+$') or ''):gsub('%.exe$', '')
+  if not JS_RUNTIMES[pname] then return nil end
+
+  for _, a in ipairs((argv_fn and argv_fn()) or {}) do
+    local hosted = agent_named_in(a)
+    if hosted then return hosted end
+  end
+  return nil
+end
+
+-- argv of a pane's foreground process, or {} when unavailable. Everything is
+-- pcall'd: format-tab-title runs on every repaint and an error there drops the
+-- whole tab back to wezterm's raw default title.
+local function pane_argv(pane_id)
+  local ok, pane = pcall(wezterm.mux.get_pane, pane_id)
+  if not ok or not pane then return {} end
+  local ok2, info = pcall(function() return pane:get_foreground_process_info() end)
+  if not ok2 or not info or not info.argv then return {} end
+  return info.argv
+end
+
+-- Wall clock in milliseconds. THE reference for everything animated or expiring
+-- below, deliberately in place of counting update-status events.
+--
+-- update-status does NOT fire on a fixed interval. It fires on the interval AND
+-- on every repaint — and because the handler ends by writing a right-status that
+-- differs each time, it invalidates the tab bar, which repaints, which fires the
+-- handler again. Measured: ~24 events/sec in a single window, in bursts as close
+-- as 9ms apart, against the 200ms status_update_interval you'd expect. Anything
+-- paced by counting those events therefore runs at repaint rate and drifts with
+-- machine load. Pacing off the clock instead makes the cadence exact and
+-- independent of how often the handler happens to run.
+--
+-- Uses chrono's %s (epoch seconds) + %.3f (fractional part) via the wezterm.time
+-- API; pcall'd, falling back to 0 so a missing/changed API degrades to a frozen
+-- animation rather than an error in the middle of format-tab-title.
+local function now_ms()
+  local ok, s = pcall(function() return wezterm.time.now():format('%s%.3f') end)
+  if not ok then return 0 end
+  return (tonumber(s) or 0) * 1000
+end
+
+-- Ticks once per update-status event. Only used to vary the right-status payload
+-- (see the bottom of that handler) — NOT for timing anything.
+local status_tick = 0
+
+-- agent_of_proc memo, keyed by pane-id: { proc = <the process path it was
+-- resolved from>, agent = 'claude'|'codex'|false, tick = <status_tick then> }.
+--
+-- Necessary because the argv lookup reads /proc through the mux, while
+-- format-tab-title runs on EVERY tab-bar repaint (~8-24x/sec per window). Doing
+-- that read per tab per frame made the whole terminal visibly laggy.
+--
+-- Two invalidations, because neither alone is sufficient:
+--   - proc changed → the foreground process was replaced (agent exited back to
+--     the shell, or a command started). Catches every common transition, and is
+--     free: we already have proc in hand.
+--   - TTL → catches the case proc CAN'T: one node process replaced by another
+--     node process, where the path is identical but the argv is not. Rare, so a
+--     couple of seconds of a stale icon is the right trade for the frames saved.
+local AGENT_CACHE_TTL_MS = 2000
+local agent_cache = {}
+
+local function agent_of_pane(pane_id, proc)
+  local hit = agent_cache[pane_id]
+  local now = now_ms()
+  if hit and hit.proc == proc and (now - hit.at) < AGENT_CACHE_TTL_MS then
+    return hit.agent or nil
+  end
+  local agent = agent_of_proc(proc, function() return pane_argv(pane_id) end)
+  -- `false`, not nil: a table lookup can't distinguish "cached as not-an-agent"
+  -- from "never looked up", and not-an-agent is the common case worth caching.
+  agent_cache[pane_id] = { proc = proc, agent = agent or false, at = now }
+  return agent
+end
 
 -- ---------- Default shell ----------
 -- Default new tabs/windows to the WSL distro, but only on Windows: this domain
@@ -545,20 +664,21 @@ config.keys = {
       }, pane)
     end
   end) },
-  -- Esc: interrupt handling. A user interrupt (Esc mid-response) fires no Claude
-  -- Code hook, so the claude_status var stays stuck on 'working' and the tab
-  -- keeps spinning. Intercept Esc here: if the pane is running claude AND it's
+  -- Esc: interrupt handling. A user interrupt (Esc mid-response) fires no hook in
+  -- either agent, so the agent_status var stays stuck on 'working' and the tab
+  -- keeps spinning. Intercept Esc here: if the pane is running an agent AND it's
   -- currently 'working', mark it 'done' in pane_status (the tab bar's source of
   -- truth) so it drops to idle immediately. The 'working' guard is what keeps
   -- non-interrupt uses of Esc from touching state: dismissing a /btw overlay
   -- (or any Esc from an already-idle prompt) leaves status untouched, since only
   -- a genuinely in-progress response is 'working'. Always forward the Esc to the
-  -- app afterwards, so this is purely additive — Claude still receives the
+  -- app afterwards, so this is purely additive — the agent still receives the
   -- interrupt. A fresh prompt's 'working' var write overrides 'done' right back.
   { key = 'Escape', mods = 'NONE', action = wezterm.action_callback(function(window, pane)
     local proc = pane:get_foreground_process_name() or ''
     local pid = pane:pane_id()
-    if proc:find('claude') and claude_status_of(pid, pane:get_user_vars()) == 'working' then
+    local agent = agent_of_pane(pid, proc)
+    if agent and agent_status_of(pid, pane:get_user_vars()) == 'working' then
       pane_status[pid] = 'done'
     end
     window:perform_action(act.SendKey { key = 'Escape' }, pane)
@@ -653,8 +773,8 @@ config.keys = {
 }
 
 -- ---------- Tab bar styling ----------
--- Claude session status, set per-pane via the OSC 1337 SetUserVar "claude_status"
--- escape sequence emitted by ~/.claude/hooks/wezterm_status.sh. Drives a leading
+-- Agent session status, set per-pane via the OSC 1337 SetUserVar "agent_status"
+-- escape sequence emitted by ~/.local/bin/wezterm-agent-status. Drives a leading
 -- glyph + tab tint so you can see at a glance which tabs are working vs waiting.
 -- Each state has an emphasized active bg and a dulled inactive bg.
 local STATUS_STYLE = {
@@ -720,11 +840,7 @@ local APP_SHOWS_FILE = {
 -- argv entry — editors put the file after any options, and if several files are
 -- open the active/last one is the most useful label.
 local function editor_open_file(pane_id)
-  local ok, pane = pcall(wezterm.mux.get_pane, pane_id)
-  if not ok or not pane then return nil end
-  local ok2, info = pcall(function() return pane:get_foreground_process_info() end)
-  if not ok2 or not info or not info.argv then return nil end
-  local argv = info.argv
+  local argv = pane_argv(pane_id)
   for i = #argv, 2, -1 do  -- skip argv[1] (the program itself)
     local a = argv[i]
     if a and a ~= '' and a:sub(1, 1) ~= '-' then
@@ -740,8 +856,10 @@ end
 -- own star glyph in its place — the shape grows/shrinks (· → ✦ → ✳ → ✷ → …) and
 -- the color pulses dim→bright, so it reads as a blinking Claude icon rather than
 -- a generic spinner. WezTerm only repaints the tab bar on an invalidation (not a
--- timer), so the update-status handler advances spinner_frame and forces a
--- repaint each tick — ONLY while working, so idle tabs don't churn repaints.
+-- timer), so the update-status handler forces a repaint while any pane is
+-- working — ONLY then, so idle tabs don't churn repaints. WHICH frame gets drawn
+-- is a pure function of the clock (see now_ms / GLYPH_MS), not of how many
+-- repaints have happened.
 --
 -- Claude Code's own "working" spinner, replicated. Claude cycles a GROWING STAR
 -- (not a rotation or color pulse): it eases up from a dot to a big asterisk and
@@ -767,34 +885,100 @@ end
 local SPINNER_RAMP = {
   '✢\u{FE0E}', '✶\u{FE0E}', '✻\u{FE0E}', '✽\u{FE0E}',
 }
--- Ping-pong: 1..6 then 5..2 → 10 frames, smooth grow/shrink with no repeated peak.
-local SPINNER_FRAMES = {}
-for i = 1, #SPINNER_RAMP do SPINNER_FRAMES[#SPINNER_FRAMES + 1] = SPINNER_RAMP[i] end
-for i = #SPINNER_RAMP - 1, 2, -1 do SPINNER_FRAMES[#SPINNER_FRAMES + 1] = SPINNER_RAMP[i] end
 
 -- Working spinner color: a HUE CYCLE sweeping blue → teal → green and back,
 -- deliberately different from the orange done/idle star so an in-progress tab is
 -- unmistakable. The hue ramp is ping-ponged (blue→green then green→blue) for a
--- seamless loop, and indexed on its OWN counter (spinner_color_frame) rather than
--- the glyph frame — the two lists differ in length, so color drifts against size
--- instead of locking to it, giving a livelier shimmer.
+-- seamless loop, and stepped on its OWN period (see COLOR_MS) rather than the
+-- glyph's — the two periods differ, so color drifts against size instead of
+-- locking to it, giving a livelier shimmer.
 local SPINNER_COLOR_RAMP = { '#4a7fd6', '#4aa6c8', '#3fb8a8', '#4fc785', '#63d46b' }
-local SPINNER_COLORS = {}
-for i = 1, #SPINNER_COLOR_RAMP do SPINNER_COLORS[#SPINNER_COLORS + 1] = SPINNER_COLOR_RAMP[i] end
-for i = #SPINNER_COLOR_RAMP - 1, 2, -1 do SPINNER_COLORS[#SPINNER_COLORS + 1] = SPINNER_COLOR_RAMP[i] end
-local spinner_frame = 1
-local spinner_color_frame = 1
+
+-- Animation periods, in MILLISECONDS PER STEP — the actual cadence you see,
+-- because the indices below are computed from now_ms() rather than from a count
+-- of update-status events (which fire ~24x/sec; see now_ms).
+--
+-- Claude Code's own spinner runs a ~2000ms grow/shrink cycle. Our ping-ponged
+-- ramp is 6 frames, so 333ms/frame reproduces that period — about 3 steps/sec,
+-- an unhurried pulse. COLOR_MS is deliberately NOT a divisor of GLYPH_MS so the
+-- two cycles beat against each other instead of marching in lockstep.
+local GLYPH_MS = 333
+local COLOR_MS = 250
+-- The title shimmer is a travelling band, not a blink, so it wants to be smooth:
+-- fast enough to read as a sweep, slow enough not to strobe.
+local SHIMMER_MS = 60
+
+-- Index into a ping-ponged ramp for the current instant. Wall-clock derived, so
+-- every window/tab showing the same agent animates in lockstep, and the cadence
+-- holds no matter how often (or unevenly) the tab bar repaints.
+local function frame_at(now, ramp, period_ms)
+  return ramp[(math.floor(now / period_ms) % #ramp) + 1]
+end
+
+-- Ping-pong a ramp: 1..n then n-1..2, so it loops smoothly with no repeated peak.
+local function pingpong(ramp)
+  local out = {}
+  for i = 1, #ramp do out[#out + 1] = ramp[i] end
+  for i = #ramp - 1, 2, -1 do out[#out + 1] = ramp[i] end
+  return out
+end
+
+-- Per-agent tab markers. COLOR encodes the STATE (in-progress hue cycle / idle /
+-- red for needs-input) and is shared, so a red tab means the same thing whichever
+-- agent it is; the GLYPH FAMILY encodes WHICH agent, so you can tell a Claude tab
+-- from a Codex one at a glance:
+--   claude — Claude's own growing star (✢✶✻✽), idle ❋, orange when idle
+--   codex  — OpenAI's hexagon: outline ⬡ ↔ filled ⬢ pulse, idle ⬢, teal when idle
+-- Every glyph carries VARIATION SELECTOR-15 (\u{FE0E}) to force TEXT presentation
+-- — bare shapes in these blocks can render as emoji that ignore our color. All of
+-- them come from Adwaita Mono, the third window_frame fallback (Inter and Hack
+-- Nerd Font have none of these codepoints), same as the Claude stars always have.
+--
+-- Adding an agent = one entry here plus one line in agent_of_proc.
+local AGENT_MARKERS = {
+  claude = {
+    idle       = '❋\u{FE0E}',  -- U+274B heavy eight-teardrop asterisk
+    idle_fg    = '#C0623A',    -- claude orange (matches STATUS_STYLE.done)
+    -- Needs input: a CHUNKIER star than idle — ✹ (U+2739, twelve-pointed filled
+    -- black star) is denser than the ❋ outline, so the tab stands out twice over
+    -- (shape + red).
+    attention  = '✹\u{FE0E}',
+    frames     = pingpong(SPINNER_RAMP),
+    colors     = pingpong(SPINNER_COLOR_RAMP),
+  },
+  codex = {
+    idle       = '⬢\u{FE0E}',  -- U+2B22 black hexagon — OpenAI's mark is hexagonal
+    idle_fg    = '#10A37F',    -- OpenAI teal
+    attention  = '⬣\u{FE0E}',  -- U+2B23 horizontal black hexagon: wider, denser
+    -- Working: a diamond that grows AND fills — small solid ⬩, then medium
+    -- outline ⬦, outline-with-core ◈, solid ⬥ — ping-ponged, so it swells and
+    -- settles the way Claude's star does, in a different shape family.
+    --
+    -- All four are deliberately from the U+2B2x/U+25C8 set rather than the
+    -- obvious ◆ ◇ (U+25C6/U+25C7): those two exist in Inter, which sits FIRST in
+    -- the window_frame stack, so they'd resolve from a PROPORTIONAL font while
+    -- their neighbours resolved from Adwaita Mono — different advance widths,
+    -- and the title would visibly shift each frame. Every glyph below is absent
+    -- from both Inter and Hack Nerd Font, so all four come from Adwaita Mono;
+    -- being monospaced, it gives them one identical advance width. That's also
+    -- why the small ⬩ frame is safe here, where Claude's ramp had to drop its
+    -- narrow · (that one came from a proportional font).
+    frames     = pingpong({ '⬩\u{FE0E}', '⬦\u{FE0E}', '◈\u{FE0E}', '⬥\u{FE0E}' }),
+    -- Teal → mint, a hue cycle in Codex's own colour rather than Claude's blue→green,
+    -- so even the working animation says which agent is running.
+    colors     = pingpong({ '#0E8C6E', '#10A37F', '#1FBF93', '#45D6A8', '#6FE8C0' }),
+  },
+}
 
 -- Title-text shimmer for "working" tabs. Claude Code shimmers its status text
 -- (combobulating/lollygagging/…) with a bright band that sweeps across the
 -- letters; we replicate it on the tab title. Each character is emitted as its
--- own colored run whose lightness is a cosine of (char_index - shimmer_phase),
--- so the peak (a bright grey) travels left→right while the rest sits a shade
--- dimmer. shimmer_phase advances once per update-status tick, but ONLY while a
--- pane is working, so idle tabs render a flat title and don't churn repaints.
--- The band stays within the bright greys (dim floor well above black) so the
--- title never loses legibility — this is a subtle sheen, not a blink.
-local shimmer_phase = 0
+-- own colored run whose lightness is a cosine of (char_index - phase), so the
+-- peak (a bright grey) travels left→right while the rest sits a shade dimmer.
+-- The phase is derived from the clock (SHIMMER_MS per step) and only applied to
+-- working tabs, so idle tabs render a flat title and don't churn repaints. The
+-- band stays within the bright greys (dim floor well above black) so the title
+-- never loses legibility — this is a subtle sheen, not a blink.
 
 -- Grey between dim `lo` and bright `hi` (both 0..255) by t in [0,1]. `dither`
 -- nudges the blue channel by ±0 (visually nothing) purely so that two adjacent
@@ -853,7 +1037,13 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
     end
   end
 
-  local is_claude = proc:find('claude') ~= nil
+  -- Which agent (if any) owns this pane. `agent` drives the status marker for
+  -- both Claude and Codex; `is_claude` additionally drives the TITLE source,
+  -- because only Claude's pane title is a useful label (its current task).
+  -- Codex titles its pane with its own run-state text, which duplicates what our
+  -- marker already says, so codex tabs take the normal cwd path below.
+  local agent = agent_of_pane(pane_info.pane_id, proc)
+  local is_claude = agent == 'claude'
 
   -- On exit Claude blanks its pane title (renders as a lone "_") for a frame
   -- before the shell repaints. proc still reads "claude" that frame, so the
@@ -863,6 +1053,7 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
   -- away, instead of holding the orange claude styling until the shell repaints.
   if is_claude and (title == '' or title == '_') then
     is_claude = false
+    agent = nil
     proc = ''  -- so the branch below takes the plain-cwd path, not "cwd: _"
   end
 
@@ -957,30 +1148,34 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
   -- we know how many cells it consumes before deciding how much title fits.
   local marker, marker_fg, title_fg
   local is_working = false
-  if is_claude then
-    local status = claude_status_of(pane_info.pane_id, pane_info.user_vars)
+  if agent then
+    local m = AGENT_MARKERS[agent]
+    local status = agent_status_of(pane_info.pane_id, pane_info.user_vars)
     local style = status and STATUS_STYLE[status]
     if status == 'working' then
       is_working = true
-      -- Animate Claude's growing star with a synced cyan shimmer — both glyph and
-      -- color come from the current ping-pong frame, so the star brightens as it
-      -- grows. Cyan (not orange) marks in-progress apart from the idle star.
-      marker = SPINNER_FRAMES[((spinner_frame - 1) % #SPINNER_FRAMES) + 1]
-      marker_fg = SPINNER_COLORS[((spinner_color_frame - 1) % #SPINNER_COLORS) + 1]
+      -- Animate the agent's glyph with a synced color pulse — both glyph and
+      -- color come from the current ping-pong frame, so the marker brightens as
+      -- it animates. The working hue is deliberately not the idle hue, so an
+      -- in-progress tab reads as in-progress even out of the corner of your eye.
+      local now = now_ms()
+      marker = frame_at(now, m.frames, GLYPH_MS)
+      marker_fg = frame_at(now, m.colors, COLOR_MS)
     elseif status == 'attention' then
-      -- Needs input: loud red, and a CHUNKIER star than idle — ✹ (U+2739, twelve-
-      -- pointed filled black star) is denser/bolder than the idle ❋ outline, so a
-      -- tab awaiting input stands out. VS15 forces text presentation so it takes
-      -- our red (bare emoji stars are font-colored and ignore it).
-      marker = '✹\u{FE0E}'
+      -- Needs input: loud red, and a chunkier glyph than idle, so a tab awaiting
+      -- input stands out twice over (shape + color).
+      marker = m.attention
       marker_fg = '#F26D64'
     else
-      -- done / idle: chunky orange claude-style star ❋ (U+274B). Can't reuse the
-      -- emoji ✳ — emoji are font-colored (green), not tintable.
-      marker = '❋\u{FE0E}'
-      marker_fg = style and style.active_bg or '#C0623A'
+      -- done / idle: the agent's own glyph in its own color. Note these are all
+      -- text-presentation codepoints — an emoji variant would be font-colored
+      -- (e.g. ✳ renders green) and would ignore the tint we set here.
+      marker = m.idle
+      -- STATUS_STYLE.done carries claude's orange, so only claude reads from it;
+      -- every other agent uses its own idle color.
+      marker_fg = (agent == 'claude' and style and style.active_bg) or m.idle_fg
     end
-    -- Attention also reddens the title text (not just the star) so the whole
+    -- Attention also reddens the title text (not just the glyph) so the whole
     -- label shouts. Fancy bar blocks per-tab *background* color but per-item
     -- *foreground* is fine, so red text works here.
     if status == 'attention' then
@@ -989,7 +1184,7 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
       title_fg = is_active and '#ffffff' or '#bbbbbb'
     end
   else
-    -- Non-claude tabs: default to a terminal prompt glyph (❯ U+276F, text-
+    -- Non-agent tabs: default to a terminal prompt glyph (❯ U+276F, text-
     -- presentation, needs no Nerd Font), dimmed so it reads as a marker not part
     -- of the name. If a known app is the foreground process, swap in its Nerd
     -- Font icon (see APP_ICONS) — strip any path and a trailing .exe first.
@@ -1024,7 +1219,7 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
   }
   if is_working then
     -- Shimmering title: one colored run per char, bright band sweeps L→R.
-    for _, run in ipairs(shimmer_runs(title, shimmer_phase, is_active)) do
+    for _, run in ipairs(shimmer_runs(title, math.floor(now_ms() / SHIMMER_MS), is_active)) do
       result[#result + 1] = run
     end
     result[#result + 1] = { Text = ' ' }
@@ -1076,7 +1271,7 @@ end)
 
 -- ---------- Working spinner animation ----------
 -- Fires every status_update_interval ms. If any pane in any window reports
--- claude_status=working, advance the braille spinner frame and force a tab-bar
+-- agent_status=working, advance the spinner frame and force a tab-bar
 -- repaint so format-tab-title re-renders the new frame.
 --
 -- CRITICAL: the repaint is done with set_right_status, NOT set_config_overrides.
@@ -1087,11 +1282,15 @@ end)
 -- re-runs format-tab-title) cheaply, with no reload. We stash the frame in a
 -- module global and write an (empty) right status purely to trigger the repaint.
 wezterm.on('update-status', function(window, pane)
+  -- Fires on a fixed interval whether or not anything is working, so it doubles
+  -- as the clock the agent_of_pane cache expires against.
+  status_tick = status_tick + 1
+
   local any_working = false
   for _, w in ipairs(wezterm.mux.all_windows()) do
     for _, tab in ipairs(w:tabs()) do
       for _, p in ipairs(tab:panes()) do
-        local st = claude_status_of(p:pane_id(), p:get_user_vars())
+        local st = agent_status_of(p:pane_id(), p:get_user_vars())
         if st == 'working' then any_working = true; break end
       end
       if any_working then break end
@@ -1108,17 +1307,21 @@ wezterm.on('update-status', function(window, pane)
     return
   end
 
-  spinner_frame = (spinner_frame % #SPINNER_FRAMES) + 1
-  spinner_color_frame = (spinner_color_frame % #SPINNER_COLORS) + 1
-  -- Advance the title shimmer band one step per tick. Kept as a plain counter
-  -- (cosine in shimmer_runs is periodic) so it never needs wrapping.
-  shimmer_phase = shimmer_phase + 1
+  -- NOTE: no frame counters are advanced here. The glyph, its color and the title
+  -- shimmer are all computed from now_ms() at render time (see GLYPH_MS /
+  -- COLOR_MS / SHIMMER_MS), because this handler does NOT fire on a fixed
+  -- interval — the invalidation below re-triggers it, so it runs at repaint rate
+  -- (~24x/sec, measured). Advancing a frame per call made the animation run at
+  -- that rate instead of the intended ~3 steps/sec. All this handler still owes
+  -- the animation is a steady stream of repaints, which is what the status write
+  -- below buys.
+  --
   -- Alternate between two DIFFERENT zero-width chars (ZWSP U+200B / ZWNBSP
   -- U+FEFF) so the value changes each tick — an unchanged right status is a
   -- no-op and wouldn't repaint. Both are zero-width, so the region's size never
   -- changes and the tab bar doesn't shift. The chars are never visibly rendered;
   -- they exist only to invalidate the tab bar so format-tab-title re-runs.
-  window:set_right_status(wezterm.format({ { Text = (spinner_frame % 2 == 0) and '\u{200b}' or '\u{feff}' } }))
+  window:set_right_status(wezterm.format({ { Text = (status_tick % 2 == 0) and '\u{200b}' or '\u{feff}' } }))
 end)
 
 -- ---------- Command palette: Set Theme ----------
