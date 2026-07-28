@@ -448,7 +448,7 @@ do
 end
 
 --------------------------------------------------------------------------------
--- The opposite direction retraces the move
+-- undo walks the trail back
 --------------------------------------------------------------------------------
 
 -- Drive `msgs` in order from `root`, holding focus, and report the final layout.
@@ -462,40 +462,53 @@ local function drive(root, focus, msgs)
 end
 
 do
-    -- Bootstrapping and claiming a band both restructure the tree, so neither
-    -- is undone by the slot ladder alone.
-    check("up undoes the pairing that down created",
-        drive(C("h", L("1"), L("2"), L("3")), "1", { "move d", "move u" }), "h(1 2 3)")
+    -- The moves that need a trail: both restructure the tree, so the slot
+    -- ladder alone cannot find the way home.
+    check("undo takes back the pairing that down created",
+        drive(C("h", L("1"), L("2"), L("3")), "1", { "move d", "undo" }), "h(1 2 3)")
 
-    check("down undoes claiming a band",
-        drive(C("h", L("1"), C("v", L("2"), L("3"))), "2", { "move u", "move d" }),
+    check("undo takes back claiming a band",
+        drive(C("h", L("1"), C("v", L("2"), L("3"))), "2", { "move u", "undo" }),
         "h(1 v(2 3))")
 
-    check("left undoes claiming a column",
-        drive(C("v", L("1"), C("h", L("2"), L("3"))), "2", { "move l", "move r" }),
+    check("undo takes back claiming a column",
+        drive(C("v", L("1"), C("h", L("2"), L("3"))), "2", { "move l", "undo" }),
         "v(1 h(2 3))")
 
-    -- A whole run retraces, not just the last step.
-    check("five rights are undone by five lefts",
+    -- A whole run walks back, not just the last step.
+    check("five moves are walked back by five undos",
         drive(C("h", C("h", L("1"), L("2")), L("3")), "1",
               { "move r", "move r", "move r", "move r", "move r",
-                "move l", "move l", "move l", "move l", "move l" }),
+                "undo", "undo", "undo", "undo", "undo" }),
         "h(h(1 2) 3)")
 
-    check("a mixed run retraces in reverse order",
+    check("a mixed run walks back in reverse order",
         drive(C("h", L("1"), L("2"), L("3")), "1",
-              { "move d", "move r", "move l", "move u" }), "h(1 2 3)")
+              { "move d", "move r", "undo", "undo" }), "h(1 2 3)")
 
-    -- Redo: going back and forth again lands in the same place.
+    -- Redo: making the move again after taking it back lands in the same place.
     check("repeating a move after undoing it is deterministic",
         drive(C("h", L("1"), C("v", L("2"), L("3"))), "2",
-              { "move u", "move d", "move u" }), "v(2 h(1 3))")
+              { "move u", "undo", "move u" }), "v(2 h(1 3))")
 
-    -- Pressing into the far edge changes nothing, so it must not consume the
-    -- trail: the undo still has to be there afterwards.
-    check("a press at the boundary does not spend the undo",
+    -- Pressing into the far edge changes nothing, so it must not be recorded:
+    -- the move actually worth taking back has to still be on top.
+    check("a press at the boundary does not bury the undo",
         drive(C("h", L("1"), L("2")), "1",
-              { "move r", "move r", "move l" }), "h(1 2)")
+              { "move d", "move d", "undo" }), "h(1 2)")
+
+    -- Walking past the start is a no-op, not a crash or a stale restore.
+    check("undo with nothing to take back leaves the layout alone",
+        drive(C("h", L("1"), L("2"), L("3")), "1", { "undo", "undo" }), "h(1 2 3)")
+
+    -- The trail is the workspace's, not the focused window's: undo takes back
+    -- the last thing that happened here regardless of what is focused now.
+    nary.state.trees[KEY]   = C("h", L("1"), C("v", L("2"), L("3")))
+    nary.state.history[KEY] = nil
+    nary.dispatch(ctx_for(nary.state.trees[KEY], "2"), "move u")
+    nary.dispatch(ctx_for(nary.state.trees[KEY], "1"), "undo")
+    check("undo does not care which window is focused",
+        nary.canon(nary.state.trees[KEY]), "h(1 v(2 3))")
 end
 
 do
@@ -505,47 +518,52 @@ do
     nary.state.history[KEY] = nil
     nary.dispatch(ctx_for(nary.state.trees[KEY], "1"), "move d")   -- h(v(2 1) 3)
 
-    -- Window 3 closes, then 1 moves back up.
-    nary.dispatch(ctx_for(C("h", C("v", L("2"), L("1"))), "1"), "move u")
+    -- Window 3 closes, then undo is pressed.
+    nary.dispatch(ctx_for(C("h", C("v", L("2"), L("1"))), "1"), "undo")
     check("a closed window abandons the trail instead of resurrecting it",
-        nary.canon(nary.state.trees[KEY]), "v(1 2)")
-
-    -- The trail belongs to the window that made it. Window 2 claiming a band
-    -- must not be undone by pressing down on window 1 — that is window 1's
-    -- move to make, and it goes somewhere else entirely.
-    nary.state.trees[KEY]   = C("h", L("1"), C("v", L("2"), L("3")))
-    nary.state.history[KEY] = nil
-    nary.dispatch(ctx_for(nary.state.trees[KEY], "2"), "move u")
-    check("window 2 claims a band",
-        nary.canon(nary.state.trees[KEY]), "v(2 h(1 3))")
-
-    nary.dispatch(ctx_for(nary.state.trees[KEY], "1"), "move d")
-    check("pressing down on a different window does not undo window 2's move",
-        nary.canon(nary.state.trees[KEY]), "v(2 3 1)")
+        nary.canon(nary.state.trees[KEY]), "v(2 1)")
 end
 
 do
-    -- Undo only lasts as long as the gesture. Once the keybinding reports the
-    -- modifiers released, the opposite direction is an ordinary move again —
-    -- which for a band-claiming move means somewhere quite different from home.
+    -- ARROWS ARE PURELY SPATIAL NOW. The opposite direction computes a fresh
+    -- move; it never retraces. This is the shape that motivated splitting the
+    -- two apart: left after right rejoins the row, rather than teleporting back
+    -- to the band 3 came from.
+    check("the opposite arrow steps rather than retracing",
+        drive(C("v", L("3"), C("h", L("1"), L("2"))), "3", { "move r", "move l" }),
+        "h(1 2 3)")
+
+    -- ...and the layout it stepped away from is still one undo away.
+    check("what the arrow stepped past is still on the trail",
+        drive(C("v", L("3"), C("h", L("1"), L("2"))), "3",
+              { "move r", "move l", "undo", "undo" }), "v(3 h(1 2))")
+end
+
+--------------------------------------------------------------------------------
+-- end_move: the seam for scoping the trail to a run of moves. Wired to nothing
+-- in the config today, so these guard the behaviour rather than a keybinding.
+--------------------------------------------------------------------------------
+
+do
     nary.state.trees[KEY]   = C("h", L("1"), C("v", L("2"), L("3")))
     nary.state.history[KEY] = nil
     nary.dispatch(ctx_for(nary.state.trees[KEY], "2"), "move u")
 
     nary.end_move()
-    nary.dispatch(ctx_for(nary.state.trees[KEY], "2"), "move d")
-    check("once the modifiers are released, the opposite direction is a plain move",
-        nary.canon(nary.state.trees[KEY]), "v(h(1 3) 2)")
+    nary.dispatch(ctx_for(nary.state.trees[KEY], "2"), "undo")
+    check("end_move settles the move so undo cannot take it back",
+        nary.canon(nary.state.trees[KEY]), "v(2 h(1 3))")
 
-    -- And the gesture after it starts clean rather than inheriting the trail.
-    nary.dispatch(ctx_for(nary.state.trees[KEY], "2"), "move u")
-    check("a fresh gesture undoes only its own move",
+    -- And the next move records a trail as usual rather than staying dead.
+    nary.dispatch(ctx_for(nary.state.trees[KEY], "2"), "move d")
+    nary.dispatch(ctx_for(nary.state.trees[KEY], "2"), "undo")
+    check("a move after end_move is recorded as usual",
         nary.canon(nary.state.trees[KEY]), "v(2 h(1 3))")
 end
 
 do
-    -- A move can hand a window to another monitor mid-gesture, so releasing the
-    -- modifiers has to end the gesture on every space, not just the focused one.
+    -- A move can hand a window to another monitor, so end_move has to settle
+    -- every space, not just the focused one.
     nary.state.trees["ws:1"] = C("h", L("1"), C("v", L("2"), L("3")))
     nary.state.trees["ws:2"] = C("h", L("7"), C("v", L("8"), L("9")))
     nary.state.history["ws:1"], nary.state.history["ws:2"] = nil, nil
@@ -553,12 +571,12 @@ do
     nary.dispatch(ctx_for(nary.state.trees["ws:2"], "8", 2), "move u")
 
     nary.end_move()
-    nary.dispatch(ctx_for(nary.state.trees["ws:1"], "2", 1), "move d")
-    nary.dispatch(ctx_for(nary.state.trees["ws:2"], "8", 2), "move d")
-    check("releasing ends the gesture on the focused space",
-        nary.canon(nary.state.trees["ws:1"]), "v(h(1 3) 2)")
-    check("releasing ends the gesture on the space that was not focused",
-        nary.canon(nary.state.trees["ws:2"]), "v(h(7 9) 8)")
+    nary.dispatch(ctx_for(nary.state.trees["ws:1"], "2", 1), "undo")
+    nary.dispatch(ctx_for(nary.state.trees["ws:2"], "8", 2), "undo")
+    check("end_move settles the focused space",
+        nary.canon(nary.state.trees["ws:1"]), "v(2 h(1 3))")
+    check("end_move settles the space that was not focused",
+        nary.canon(nary.state.trees["ws:2"]), "v(8 h(7 9))")
 end
 
 --------------------------------------------------------------------------------

@@ -562,32 +562,52 @@ for _, dir in ipairs({ "left", "right", "up", "down" }) do
     hl.bind(mainMod .. " + CTRL + ALT + " .. dir, function() step_or_cross(dir) end)
 end
 
--- UNDO IS PART OF THE GESTURE, NOT A SEPARATE KEY
+-- UNDO — a key of its own, because an arrow cannot carry two meanings
 --
--- nary lets the opposite direction retrace a move rather than compute a fresh
--- one, which is what makes a move that restructured the tree reversible at all.
--- That only wants to be true while the move is still in the hand that made it:
--- still holding the keys, still looking at where the window landed. Let go and
--- the move is finished — pressing left after right should then step left, not
--- teleport back to a layout from the last time you touched this window.
+-- A move that restructured the tree is not reversed by pressing the opposite
+-- arrow: the reverse press computes against a slot list the old layout is not
+-- in. nary keeps a trail so the old layout can be restored exactly, and this is
+-- the key that walks it.
 --
--- The layout cannot see the keyboard, so the boundary is drawn here: SUPER and
--- CTRL are held down by every move bind above, so releasing either one ends the
--- gesture. ALT is deliberately not included — it only selects which flavour of
--- move (untab or not), so letting it go mid-gesture keeps the trail.
+-- Retracing used to live on the opposite arrow instead. That made an arrow mean
+-- two things — "move it that way" and "put it back" — which disagree after
+-- exactly the moves that need a trail, with nothing on screen to say which one
+-- you were about to get. There is also no honest rule for guessing which was
+-- meant, because the arrows are not spatial to begin with: measured across the
+-- ladder, about one press in five does not move the tile the way the key points
+-- and one in ten moves it the opposite way, since grouping trades a tile's
+-- share for its position and at a workspace edge only the share can give.
 --
--- The three flags are all load-bearing:
---   ignore_mods  — the other modifier is usually still down when this one is
---                  released, and which mods were held when a mod key itself was
---                  pressed depends on the order they went down in.
---   transparent  — a bind that fires shadows every other bind whose key is
---                  still held, and SUPER/CTRL are exactly that. Without this
---                  the move we just made would suppress its own end.
+-- BackSpace rather than Z: this undoes a layout, not an edit, and every app
+-- underneath has its own CTRL-Z that must keep working.
+hl.bind(mainMod .. " + CTRL + BackSpace", hl.dsp.layout("undo"))
+
+-- Scoping undo to the keypress gesture that made it — the trail living only
+-- while the modifiers from the move are still held — is DELIBERATELY OFF.
+--
+-- It was built for undo-on-the-opposite-arrow, where it drew the line between
+-- "still mid-move, put that back" and "a fresh press, move it that way". A key
+-- of its own is not held down and so has no gesture to belong to, and expiring
+-- the trail on a modifier release would only mean undo stops working the moment
+-- you let go of the move you wanted to undo.
+--
+-- Kept, wired to nothing, because the binds are the fiddly part and all three
+-- flags are load-bearing:
+--   ignore_mods   — the other modifier is usually still down when this one is
+--                   released, and which mods were held when a mod key itself
+--                   was pressed depends on the order they went down in.
+--   transparent   — a bind that fires shadows every other bind whose key is
+--                   still held, and SUPER/CTRL are exactly that. Without this
+--                   the move just made would suppress its own end.
 --   non_consuming — a modifier release the focused window never sees would
---                  leave it thinking the modifier is stuck down.
-for _, mod_key in ipairs({ "Super_L", "Super_R", "Control_L", "Control_R" }) do
-    hl.bind(mod_key, function() nary.end_move() end,
-            { release = true, ignore_mods = true, transparent = true, non_consuming = true })
+--                   leave it thinking the modifier is stuck down.
+local GESTURE_SCOPED_UNDO = false
+
+if GESTURE_SCOPED_UNDO then
+    for _, mod_key in ipairs({ "Super_L", "Super_R", "Control_L", "Control_R" }) do
+        hl.bind(mod_key, function() nary.end_move() end,
+                { release = true, ignore_mods = true, transparent = true, non_consuming = true })
+    end
 end
 
 -- Move window straight to the prev/next monitor, without walking the tree to

@@ -47,19 +47,26 @@
 -- everything is in one horizontal row — the move bootstraps one by pairing the
 -- focused window with an adjacent sibling.
 --
+-- UNDO IS ITS OWN KEY, NOT THE OPPOSITE ARROW
+--
 -- Stepping is its own inverse, but claiming a band and bootstrapping are not:
 -- both rewrite the surrounding structure, so the opposite press computes
 -- against a slot list the old layout is not in. Each move therefore records
--- what it came from, and pressing the opposite direction on the same window
--- retraces that trail exactly. Any other edit to the tree — a window opening or
--- closing, toggleorient, a move on a different window — abandons it.
+-- what it came from, and `undo` walks that trail back. Any other edit to the
+-- tree — a window opening or closing, toggleorient — abandons it.
 --
--- The trail is also scoped to ONE GESTURE: it lasts only while the modifiers
--- that drove the move are still held. Undo is what you do while still mid-move,
--- looking at where the window landed; once the keys are let go the move is
--- final, and the opposite direction is an ordinary move again. The keybinding
--- says when that happens by calling `end_move` on the modifier's release — the
--- layout has no view of the keyboard.
+-- Retracing used to be bound to the opposite arrow, and that was wrong. An
+-- arrow would then mean two different things — "move it that way" and "put it
+-- back" — which disagree after exactly the moves that need a trail, with
+-- nothing on screen to say which one you were about to get. Worse, the arrow
+-- reading has no ground truth to appeal to: measured over the ladder with no
+-- trail at all, about one press in five does not move the tile the way the key
+-- points, and one in ten moves it the opposite way. That is not a defect to be
+-- fixed here — grouping and ungrouping trade a tile's SHARE for its POSITION,
+-- and against a workspace edge there is no position left to trade, so the tile
+-- can only grow the wrong way. A ladder over a tree is structural, not
+-- spatial. Since no rule over directions can be honest about which meaning was
+-- intended, the keybinding says which one outright.
 --
 -- TABS — a leaf is a TILE, not a window
 --
@@ -102,6 +109,7 @@
 -- Registered as "nary"; activate with general.layout = "lua:nary".
 -- Commands (via hl.dsp.layout("<cmd>")):
 --   move l|r|u|d    step the focused window one insertion slot along an axis
+--   undo            walk back the last move on this workspace
 --   resize <dx> <dy> grow/shrink the focused TILE by that many pixels per axis
 --   untab l|r|u|d   when the focused tab next leaves its tile, put it that side
 --   enter l|r|u|d <space>  a window is crossing into <space> travelling that
@@ -124,15 +132,10 @@
 -- to leave a tile should be put down when they arrive. See PLACEMENT INTENTS.
 local state = { trees = {}, pending = {}, history = {} }
 
--- Most moves are their own inverse already: stepping one slot along and one
--- slot back lands where you started. The two restructuring moves are not —
--- claiming a band flips the root's axis, so the reverse press computes against
--- a different slot list and cannot find the way home. Remembering the trail is
--- what makes up genuinely undo down.
---
--- A gesture is bounded by the modifiers being held, so it cannot run long: the
--- cap is only there so a stuck release (a modifier let go while another window
--- has a keyboard grab, say) cannot grow the trail without bound.
+-- history is the undo trail, one stack per workspace: the layout as it stood
+-- before each move, newest last. Deep enough to walk back a whole session's
+-- fiddling, capped so a workspace left alone for a week cannot grow one
+-- without bound.
 local MAX_HISTORY = 64
 
 local function new_root()
@@ -734,9 +737,8 @@ end
 -- Commands
 --------------------------------------------------------------------------------
 
-local AXIS     = { l = "h", r = "h", u = "v", d = "v" }
-local DELTA    = { l = -1,  r = 1,   u = -1,  d = 1 }
-local OPPOSITE = { l = "r", r = "l", u = "d", d = "u" }
+local AXIS  = { l = "h", r = "h", u = "v", d = "v" }
+local DELTA = { l = -1,  r = 1,   u = -1,  d = 1 }
 
 local function history_for(key)
     local hist = state.history[key]
@@ -786,26 +788,20 @@ local function cmd_move(root, key, ctx, dir)
     local hist    = history_for(key)
 
     -- Anything else that touched the tree since our last move — a window
-    -- opening or closing, toggleorient, a move on a different window — means
-    -- the trail no longer describes this layout, so it cannot be walked back.
+    -- opening or closing, toggleorient — means the trail no longer describes
+    -- this layout, so it cannot be walked back.
     if #hist > 0 and hist[#hist].result ~= current then
         hist = {}
         state.history[key] = hist
     end
 
-    local last = hist[#hist]
-    if last and last.id == id and last.dir == OPPOSITE[dir] then
-        state.trees[key] = last.tree
-        hist[#hist] = nil
-        return true
-    end
-
-    -- Record what we came from, so the opposite press can retrace it. A move
-    -- that changes nothing is not worth remembering.
+    -- Record what we came from, so `undo` can retrace it. A move that changes
+    -- nothing is not worth remembering: pressing into the far edge repeatedly
+    -- would otherwise bury the move that is actually worth walking back.
     local function commit(after)
         local fingerprint = canon(after)
         if fingerprint ~= current then
-            hist[#hist + 1] = { tree = copy(root), dir = dir, id = id, result = fingerprint }
+            hist[#hist + 1] = { tree = copy(root), result = fingerprint }
             if #hist > MAX_HISTORY then table.remove(hist, 1) end
         end
         state.trees[key] = after
@@ -1039,6 +1035,30 @@ local function cmd_resize(root, ctx, args)
     return true
 end
 
+-- Walk the trail back one move. Pressing it repeatedly keeps walking: each
+-- entry restores the layout the one above it was made from, so the stack stays
+-- consistent with the tree as it unwinds.
+--
+-- Which window is focused is deliberately not consulted. The trail belongs to
+-- the workspace, and a key that means "put that back" should undo the last
+-- thing that happened here, not the last thing that happened to whatever the
+-- mouse is currently over.
+local function cmd_undo(root, key)
+    local hist = history_for(key)
+    local last = hist[#hist]
+
+    -- The trail describes one specific layout; if anything else has edited the
+    -- tree since, restoring it would resurrect windows that have moved on.
+    if not last or last.result ~= canon(root) then
+        state.history[key] = {}
+        return true
+    end
+
+    state.trees[key] = last.tree
+    hist[#hist] = nil
+    return true
+end
+
 local function cmd_toggleorient(root, ctx)
     local id = active_id(ctx)
     if not id then return true end
@@ -1056,6 +1076,8 @@ local function dispatch(ctx, msg)
     local command, args = msg:match("^%s*(%S+)%s*(.-)%s*$")
     if command == "move" then
         return cmd_move(root, key, ctx, args)
+    elseif command == "undo" then
+        return cmd_undo(root, key)
     elseif command == "resize" then
         return cmd_resize(root, ctx, args)
     elseif command == "untab" then
@@ -1067,14 +1089,22 @@ local function dispatch(ctx, msg)
     elseif command == "toggleorient" then
         return cmd_toggleorient(root, ctx)
     end
-    return "nary: expected 'move <l|r|u|d>', 'resize <dx> <dy>', 'untab <l|r|u|d>', " ..
-           "'enter <l|r|u|d> <space>', 'explode <window> <columns>' or 'toggleorient'"
+    return "nary: expected 'move <l|r|u|d>', 'undo', 'resize <dx> <dy>', " ..
+           "'untab <l|r|u|d>', 'enter <l|r|u|d> <space>', " ..
+           "'explode <window> <columns>' or 'toggleorient'"
 end
 
--- The gesture that was making the trail is over — the modifiers holding the
--- move down were let go — so what has been moved so far is now settled. Every
--- space, not just the focused one: a move can hand a window to another monitor
--- mid-gesture, and letting go ends it wherever it got to.
+-- Drop every trail: what has been moved so far is now settled and cannot be
+-- walked back. Every space, not just the focused one — a move can hand a window
+-- to another monitor, so a boundary drawn on one space has to end them all.
+--
+-- CURRENTLY UNUSED, deliberately. This was the seam for scoping undo to the
+-- keypress gesture that made it, called when the modifiers holding a move down
+-- were released. Undo now has a key of its own, which is not held down and so
+-- has no gesture to be scoped to, and the config no longer registers the
+-- release binds that called this (see UNDO in hyprland.lua). Kept because the
+-- boundary is a real one and cheap to re-draw: something that ends a run of
+-- moves — a submap exit, an idle timeout — wants exactly this.
 local function end_move()
     state.history = {}
 end
@@ -1093,8 +1123,7 @@ local M = {
     canon       = canon,
     dispatch    = dispatch,
     space       = space_of,
-    -- Undo is only live while the move's modifiers are held; the config calls
-    -- this on their release. See the header.
+    -- Ends every undo trail. Wired to nothing today; see its definition.
     end_move    = end_move,
     shape       = function(key)
         local root = state.trees[key]
