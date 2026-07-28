@@ -695,20 +695,47 @@ hl.bind("F10", function() scratchpad.toggle("lite-xl") end)
 -- command the Lua config refuses outright ("can't work with non-legacy
 -- parsers"). Dim is a config write and focus is an event, so both belong here.
 
--- { address, floated } while something is held forward. `floated` records that
--- the spotlight is what floated it, and so that letting go should tile it back;
--- a window that was already floating (imv, by window rule) is left floating.
+-- { address, floated, was } while something is held forward. `floated` records
+-- that the spotlight is what floated it, and so that letting go should tile it
+-- back; a window that was already floating (imv, by window rule) is left
+-- floating.
+--
+-- LETTING GO PUTS IT BACK. Pulling a window forward moves it, so releasing it
+-- has to move it home again, and where home is depends on which kind of window
+-- it was:
+--   * a tiled window has no geometry of its own to remember — its slot in the
+--     nary tree is its position, and that slot stops existing the moment it
+--     floats out. nary photographs the workspace for us instead (`hold`), and
+--     `restore` puts the photograph back once the window has tiled again.
+--   * an already-floating window is the opposite: nothing in the tree to keep,
+--     but a position and size that are its own and that centring destroys. So
+--     `was` records them, and they are dispatched straight back.
 local spotlit = nil
 
 local function unspotlight()
     local held = spotlit
     spotlit = nil
     hl.config({ decoration = { dim_inactive = false, dim_strength = 0.4 } })
-    if not (held and held.floated) then return end
+    if not held then return end
 
     for _, w in ipairs(hl.get_windows() or {}) do
-        if w.address == held.address and w.floating then
-            hl.dispatch(hl.dsp.window.float({ action = "off", window = w }))
+        if w.address == held.address then
+            if held.floated then
+                if w.floating then
+                    hl.dispatch(hl.dsp.window.float({ action = "off", window = w }))
+                    -- After the un-float, not before: until the window is back
+                    -- among the layout's targets the photograph describes a
+                    -- window nary cannot see, and restoring it would drop the
+                    -- very leaf it was taken for.
+                    hl.dispatch(hl.dsp.layout("restore"))
+                end
+            elseif held.was then
+                -- Size first: moving to a corner and then growing from it would
+                -- land the window somewhere else again.
+                hl.dispatch(hl.dsp.window.resize({ x = held.was.size.x, y = held.was.size.y, window = w }))
+                hl.dispatch(hl.dsp.window.move({ x = held.was.at.x, y = held.was.at.y, window = w }))
+            end
+            return
         end
     end
 end
@@ -718,16 +745,23 @@ local function spotlight(w, opts)
     opts = opts or {}
 
     local floated = not w.floating
+    local was     = nil
+
     if floated then
+        -- While it is still tiled, so the photograph has its slot in it.
+        hl.dispatch(hl.dsp.layout("hold"))
         hl.dispatch(hl.dsp.window.float({ action = "on", window = w }))
+    else
+        was = { at = w.at, size = w.size }
     end
+
     if opts.size then
         hl.dispatch(hl.dsp.window.resize({ x = opts.size[1], y = opts.size[2], window = w }))
     end
     hl.dispatch(hl.dsp.focus({ window = w }))
     hl.dispatch(hl.dsp.window.center())
 
-    spotlit = { address = w.address, floated = floated }
+    spotlit = { address = w.address, floated = floated, was = was }
     hl.config({ decoration = { dim_inactive = true, dim_strength = opts.dim or 0.4 } })
 end
 

@@ -110,6 +110,9 @@
 -- Commands (via hl.dsp.layout("<cmd>")):
 --   move l|r|u|d    step the focused window one insertion slot along an axis
 --   undo            walk back the last move on this workspace
+--   hold            photograph this workspace, before a window leaves the
+--                   tiling altogether (floated to be spotlit, say)
+--   restore         put that photograph back, once the window has tiled again
 --   resize <dx> <dy> grow/shrink the focused TILE by that many pixels per axis
 --   untab l|r|u|d   when the focused tab next leaves its tile, put it that side
 --   enter l|r|u|d <space>  a window is crossing into <space> travelling that
@@ -130,7 +133,10 @@
 -- recalculating workspace 2 would reconcile away every window of workspace 1.
 -- pending holds a workspace's placement intents: where windows that are about
 -- to leave a tile should be put down when they arrive. See PLACEMENT INTENTS.
-local state = { trees = {}, pending = {}, history = {} }
+-- held is one photograph per workspace, taken before a window is pulled out of
+-- the tiling entirely (floated for a spotlight) so it can be put back where it
+-- was rather than wherever an arrival lands. See `hold`.
+local state = { trees = {}, pending = {}, history = {}, held = {} }
 
 -- history is the undo trail, one stack per workspace: the layout as it stood
 -- before each move, newest last. Deep enough to walk back a whole session's
@@ -1059,6 +1065,51 @@ local function cmd_undo(root, key)
     return true
 end
 
+-- Every window the tree currently holds, order-independent, for asking whether
+-- two layouts are about the same set of windows.
+local function window_set(root)
+    local ids = {}
+    for _, leaf in ipairs(collect_leaves(root, {})) do
+        for _, id in ipairs(leaf_ids(leaf)) do ids[#ids + 1] = tostring(id) end
+    end
+    table.sort(ids)
+    return table.concat(ids, " ")
+end
+
+-- A window that leaves the tiling altogether — floated to be spotlit, say — is
+-- not moving within the tree, it is vanishing from it: reconcile drops its leaf
+-- and normalize closes the gap over it. Coming back it is an arrival like any
+-- other, and lands beside the focus or at the end of the root. Its old slot is
+-- not merely misremembered, it no longer exists.
+--
+-- So `hold` photographs the whole workspace before the window goes, and
+-- `restore` puts the photograph back once it is tiled again. A whole tree
+-- rather than one leaf's address, because the container that leaf sat in is
+-- exactly what may not have survived its departure.
+local function cmd_hold(root, key)
+    state.held[key] = copy(root)
+    return true
+end
+
+local function cmd_restore(root, key)
+    local held = state.held[key]
+    state.held[key] = nil
+    if not held then return true end
+
+    -- The photograph is only good while it still describes the same windows.
+    -- It won't if one opened or closed while the window was out, or if the
+    -- window has not finished tiling back yet — and in both cases putting it
+    -- back would mean inventing a place for a window it knows nothing about, or
+    -- dropping the one it was taken for. Leaving the layout alone is the
+    -- honest failure: the window keeps the arrival slot it already has.
+    if window_set(held) ~= window_set(root) then return true end
+
+    state.trees[key] = held
+    -- The trail led to layouts that this one does not follow on from.
+    state.history[key] = {}
+    return true
+end
+
 local function cmd_toggleorient(root, ctx)
     local id = active_id(ctx)
     if not id then return true end
@@ -1078,6 +1129,10 @@ local function dispatch(ctx, msg)
         return cmd_move(root, key, ctx, args)
     elseif command == "undo" then
         return cmd_undo(root, key)
+    elseif command == "hold" then
+        return cmd_hold(root, key)
+    elseif command == "restore" then
+        return cmd_restore(root, key)
     elseif command == "resize" then
         return cmd_resize(root, ctx, args)
     elseif command == "untab" then
@@ -1089,8 +1144,8 @@ local function dispatch(ctx, msg)
     elseif command == "toggleorient" then
         return cmd_toggleorient(root, ctx)
     end
-    return "nary: expected 'move <l|r|u|d>', 'undo', 'resize <dx> <dy>', " ..
-           "'untab <l|r|u|d>', 'enter <l|r|u|d> <space>', " ..
+    return "nary: expected 'move <l|r|u|d>', 'undo', 'hold', 'restore', " ..
+           "'resize <dx> <dy>', 'untab <l|r|u|d>', 'enter <l|r|u|d> <space>', " ..
            "'explode <window> <columns>' or 'toggleorient'"
 end
 

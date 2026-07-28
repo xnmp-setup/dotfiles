@@ -540,6 +540,86 @@ do
 end
 
 --------------------------------------------------------------------------------
+-- hold / restore: a window leaving the tiling and coming back
+--------------------------------------------------------------------------------
+
+do
+    -- A window floated out of the middle of the tree. Without the photograph it
+    -- comes back as a plain arrival, which is the bug this exists to fix.
+    nary.state.trees[KEY] = C("h", L("1"), C("v", L("2"), L("3")), L("4"))
+    nary.settle(ctx_of({ "1", "2", "3", "4" }, "2"))
+    nary.dispatch(ctx_of({ "1", "2", "3", "4" }, "2"), "hold")
+
+    nary.settle(ctx_of({ "1", "3", "4" }, "3"))              -- 2 floats away
+    check("the tree closes over a window that leaves the tiling",
+        nary.canon(nary.state.trees[KEY]), "h(1 3 4)")
+
+    nary.settle(ctx_of({ "1", "3", "4", "2" }, "2"))          -- and tiles back
+    check("without restore it comes back as a plain arrival",
+        nary.canon(nary.state.trees[KEY]), "h(1 3 4 2)")
+
+    nary.dispatch(ctx_of({ "1", "3", "4", "2" }, "2"), "restore")
+    check("restore puts it back in the slot it left",
+        nary.canon(nary.state.trees[KEY]), "h(1 v(2 3) 4)")
+end
+
+do
+    -- The photograph is spent once used: a second restore must not resurrect a
+    -- layout the user has since moved on from.
+    nary.state.trees[KEY] = C("h", L("1"), L("2"))
+    nary.dispatch(ctx_of({ "1", "2" }, "1"), "hold")
+    nary.dispatch(ctx_of({ "1", "2" }, "1"), "restore")
+
+    nary.dispatch(ctx_for(nary.state.trees[KEY], "1"), "move r")
+    check("a move after restoring is not undone by restoring again",
+        nary.canon(nary.state.trees[KEY]), "h(2 1)")
+    nary.dispatch(ctx_for(nary.state.trees[KEY], "1"), "restore")
+    check("restore is spent by the first use",
+        nary.canon(nary.state.trees[KEY]), "h(2 1)")
+end
+
+do
+    -- A window that closed while another was held out. The photograph describes
+    -- a workspace that no longer exists, so it must be declined rather than
+    -- resurrect window 4.
+    nary.state.trees[KEY] = C("h", L("1"), C("v", L("2"), L("3")), L("4"))
+    nary.settle(ctx_of({ "1", "2", "3", "4" }, "2"))
+    nary.dispatch(ctx_of({ "1", "2", "3", "4" }, "2"), "hold")
+
+    nary.settle(ctx_of({ "1", "3" }, "3"))                    -- 2 floats, 4 closes
+    nary.settle(ctx_of({ "1", "3", "2" }, "2"))
+    nary.dispatch(ctx_of({ "1", "3", "2" }, "2"), "restore")
+    check("a photograph of a workspace that has changed is declined",
+        nary.canon(nary.state.trees[KEY]), "h(1 3 2)")
+end
+
+do
+    -- Restoring before the window has finished tiling back describes a window
+    -- the layout cannot see, so it is declined rather than dropping that leaf.
+    nary.state.trees[KEY] = C("h", L("1"), L("2"), L("3"))
+    nary.settle(ctx_of({ "1", "2", "3" }, "2"))
+    nary.dispatch(ctx_of({ "1", "2", "3" }, "2"), "hold")
+
+    nary.settle(ctx_of({ "1", "3" }, "3"))
+    nary.dispatch(ctx_of({ "1", "3" }, "3"), "restore")
+    check("restoring while the window is still out is declined",
+        nary.canon(nary.state.trees[KEY]), "h(1 3)")
+end
+
+do
+    -- The photograph belongs to its workspace: holding on one must not restore
+    -- over another.
+    nary.state.trees["ws:1"] = C("h", L("1"), L("2"))
+    nary.state.trees["ws:2"] = C("h", L("7"), L("8"))
+    nary.dispatch(ctx_of({ "1", "2" }, "1", 1), "hold")
+
+    nary.dispatch(ctx_for(nary.state.trees["ws:2"], "7", 2), "move r")
+    nary.dispatch(ctx_of({ "7", "8" }, "7", 2), "restore")
+    check("a hold on one workspace does not restore another",
+        nary.canon(nary.state.trees["ws:2"]), "h(8 7)")
+end
+
+--------------------------------------------------------------------------------
 -- end_move: the seam for scoping the trail to a run of moves. Wired to nothing
 -- in the config today, so these guard the behaviour rather than a keybinding.
 --------------------------------------------------------------------------------
