@@ -105,6 +105,12 @@ hl.config({
         follow_mouse                = 0,
         float_switch_override_focus = 0,
         sensitivity                 = 0, -- Raw input, like turning off mouse accel in StarCraft
+
+        -- Touchpad two-finger scroll only; a wheel mouse is unaffected, so this
+        -- is safe on machines without a touchpad.
+        touchpad = {
+            scroll_factor = 0.15, -- 1.0 is libinput's default; below ~0.15 discrete-wheel apps stall
+        },
     },
 
     -- Native tabbed groups (replaces hy3 tabs)
