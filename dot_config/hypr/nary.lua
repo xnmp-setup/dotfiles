@@ -54,6 +54,13 @@
 -- retraces that trail exactly. Any other edit to the tree — a window opening or
 -- closing, toggleorient, a move on a different window — abandons it.
 --
+-- The trail is also scoped to ONE GESTURE: it lasts only while the modifiers
+-- that drove the move are still held. Undo is what you do while still mid-move,
+-- looking at where the window landed; once the keys are let go the move is
+-- final, and the opposite direction is an ordinary move again. The keybinding
+-- says when that happens by calling `end_move` on the modifier's release — the
+-- layout has no view of the keyboard.
+--
 -- TABS — a leaf is a TILE, not a window
 --
 -- A tabbed group is several windows sharing one tile, and Hyprland hands it to
@@ -122,6 +129,10 @@ local state = { trees = {}, pending = {}, history = {} }
 -- claiming a band flips the root's axis, so the reverse press computes against
 -- a different slot list and cannot find the way home. Remembering the trail is
 -- what makes up genuinely undo down.
+--
+-- A gesture is bounded by the modifiers being held, so it cannot run long: the
+-- cap is only there so a stuck release (a modifier let go while another window
+-- has a keyboard grab, say) cannot grow the trail without bound.
 local MAX_HISTORY = 64
 
 local function new_root()
@@ -1060,6 +1071,14 @@ local function dispatch(ctx, msg)
            "'enter <l|r|u|d> <space>', 'explode <window> <columns>' or 'toggleorient'"
 end
 
+-- The gesture that was making the trail is over — the modifiers holding the
+-- move down were let go — so what has been moved so far is now settled. Every
+-- space, not just the focused one: a move can hand a window to another monitor
+-- mid-gesture, and letting go ends it wherever it got to.
+local function end_move()
+    state.history = {}
+end
+
 local function recalculate(ctx)
     local root, place = reconcile(ctx, true)
     layout_node(ctx, root, ctx.area, place)
@@ -1074,6 +1093,9 @@ local M = {
     canon       = canon,
     dispatch    = dispatch,
     space       = space_of,
+    -- Undo is only live while the move's modifiers are held; the config calls
+    -- this on their release. See the header.
+    end_move    = end_move,
     shape       = function(key)
         local root = state.trees[key]
         return root and canon(root) or ""

@@ -562,6 +562,34 @@ for _, dir in ipairs({ "left", "right", "up", "down" }) do
     hl.bind(mainMod .. " + CTRL + ALT + " .. dir, function() step_or_cross(dir) end)
 end
 
+-- UNDO IS PART OF THE GESTURE, NOT A SEPARATE KEY
+--
+-- nary lets the opposite direction retrace a move rather than compute a fresh
+-- one, which is what makes a move that restructured the tree reversible at all.
+-- That only wants to be true while the move is still in the hand that made it:
+-- still holding the keys, still looking at where the window landed. Let go and
+-- the move is finished — pressing left after right should then step left, not
+-- teleport back to a layout from the last time you touched this window.
+--
+-- The layout cannot see the keyboard, so the boundary is drawn here: SUPER and
+-- CTRL are held down by every move bind above, so releasing either one ends the
+-- gesture. ALT is deliberately not included — it only selects which flavour of
+-- move (untab or not), so letting it go mid-gesture keeps the trail.
+--
+-- The three flags are all load-bearing:
+--   ignore_mods  — the other modifier is usually still down when this one is
+--                  released, and which mods were held when a mod key itself was
+--                  pressed depends on the order they went down in.
+--   transparent  — a bind that fires shadows every other bind whose key is
+--                  still held, and SUPER/CTRL are exactly that. Without this
+--                  the move we just made would suppress its own end.
+--   non_consuming — a modifier release the focused window never sees would
+--                  leave it thinking the modifier is stuck down.
+for _, mod_key in ipairs({ "Super_L", "Super_R", "Control_L", "Control_R" }) do
+    hl.bind(mod_key, function() nary.end_move() end,
+            { release = true, ignore_mods = true, transparent = true, non_consuming = true })
+end
+
 -- Move window straight to the prev/next monitor, without walking the tree to
 -- the edge first.
 -- SHIFT, not CTRL: CTRL + Prior/Next cycles tabs within a group.

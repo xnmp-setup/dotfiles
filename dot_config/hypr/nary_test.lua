@@ -524,6 +524,43 @@ do
         nary.canon(nary.state.trees[KEY]), "v(2 3 1)")
 end
 
+do
+    -- Undo only lasts as long as the gesture. Once the keybinding reports the
+    -- modifiers released, the opposite direction is an ordinary move again —
+    -- which for a band-claiming move means somewhere quite different from home.
+    nary.state.trees[KEY]   = C("h", L("1"), C("v", L("2"), L("3")))
+    nary.state.history[KEY] = nil
+    nary.dispatch(ctx_for(nary.state.trees[KEY], "2"), "move u")
+
+    nary.end_move()
+    nary.dispatch(ctx_for(nary.state.trees[KEY], "2"), "move d")
+    check("once the modifiers are released, the opposite direction is a plain move",
+        nary.canon(nary.state.trees[KEY]), "v(h(1 3) 2)")
+
+    -- And the gesture after it starts clean rather than inheriting the trail.
+    nary.dispatch(ctx_for(nary.state.trees[KEY], "2"), "move u")
+    check("a fresh gesture undoes only its own move",
+        nary.canon(nary.state.trees[KEY]), "v(2 h(1 3))")
+end
+
+do
+    -- A move can hand a window to another monitor mid-gesture, so releasing the
+    -- modifiers has to end the gesture on every space, not just the focused one.
+    nary.state.trees["ws:1"] = C("h", L("1"), C("v", L("2"), L("3")))
+    nary.state.trees["ws:2"] = C("h", L("7"), C("v", L("8"), L("9")))
+    nary.state.history["ws:1"], nary.state.history["ws:2"] = nil, nil
+    nary.dispatch(ctx_for(nary.state.trees["ws:1"], "2", 1), "move u")
+    nary.dispatch(ctx_for(nary.state.trees["ws:2"], "8", 2), "move u")
+
+    nary.end_move()
+    nary.dispatch(ctx_for(nary.state.trees["ws:1"], "2", 1), "move d")
+    nary.dispatch(ctx_for(nary.state.trees["ws:2"], "8", 2), "move d")
+    check("releasing ends the gesture on the focused space",
+        nary.canon(nary.state.trees["ws:1"]), "v(h(1 3) 2)")
+    check("releasing ends the gesture on the space that was not focused",
+        nary.canon(nary.state.trees["ws:2"]), "v(h(7 9) 8)")
+end
+
 --------------------------------------------------------------------------------
 -- toggleorient and bad input
 --------------------------------------------------------------------------------
