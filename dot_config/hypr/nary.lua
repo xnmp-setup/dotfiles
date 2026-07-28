@@ -415,32 +415,65 @@ local function place_at_edge(root, intent, leaf)
     return true
 end
 
--- Where a window that has left a tile is put down. An intent either names a
--- direction (untab: straight beside the tile) or a grid (explode: row-major
--- around it, the tile keeping cell 0, every row a row of the tile's own slot).
+-- Where a window that has left a tile is put down: straight beside the tile it
+-- came from, on the side the `untab` intent named.
 local function place_for(root, intent, leaf)
-    if not intent.cols then
-        local shared = insert_beside(root, intent.after, intent.ax, intent.delta, leaf)
-        if shared then intent.after = leaf end
-        return shared
+    local shared = insert_beside(root, intent.after, intent.ax, intent.delta, leaf)
+    if shared then intent.after = leaf end
+    return shared
+end
+
+-- Lay an unfolding tile's slot out from scratch: its windows, in the tab order
+-- `explode` recorded, row-major in a grid `cols` wide, the tab that was visible
+-- keeping cell 0.
+--
+-- Rebuilt whole on every pass rather than filled in as the windows arrive,
+-- because a tile does not come apart in one step or in any fixed order. A group
+-- of three is freed as a lone window and a group of TWO, which is laid out and
+-- only splits a pass later; which half is freed first follows Hyprland's group
+-- order, the focus goes missing in between, and the tile can come back keyed by
+-- a different window than it went in as. Anything that reads the order of those
+-- events gets a different answer each time — cells holding the wrong window, or
+-- a tab stranded outside the grid altogether, which then folds back outside the
+-- strip. Reading only the tab order makes the same unfold produce the same
+-- grid, which is what lets the fold address its cells by position.
+local function regrid(root, intent)
+    local by_id = {}
+    for _, leaf in ipairs(collect_leaves(root, {})) do
+        for _, id in ipairs(leaf_ids(leaf)) do
+            if by_id[id] == nil then by_id[id] = leaf end
+        end
     end
 
-    local k    = intent.placed + 1
-    local cols = intent.cols
+    -- One cell per tile, in tab order. A tile still holding several of them —
+    -- the remainder of a group mid-dissolution — takes the earliest cell of the
+    -- ones it holds, and is spread out properly on the pass where it splits.
+    local cells, seen = {}, {}
+    for _, id in ipairs(intent.order) do
+        local leaf = by_id[id]
+        if leaf and not seen[leaf] then
+            seen[leaf]        = true
+            cells[#cells + 1] = leaf
+        end
+    end
+    if #cells < 2 then return end
 
-    if k % cols == 0 then
-        -- Opening a row, under the whole block built so far. The first one has
-        -- to carve the tile's slot out; later rows are peers within it.
-        if not insert_beside(root, intent.row, "v", 1, leaf, k == cols) then return nil end
-        intent.row, intent.cell = leaf, leaf
-    else
-        local row = insert_beside(root, intent.cell, "h", 1, leaf, k == 1)
-        if not row then return nil end
-        intent.cell, intent.row = leaf, row
+    for i = 2, #cells do remove_leaf(root, cells[i].id) end
+
+    -- The grid takes the slot cell 0 is in, which is the tile's own: the
+    -- reconcile above keeps the unfolding tile with the tab that was visible.
+    local parent, idx = parent_of(root, cells[1])
+    if not parent then return end
+
+    local rows = {}
+    for i, leaf in ipairs(cells) do
+        local r = math.floor((i - 1) / intent.cols) + 1
+        rows[r]  = rows[r] or { kind = "container", orient = "h", children = {} }
+        table.insert(rows[r].children, leaf)
     end
 
-    intent.placed = k
-    return true
+    parent.children[idx] = (#rows == 1) and rows[1]
+        or { kind = "container", orient = "v", children = rows }
 end
 
 -- Bring this space's tree in line with ctx.targets: tiles that went away are
@@ -487,11 +520,15 @@ local function reconcile(ctx, settling)
 
     -- An unfolding tile stays with the tab that was visible on it, whatever
     -- order its windows are reported in, so the rest can be laid out around it.
+    --
+    -- Matched by any window the target holds, not merely the one it is showing:
+    -- while the strip is coming apart the visible tab spends a pass on the
+    -- remainder group, where it is not the one on top.
     if intents then
         for _, intent in ipairs(intents) do
             if intent.keeper and in_tree[intent.origin] and not claimed[intent.origin] then
                 for _, entry in ipairs(entries) do
-                    if not entry.taken and entry.ids[1] == intent.keeper then
+                    if not entry.taken and has_id(entry.ids, intent.keeper) then
                         take(entry, intent.origin)
                         break
                     end
@@ -551,8 +588,10 @@ local function reconcile(ctx, settling)
         -- A window an intent was waiting for: put it beside the last one placed
         -- for that tile, so a tile unfolds in order rather than in a heap.
         if settling and intents then
+            -- A grid places nothing here: it is rebuilt from the tab order once
+            -- the whole pass has settled, wherever the windows have got to.
             for _, intent in ipairs(intents) do
-                if not intent.edge and claimed[intent.origin] then
+                if not intent.edge and not intent.cols and claimed[intent.origin] then
                     for _, id in ipairs(entry.ids) do
                         if intent.ids[id] then
                             placed = place_for(root, intent, leaf)
@@ -583,6 +622,14 @@ local function reconcile(ctx, settling)
         anchor_focus = anchor_focus or entry.ids[1]
     end
 
+    -- Every unfolding tile's slot, laid out afresh now that this pass has
+    -- settled — including the pass that finishes the job, below.
+    if settling and intents then
+        for _, intent in ipairs(intents) do
+            if intent.cols then regrid(root, intent) end
+        end
+    end
+
     -- An intent lives while windows it is waiting for are still on their tile.
     -- The pass where that stops being true is the one it was recorded for: it
     -- is spent there, and whatever is left of it is discarded rather than
@@ -597,6 +644,23 @@ local function reconcile(ctx, settling)
                 -- short enough not to catch some later, unrelated window.
                 intent.grace = intent.grace - 1
                 if not intent.spent and intent.grace > 0 then kept[#kept + 1] = intent end
+            elseif intent.cols then
+                -- A grid is finished when every tab it names is a tile of its
+                -- own. Until then the strip is still coming apart — over as
+                -- many passes as Hyprland takes — and the slot is laid out
+                -- again each time. Asking the ORIGIN whether it still holds
+                -- them would retire the grid halfway through, when the tabs
+                -- still to come are sitting on the remainder group instead, and
+                -- strand every one of them outside it.
+                local splitting = false
+                for _, leaf in ipairs(collect_leaves(root, {})) do
+                    local n = 0
+                    for _, id in ipairs(leaf_ids(leaf)) do
+                        if intent.member[id] then n = n + 1 end
+                    end
+                    if n > 1 then splitting = true break end
+                end
+                if splitting then kept[#kept + 1] = intent end
             elseif claimed[intent.origin] then
                 for id in pairs(intent.ids) do
                     if leaf_holds(intent.origin, id) then
@@ -967,8 +1031,14 @@ local function cmd_explode(root, key, args)
     local ids = leaf_ids(leaf)
     if #ids < 2 then return true end -- not a tab strip: nothing will leave
 
-    local waiting = {}
-    for i = 2, #ids do waiting[ids[i]] = true end
+    -- The whole strip in tab order, not just the windows about to be freed: the
+    -- grid is rebuilt from this list on every pass, so it has to name every
+    -- cell, cell 0 included.
+    local order, member = {}, {}
+    for i, held in ipairs(ids) do
+        order[i]     = held
+        member[held] = true
+    end
 
     local intents = state.pending[key] or {}
     for i = #intents, 1, -1 do -- one intent per tile; a repeat replaces it
@@ -976,9 +1046,10 @@ local function cmd_explode(root, key, args)
     end
 
     intents[#intents + 1] = {
-        origin = leaf, row = leaf, cell = leaf, placed = 0,
+        origin = leaf,
         cols   = cols,
-        ids    = waiting,
+        order  = order,
+        member = member,
         keeper = ids[1],
     }
     state.pending[key] = intents

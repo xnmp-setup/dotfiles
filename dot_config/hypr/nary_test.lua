@@ -434,6 +434,88 @@ check("four tabs in four columns stay a single row",
     unfold(C("h", L("1"), L("2")), FOUR, 4, { "1", "2", "8", "9", "7" }, "1"),
     "h(1 h(2 8 9 7))")
 
+-- ... and neither may the CELLS. A strip's order is not the order Hyprland
+-- enumerates windows in, so the freed windows arrive in any order at all; the
+-- grid still has to come out in tab order, because folding it back up addresses
+-- its cells by position.
+check("the cells are filled in tab order, not in arrival order",
+    unfold(C("h", L("1"), L("2")), THREE, 3, { "1", "9", "8", "2" }, "1"),
+    "h(1 h(2 8 9))")
+
+-- The focused window is matched last of all (so a split leaves the tile to the
+-- other side), which would otherwise drop a focused tab into the final cell.
+check("a focused tab keeps its cell rather than landing last",
+    unfold(C("h", L("1"), L("2")), FOUR, 2, { "1", "2", "8", "9", "7" }, "8"),
+    "h(1 v(h(2 8) h(9 7)))")
+
+check("two tiles unfolding at once fill their grids independently",
+    (function()
+        local folded = { { "2", "8", "9" }, { "3", "7", "6" } }
+        nary.state.trees[KEY] = C("h", L("2"), L("3"))
+        nary.settle(ctx_of(folded, "2"))
+        nary.dispatch(ctx_of(folded, "2"), "explode 2 3")
+        nary.dispatch(ctx_of(folded, "2"), "explode 3 3")
+        nary.settle(ctx_of(folded, "2"))
+        nary.settle(ctx_of({ "9", "3", "7", "8", "2", "6" }, "2"))
+        return nary.canon(nary.state.trees[KEY])
+    end)(),
+    "h(h(2 8 9) h(3 7 6))")
+
+-- A tile does not let go of its tabs all at once. Hyprland dissolves a group
+-- of three by freeing the visible tab and leaving a group of TWO behind, which
+-- is laid out — and only splits on a later pass. The grid has to survive that:
+-- it is the case every real unfold of three or more tabs goes through.
+local function unfold_staged(root, tabs, cols, stages, focus)
+    local folded = { "1", tabs }
+    nary.state.trees[KEY] = root
+    nary.settle(ctx_of(folded, focus))
+    nary.dispatch(ctx_of(folded, focus), "explode " .. tabs[1] .. " " .. cols)
+    nary.settle(ctx_of(folded, focus))
+    for _, stage in ipairs(stages) do nary.settle(ctx_of(stage, focus)) end
+    return nary.canon(nary.state.trees[KEY])
+end
+
+check("a grid survives the tile shedding its tabs one pass at a time",
+    unfold_staged(C("h", L("1"), L("2")), THREE, 2,
+        { { "1", "2", { "8", "9" } },   -- the visible tab is freed first ...
+          { "1", "2", "8", "9" } },     -- ... and the remainder splits after
+        "1"),
+    "h(1 v(h(2 8) 9))")
+
+-- The cell built for a tab must still hold that tab once the group behind it
+-- comes apart, whichever half of it Hyprland reports first.
+check("a shedding tile keeps the tab its cell was built for",
+    unfold_staged(C("h", L("1"), L("2")), THREE, 2,
+        { { "1", "2", { "8", "9" } },
+          { "1", "9", "2", "8" } },     -- reported the other way round
+        "1"),
+    "h(1 v(h(2 8) 9))")
+
+-- Which tab is freed first is Hyprland's business, and it is not always the
+-- visible one: the tile can spend a pass as a group the visible tab is merely a
+-- member of, and not the one on top of.
+check("the grid holds when the visible tab is freed last",
+    unfold_staged(C("h", L("1"), L("2")), THREE, 2,
+        { { "1", "8", { "2", "9" } },
+          { "1", "8", "2", "9" } },
+        "1"),
+    "h(1 v(h(2 8) 9))")
+
+check("the grid holds when the visible tab is not on top of the remainder",
+    unfold_staged(C("h", L("1"), L("2")), THREE, 2,
+        { { "1", "8", { "9", "2" } },
+          { "1", "8", "9", "2" } },
+        "1"),
+    "h(1 v(h(2 8) 9))")
+
+check("four tabs shed a pair at a time and still land in a 2x2",
+    unfold_staged(C("h", L("1"), L("2")), FOUR, 2,
+        { { "1", "2", { "8", "9", "7" } },
+          { "1", "2", "8", { "9", "7" } },
+          { "1", "2", "8", "9", "7" } },
+        "1"),
+    "h(1 v(h(2 8) h(9 7)))")
+
 check("a ragged last row spans what is left of the width",
     unfold(C("h", L("1"), L("2")), THREE, 2, { "1", "2", "8", "9" }, "1"),
     "h(1 v(h(2 8) 9))")

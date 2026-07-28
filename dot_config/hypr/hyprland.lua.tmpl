@@ -303,9 +303,19 @@ end
 -- raised as the visible tab of its own strip. Pressing the key again folds with
 -- whatever is focused, for selecting without a click.
 --
--- Selection is a focus change, so the unfolding's own focus churn (dissolving a
--- group refocuses) has to be kept out of it: dispatches made here are flagged,
--- and the listener only arms once the unfold has settled.
+-- A CLICK is picked up as a click, not as the focus change it usually causes.
+-- Clicking the pane that already had the focus is not a focus change at all,
+-- and that is the most ordinary thing to do here — hit the key, look, decide to
+-- stay where you were. Hyprland's Lua API cannot park the focus somewhere
+-- harmless first (there is no way to focus nothing), so while unfolded the left
+-- button is bound and resolves the pane under the cursor itself, rather than
+-- being passed through to it. Every pane is then equally selectable, the one
+-- already focused included.
+--
+-- Focus changes still select, for choosing with the keyboard. The unfolding's
+-- own focus churn (dissolving a group refocuses) has to be kept out of that:
+-- dispatches made here are flagged, and the listener only arms once the unfold
+-- has settled. A click needs no such guard — it is always the user.
 --
 -- Hyprland cannot build a group from a list of windows: the only way in is
 -- moveintogroup, which merges whatever lies in a DIRECTION. So folding back
@@ -327,6 +337,54 @@ end
 local exposed = nil   -- while unfolded: the groups to put back
 local armed   = false -- is a focus change a selection yet?
 local busy    = false -- ... or is it one of ours?
+
+-- Bound only while unfolded, so ordinary clicking is untouched the rest of the
+-- time. Plain left button: a modified click (dragging a window with the mod
+-- held, say) carries a different modmask and does not match.
+local SELECT_BUTTON = "mouse:272"
+local expose_click -- bound on unfold, defined once folding exists to call
+
+-- The pane under the cursor. Windows are in no particular depth order here, so
+-- overlaps are broken the way the compositor would: a floating window sits over
+-- a tiled one, and the more recently focused of two floats sits over the other.
+--
+-- Only what is on screen. A window parked on a workspace nobody is looking at —
+-- a scratchpad above all — is still mapped and still has the geometry it will
+-- have when it comes back, so it sits under the cursor as far as arithmetic is
+-- concerned, and would be picked over the pane actually being clicked on.
+local function visible_workspaces()
+    local ids = {}
+    for _, m in ipairs(hl.get_monitors() or {}) do
+        local ws, special = m.active_workspace, m.special_workspace
+        if ws and ws.id then ids[ws.id] = true end
+        if special and special.id then ids[special.id] = true end
+    end
+    return ids
+end
+
+local function window_at_cursor()
+    local pos = hl.get_cursor_pos()
+    if not pos then return nil end
+
+    local visible = visible_workspaces()
+
+    local best
+    for _, w in ipairs(hl.get_windows() or {}) do
+        local at, size = w.at, w.size
+        if w.mapped and not w.hidden and at and size
+            and w.workspace and visible[w.workspace.id]
+            and pos.x >= at.x and pos.x < at.x + size.x
+            and pos.y >= at.y and pos.y < at.y + size.y
+        then
+            local over = not best
+                or (w.floating and not best.floating)
+                or (w.floating == best.floating
+                    and (w.focus_history_id or 0) < (best.focus_history_id or 0))
+            if over then best = w end
+        end
+    end
+    return best
+end
 
 local function tabbed_groups()
     local ws = hl.get_active_workspace()
@@ -397,13 +455,17 @@ local function expose_unfold()
 
     exposed, armed = groups, false
     hl.timer(function() armed = (exposed ~= nil) end, { timeout = 120, type = "oneshot" })
+    hl.bind(SELECT_BUTTON, expose_click)
 end
 
-local function expose_fold()
-    local selected = hl.get_active_window()
+-- `selected` is the pane a click resolved; without one — the keyboard path —
+-- the selection is whatever holds the focus.
+local function expose_fold(selected)
+    selected       = selected or hl.get_active_window()
     local sel_id   = selected and selected.stable_id
     local groups   = exposed
     exposed, armed = nil, false
+    hl.unbind(SELECT_BUTTON)
 
     busy = true
     for _, group in ipairs(groups) do
@@ -442,6 +504,14 @@ end
 hl.on("window.active", function()
     if exposed and armed and not busy then expose_fold() end
 end)
+
+-- A click on nothing — the gap between panes — is not a selection, and is left
+-- to do nothing rather than folding on whatever happened to be focused.
+expose_click = function()
+    if not exposed then return end
+    local w = window_at_cursor()
+    if w then expose_fold(w) end
+end
 
 local function expose_toggle()
     if exposed then expose_fold() else expose_unfold() end
