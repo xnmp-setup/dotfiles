@@ -574,6 +574,54 @@ for _, dir in ipairs({ "left", "right", "up", "down" }) do
     hl.bind(mainMod .. " + CTRL + ALT + " .. dir, function() step_or_cross(dir) end)
 end
 
+-- UNDO — a key of its own, because an arrow cannot carry two meanings
+--
+-- A move that restructured the tree is not reversed by pressing the opposite
+-- arrow: the reverse press computes against a slot list the old layout is not
+-- in. nary keeps a trail so the old layout can be restored exactly, and this is
+-- the key that walks it.
+--
+-- Retracing used to live on the opposite arrow instead. That made an arrow mean
+-- two things — "move it that way" and "put it back" — which disagree after
+-- exactly the moves that need a trail, with nothing on screen to say which one
+-- you were about to get. There is also no honest rule for guessing which was
+-- meant, because the arrows are not spatial to begin with: measured across the
+-- ladder, about one press in five does not move the tile the way the key points
+-- and one in ten moves it the opposite way, since grouping trades a tile's
+-- share for its position and at a workspace edge only the share can give.
+--
+-- BackSpace rather than Z: this undoes a layout, not an edit, and every app
+-- underneath has its own CTRL-Z that must keep working.
+hl.bind(mainMod .. " + CTRL + BackSpace", hl.dsp.layout("undo"))
+
+-- Scoping undo to the keypress gesture that made it — the trail living only
+-- while the modifiers from the move are still held — is DELIBERATELY OFF.
+--
+-- It was built for undo-on-the-opposite-arrow, where it drew the line between
+-- "still mid-move, put that back" and "a fresh press, move it that way". A key
+-- of its own is not held down and so has no gesture to belong to, and expiring
+-- the trail on a modifier release would only mean undo stops working the moment
+-- you let go of the move you wanted to undo.
+--
+-- Kept, wired to nothing, because the binds are the fiddly part and all three
+-- flags are load-bearing:
+--   ignore_mods   — the other modifier is usually still down when this one is
+--                   released, and which mods were held when a mod key itself
+--                   was pressed depends on the order they went down in.
+--   transparent   — a bind that fires shadows every other bind whose key is
+--                   still held, and SUPER/CTRL are exactly that. Without this
+--                   the move just made would suppress its own end.
+--   non_consuming — a modifier release the focused window never sees would
+--                   leave it thinking the modifier is stuck down.
+local GESTURE_SCOPED_UNDO = false
+
+if GESTURE_SCOPED_UNDO then
+    for _, mod_key in ipairs({ "Super_L", "Super_R", "Control_L", "Control_R" }) do
+        hl.bind(mod_key, function() nary.end_move() end,
+                { release = true, ignore_mods = true, transparent = true, non_consuming = true })
+    end
+end
+
 -- Move window straight to the prev/next monitor, without walking the tree to
 -- the edge first.
 -- SHIFT, not CTRL: CTRL + Prior/Next cycles tabs within a group.
@@ -659,20 +707,47 @@ hl.bind("F10", function() scratchpad.toggle("lite-xl") end)
 -- command the Lua config refuses outright ("can't work with non-legacy
 -- parsers"). Dim is a config write and focus is an event, so both belong here.
 
--- { address, floated } while something is held forward. `floated` records that
--- the spotlight is what floated it, and so that letting go should tile it back;
--- a window that was already floating (imv, by window rule) is left floating.
+-- { address, floated, was } while something is held forward. `floated` records
+-- that the spotlight is what floated it, and so that letting go should tile it
+-- back; a window that was already floating (imv, by window rule) is left
+-- floating.
+--
+-- LETTING GO PUTS IT BACK. Pulling a window forward moves it, so releasing it
+-- has to move it home again, and where home is depends on which kind of window
+-- it was:
+--   * a tiled window has no geometry of its own to remember — its slot in the
+--     nary tree is its position, and that slot stops existing the moment it
+--     floats out. nary photographs the workspace for us instead (`hold`), and
+--     `restore` puts the photograph back once the window has tiled again.
+--   * an already-floating window is the opposite: nothing in the tree to keep,
+--     but a position and size that are its own and that centring destroys. So
+--     `was` records them, and they are dispatched straight back.
 local spotlit = nil
 
 local function unspotlight()
     local held = spotlit
     spotlit = nil
     hl.config({ decoration = { dim_inactive = false, dim_strength = 0.4 } })
-    if not (held and held.floated) then return end
+    if not held then return end
 
     for _, w in ipairs(hl.get_windows() or {}) do
-        if w.address == held.address and w.floating then
-            hl.dispatch(hl.dsp.window.float({ action = "off", window = w }))
+        if w.address == held.address then
+            if held.floated then
+                if w.floating then
+                    hl.dispatch(hl.dsp.window.float({ action = "off", window = w }))
+                    -- After the un-float, not before: until the window is back
+                    -- among the layout's targets the photograph describes a
+                    -- window nary cannot see, and restoring it would drop the
+                    -- very leaf it was taken for.
+                    hl.dispatch(hl.dsp.layout("restore"))
+                end
+            elseif held.was then
+                -- Size first: moving to a corner and then growing from it would
+                -- land the window somewhere else again.
+                hl.dispatch(hl.dsp.window.resize({ x = held.was.size.x, y = held.was.size.y, window = w }))
+                hl.dispatch(hl.dsp.window.move({ x = held.was.at.x, y = held.was.at.y, window = w }))
+            end
+            return
         end
     end
 end
@@ -682,16 +757,23 @@ local function spotlight(w, opts)
     opts = opts or {}
 
     local floated = not w.floating
+    local was     = nil
+
     if floated then
+        -- While it is still tiled, so the photograph has its slot in it.
+        hl.dispatch(hl.dsp.layout("hold"))
         hl.dispatch(hl.dsp.window.float({ action = "on", window = w }))
+    else
+        was = { at = w.at, size = w.size }
     end
+
     if opts.size then
         hl.dispatch(hl.dsp.window.resize({ x = opts.size[1], y = opts.size[2], window = w }))
     end
     hl.dispatch(hl.dsp.focus({ window = w }))
     hl.dispatch(hl.dsp.window.center())
 
-    spotlit = { address = w.address, floated = floated }
+    spotlit = { address = w.address, floated = floated, was = was }
     hl.config({ decoration = { dim_inactive = true, dim_strength = opts.dim or 0.4 } })
 end
 

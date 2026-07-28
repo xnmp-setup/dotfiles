@@ -314,6 +314,88 @@ local function reattach_bg_tab()
   end)
 end
 
+-- ctrl+shift+m: move the current tab into an EXISTING window (picked from a
+-- list), as opposed to ctrl+shift+n which always pops it into a brand new one.
+-- There is no Lua API for this: pane:move_to_new_window()/move_to_new_tab()
+-- only ever create a fresh window/tab, they can't target one that's already
+-- open. `wezterm cli move-pane-to-new-tab --window-id` can, so shell out to it.
+-- Same executable_dir rationale as BG_MUX_BIN above (the CLI isn't on PATH
+-- inside the macOS .app bundle); '.exe' only applies on the Windows build.
+local WEZTERM_CLI_BIN = wezterm.executable_dir .. '/wezterm' .. (wezterm.target_triple:find('windows') and '.exe' or '')
+
+-- Basename of a pane's cwd (e.g. "dotfiles" from "/home/x/dotfiles"), or nil if
+-- the pane has none. Same userdata/string Url handling as format-tab-title's
+-- cwd branch further down, just without that code's editor-file-name special
+-- case (not worth it for a one-line picker label).
+local function short_cwd(pane)
+  local cwd = pane:get_current_working_dir()
+  if not cwd then return nil end
+  local path
+  if type(cwd) == 'userdata' then
+    path = cwd.file_path
+  else
+    path = tostring(cwd):gsub('^file://[^/]*', '')
+  end
+  if not path or path == '' then return nil end
+  return (path:gsub('/$', ''):match('[^/]+$')) or path
+end
+
+-- Human label for a mux window, used by the move-tab-to-window picker below so
+-- entries read like "3 tabs — nvim · dotfiles" instead of a bare window id.
+local SHELL_PROCS = { bash = 1, sh = 1, zsh = 1, fish = 1, tmux = 1, nu = 1, login = 1 }
+local function window_label(mux_win)
+  local tabs = mux_win:tabs_with_info()
+  local active_pane
+  for _, t in ipairs(tabs) do
+    if t.is_active then
+      active_pane = t.tab:active_pane()
+      break
+    end
+  end
+  local desc = 'empty'
+  if active_pane then
+    local proc = active_pane:get_foreground_process_name() or ''
+    local base = (proc:match('[^/\\]+$') or ''):gsub('%.exe$', '')
+    local cwd = short_cwd(active_pane)
+    if base ~= '' and not SHELL_PROCS[base] then
+      desc = cwd and (base .. ' · ' .. cwd) or base
+    else
+      desc = cwd or 'shell'
+    end
+  end
+  local n = #tabs
+  return string.format('%d tab%s — %s', n, n == 1 and '' or 's', desc)
+end
+
+local function move_tab_to_window()
+  return wezterm.action_callback(function(win, pane)
+    local cur_id = win:mux_window():window_id()
+    local choices = {}
+    for _, w in ipairs(wezterm.mux.all_windows()) do
+      if w:window_id() ~= cur_id then
+        choices[#choices + 1] = { label = window_label(w), id = tostring(w:window_id()) }
+      end
+    end
+    if #choices == 0 then
+      win:toast_notification('WezTerm', 'No other window to move this tab to.', nil, 3000)
+      return
+    end
+    win:perform_action(act.InputSelector {
+      title = 'Move tab to window',
+      choices = choices,
+      fuzzy = true,
+      action = wezterm.action_callback(function(_w, p, id, _label)
+        if not id then return end
+        wezterm.background_child_process {
+          WEZTERM_CLI_BIN, 'cli', 'move-pane-to-new-tab',
+          '--pane-id', tostring(p:pane_id()),
+          '--window-id', id,
+        }
+      end),
+    }, pane)
+  end)
+end
+
 -- ---------- Session restore (windows, tabs, split layout, cwd) ----------
 -- Restore the previous session on launch, Chrome-style: windows, their tabs,
 -- each tab's split layout and each pane's cwd, with focus where you left it.
@@ -698,6 +780,14 @@ config.keys = {
     win:perform_action(act.MoveTab(idx + 1), pane)
   end) },
   { key = 'n', mods = 'CTRL', action = act.SpawnWindow },
+  -- ctrl+shift+n: pop the current tab out into its own new window.
+  { key = 'n', mods = 'CTRL|SHIFT', action = wezterm.action_callback(function(win, pane)
+    local _, new_window = pane:move_to_new_window()
+    local gui = new_window:gui_window()
+    if gui then gui:focus() end
+  end) },
+  -- ctrl+shift+m: move the current tab into an existing window (pick from a list).
+  { key = 'm', mods = 'CTRL|SHIFT', action = move_tab_to_window() },
   -- Background tabs: ctrl+alt+t opens one (unix-domain, survives GUI close),
   -- ctrl+shift+w detaches the current bg tab, ctrl+shift+e reattaches one. The
   -- callbacks no-op with a toast on non-macOS/Linux (BG_ENABLED). See the

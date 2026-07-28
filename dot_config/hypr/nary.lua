@@ -47,6 +47,27 @@
 -- everything is in one horizontal row — the move bootstraps one by pairing the
 -- focused window with an adjacent sibling.
 --
+-- UNDO IS ITS OWN KEY, NOT THE OPPOSITE ARROW
+--
+-- Stepping is its own inverse, but claiming a band and bootstrapping are not:
+-- both rewrite the surrounding structure, so the opposite press computes
+-- against a slot list the old layout is not in. Each move therefore records
+-- what it came from, and `undo` walks that trail back. Any other edit to the
+-- tree — a window opening or closing, toggleorient — abandons it.
+--
+-- Retracing used to be bound to the opposite arrow, and that was wrong. An
+-- arrow would then mean two different things — "move it that way" and "put it
+-- back" — which disagree after exactly the moves that need a trail, with
+-- nothing on screen to say which one you were about to get. Worse, the arrow
+-- reading has no ground truth to appeal to: measured over the ladder with no
+-- trail at all, about one press in five does not move the tile the way the key
+-- points, and one in ten moves it the opposite way. That is not a defect to be
+-- fixed here — grouping and ungrouping trade a tile's SHARE for its POSITION,
+-- and against a workspace edge there is no position left to trade, so the tile
+-- can only grow the wrong way. A ladder over a tree is structural, not
+-- spatial. Since no rule over directions can be honest about which meaning was
+-- intended, the keybinding says which one outright.
+--
 -- TABS — a leaf is a TILE, not a window
 --
 -- A tabbed group is several windows sharing one tile, and Hyprland hands it to
@@ -88,6 +109,10 @@
 -- Registered as "nary"; activate with general.layout = "lua:nary".
 -- Commands (via hl.dsp.layout("<cmd>")):
 --   move l|r|u|d    step the focused window one insertion slot along an axis
+--   undo            walk back the last move on this workspace
+--   hold            photograph this workspace, before a window leaves the
+--                   tiling altogether (floated to be spotlit, say)
+--   restore         put that photograph back, once the window has tiled again
 --   resize <dx> <dy> grow/shrink the focused TILE by that many pixels per axis
 --   untab l|r|u|d   when the focused tab next leaves its tile, put it that side
 --   enter l|r|u|d <space>  a window is crossing into <space> travelling that
@@ -108,7 +133,16 @@
 -- recalculating workspace 2 would reconcile away every window of workspace 1.
 -- pending holds a workspace's placement intents: where windows that are about
 -- to leave a tile should be put down when they arrive. See PLACEMENT INTENTS.
-local state = { trees = {}, pending = {} }
+-- held is one photograph per workspace, taken before a window is pulled out of
+-- the tiling entirely (floated for a spotlight) so it can be put back where it
+-- was rather than wherever an arrival lands. See `hold`.
+local state = { trees = {}, pending = {}, history = {}, held = {} }
+
+-- history is the undo trail, one stack per workspace: the layout as it stood
+-- before each move, newest last. Deep enough to walk back a whole session's
+-- fiddling, capped so a workspace left alone for a week cannot grow one
+-- without bound.
+local MAX_HISTORY = 64
 
 local function new_root()
     return { kind = "container", orient = "h", children = {} }
@@ -712,6 +746,15 @@ end
 local AXIS  = { l = "h", r = "h", u = "v", d = "v" }
 local DELTA = { l = -1,  r = 1,   u = -1,  d = 1 }
 
+local function history_for(key)
+    local hist = state.history[key]
+    if not hist then
+        hist = {}
+        state.history[key] = hist
+    end
+    return hist
+end
+
 -- No ancestor runs along the axis of travel, so there is nowhere to step to.
 -- Pair the focused window with an adjacent sibling to create that axis, after
 -- which subsequent moves cycle through it normally.
@@ -748,7 +791,30 @@ local function cmd_move(root, key, ctx, dir)
     if not id then return true end
 
     local current = canon(root)
-    local work    = copy(root)
+    local hist    = history_for(key)
+
+    -- Anything else that touched the tree since our last move — a window
+    -- opening or closing, toggleorient — means the trail no longer describes
+    -- this layout, so it cannot be walked back.
+    if #hist > 0 and hist[#hist].result ~= current then
+        hist = {}
+        state.history[key] = hist
+    end
+
+    -- Record what we came from, so `undo` can retrace it. A move that changes
+    -- nothing is not worth remembering: pressing into the far edge repeatedly
+    -- would otherwise bury the move that is actually worth walking back.
+    local function commit(after)
+        local fingerprint = canon(after)
+        if fingerprint ~= current then
+            hist[#hist + 1] = { tree = copy(root), result = fingerprint }
+            if #hist > MAX_HISTORY then table.remove(hist, 1) end
+        end
+        state.trees[key] = after
+        return true
+    end
+
+    local work = copy(root)
 
     local nodes, idxs = chain_to(work, id)
     if not nodes then return true end
@@ -768,7 +834,7 @@ local function cmd_move(root, key, ctx, dir)
 
     if not si then
         if bootstrap_axis(nodes, idxs, ax, delta) then
-            state.trees[key] = normalize(work)
+            return commit(normalize(work))
         end
         return true
     end
@@ -783,8 +849,7 @@ local function cmd_move(root, key, ctx, dir)
     local function escape_into(container, index)
         remove_leaf(work, id)
         table.insert(container.children, index + (delta > 0 and 1 or 0), leaf)
-        state.trees[key] = normalize(work)
-        return true
+        return commit(normalize(work))
     end
 
     -- The focused window sits inside a container perpendicular to the axis, so
@@ -820,8 +885,7 @@ local function cmd_move(root, key, ctx, dir)
     if at then
         local target = candidates[at + delta]
         if target then
-            state.trees[key] = target
-            return true
+            return commit(target)
         end
     end
 
@@ -839,12 +903,11 @@ local function cmd_move(root, key, ctx, dir)
     -- Nothing outside runs along this axis, so give the window a branch of its
     -- own: it claims a full band across the tree and everything else shares the
     -- rest. h(1 v(2 3)) with 2 moving up becomes v(2 h(1 3)).
-    state.trees[key] = normalize({
+    return commit(normalize({
         kind     = "container",
         orient   = ax,
         children = (delta > 0) and { work, leaf } or { leaf, work },
-    })
-    return true
+    }))
 end
 
 -- Record where the focused tab should be put down when it leaves its tile.
@@ -978,6 +1041,75 @@ local function cmd_resize(root, ctx, args)
     return true
 end
 
+-- Walk the trail back one move. Pressing it repeatedly keeps walking: each
+-- entry restores the layout the one above it was made from, so the stack stays
+-- consistent with the tree as it unwinds.
+--
+-- Which window is focused is deliberately not consulted. The trail belongs to
+-- the workspace, and a key that means "put that back" should undo the last
+-- thing that happened here, not the last thing that happened to whatever the
+-- mouse is currently over.
+local function cmd_undo(root, key)
+    local hist = history_for(key)
+    local last = hist[#hist]
+
+    -- The trail describes one specific layout; if anything else has edited the
+    -- tree since, restoring it would resurrect windows that have moved on.
+    if not last or last.result ~= canon(root) then
+        state.history[key] = {}
+        return true
+    end
+
+    state.trees[key] = last.tree
+    hist[#hist] = nil
+    return true
+end
+
+-- Every window the tree currently holds, order-independent, for asking whether
+-- two layouts are about the same set of windows.
+local function window_set(root)
+    local ids = {}
+    for _, leaf in ipairs(collect_leaves(root, {})) do
+        for _, id in ipairs(leaf_ids(leaf)) do ids[#ids + 1] = tostring(id) end
+    end
+    table.sort(ids)
+    return table.concat(ids, " ")
+end
+
+-- A window that leaves the tiling altogether — floated to be spotlit, say — is
+-- not moving within the tree, it is vanishing from it: reconcile drops its leaf
+-- and normalize closes the gap over it. Coming back it is an arrival like any
+-- other, and lands beside the focus or at the end of the root. Its old slot is
+-- not merely misremembered, it no longer exists.
+--
+-- So `hold` photographs the whole workspace before the window goes, and
+-- `restore` puts the photograph back once it is tiled again. A whole tree
+-- rather than one leaf's address, because the container that leaf sat in is
+-- exactly what may not have survived its departure.
+local function cmd_hold(root, key)
+    state.held[key] = copy(root)
+    return true
+end
+
+local function cmd_restore(root, key)
+    local held = state.held[key]
+    state.held[key] = nil
+    if not held then return true end
+
+    -- The photograph is only good while it still describes the same windows.
+    -- It won't if one opened or closed while the window was out, or if the
+    -- window has not finished tiling back yet — and in both cases putting it
+    -- back would mean inventing a place for a window it knows nothing about, or
+    -- dropping the one it was taken for. Leaving the layout alone is the
+    -- honest failure: the window keeps the arrival slot it already has.
+    if window_set(held) ~= window_set(root) then return true end
+
+    state.trees[key] = held
+    -- The trail led to layouts that this one does not follow on from.
+    state.history[key] = {}
+    return true
+end
+
 local function cmd_toggleorient(root, ctx)
     local id = active_id(ctx)
     if not id then return true end
@@ -995,6 +1127,12 @@ local function dispatch(ctx, msg)
     local command, args = msg:match("^%s*(%S+)%s*(.-)%s*$")
     if command == "move" then
         return cmd_move(root, key, ctx, args)
+    elseif command == "undo" then
+        return cmd_undo(root, key)
+    elseif command == "hold" then
+        return cmd_hold(root, key)
+    elseif command == "restore" then
+        return cmd_restore(root, key)
     elseif command == "resize" then
         return cmd_resize(root, ctx, args)
     elseif command == "untab" then
@@ -1006,8 +1144,24 @@ local function dispatch(ctx, msg)
     elseif command == "toggleorient" then
         return cmd_toggleorient(root, ctx)
     end
-    return "nary: expected 'move <l|r|u|d>', 'resize <dx> <dy>', 'untab <l|r|u|d>', " ..
-           "'enter <l|r|u|d> <space>', 'explode <window> <columns>' or 'toggleorient'"
+    return "nary: expected 'move <l|r|u|d>', 'undo', 'hold', 'restore', " ..
+           "'resize <dx> <dy>', 'untab <l|r|u|d>', 'enter <l|r|u|d> <space>', " ..
+           "'explode <window> <columns>' or 'toggleorient'"
+end
+
+-- Drop every trail: what has been moved so far is now settled and cannot be
+-- walked back. Every space, not just the focused one — a move can hand a window
+-- to another monitor, so a boundary drawn on one space has to end them all.
+--
+-- CURRENTLY UNUSED, deliberately. This was the seam for scoping undo to the
+-- keypress gesture that made it, called when the modifiers holding a move down
+-- were released. Undo now has a key of its own, which is not held down and so
+-- has no gesture to be scoped to, and the config no longer registers the
+-- release binds that called this (see UNDO in hyprland.lua). Kept because the
+-- boundary is a real one and cheap to re-draw: something that ends a run of
+-- moves — a submap exit, an idle timeout — wants exactly this.
+local function end_move()
+    state.history = {}
 end
 
 local function recalculate(ctx)
@@ -1024,6 +1178,8 @@ local M = {
     canon       = canon,
     dispatch    = dispatch,
     space       = space_of,
+    -- Ends every undo trail. Wired to nothing today; see its definition.
+    end_move    = end_move,
     shape       = function(key)
         local root = state.trees[key]
         return root and canon(root) or ""
