@@ -172,9 +172,12 @@ hl.on("hyprland.start", function()
     hl.exec_cmd("wlsunset -l -33.87 -L 151.21 -t 3500 -T 6500")
     hl.exec_cmd("dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP")
     hl.exec_cmd("gnome-keyring-daemon --start --components=secrets")
-    -- Dims the backlight after 2 min idle and restores it on input; see
-    -- hypridle.conf. No-op where hypridle or a backlight is absent.
-    hl.exec_cmd("hypridle")
+    -- Idle dimming, blanking and locking (see hypridle.conf) are things a
+    -- machine wants because it runs on a battery and closes shut, so they
+    -- follow that property rather than a host name: no battery, no hypridle at
+    -- all. A new laptop picks the whole ladder up with no edit here, and a
+    -- desktop never starts locking itself after ten idle minutes.
+    hl.exec_cmd("sh -c 'ls -d /sys/class/power_supply/BAT* >/dev/null 2>&1 && exec hypridle'")
     -- scratchpad-autohide.sh and imv-splash.sh are gone: both tailed the event
     -- socket through socat to react to focus, which is an `hl.on` handler now.
     hl.exec_cmd("wezterm", { workspace = "1" })
