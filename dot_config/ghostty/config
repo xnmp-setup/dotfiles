@@ -7,12 +7,14 @@ macos-hidden = never
 macos-titlebar-style = tabs
 
 macos-window-buttons = hidden
-# Keep Linux window chrome in sync with the active terminal theme and use a
-# compact, integrated tab bar rather than the wide raised GNOME style.
+# Keep Linux window chrome in sync with the active terminal theme. Under
+# Hyprland, omit the GTK titlebar controls and keep only a compact tab strip.
 window-theme = ghostty
-gtk-titlebar-style = tabs
+gtk-titlebar = false
+gtk-titlebar-style = native
 gtk-toolbar-style = flat
 gtk-wide-tabs = false
+gtk-custom-css = ~/.config/ghostty/tabs.css
 # Don't auto-copy on text selection (use ctrl+c to copy explicitly)
 copy-on-select = false
 split-divider-color = #FFBF00

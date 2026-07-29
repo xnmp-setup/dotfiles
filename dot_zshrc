@@ -14,6 +14,10 @@ __wezterm_osc7() {
 chpwd_functions=(${chpwd_functions[@]} __wezterm_osc7)
 __wezterm_osc7  # emit on shell startup too
 
+# Add app markers to Ghostty tab titles. Ghostty has no programmable tab-title
+# formatter, so this complements its shell integration with standard OSC 2.
+[[ -r ~/.config/zsh/ghostty-tab-title.zsh ]] && source ~/.config/zsh/ghostty-tab-title.zsh
+
 # --- History ---
 HISTFILE="$HOME/.zsh_history"
 HISTSIZE=50000
