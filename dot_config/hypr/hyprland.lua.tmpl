@@ -856,7 +856,7 @@ hl.bind("F10", function() scratchpad.toggle("lite-xl") end)
 -- window blur only affects the pixels directly underneath a translucent window.
 local SPOTLIGHT_WORKSPACE = "spotlight"
 
--- { address, home, floated, was, focused_once } while something is held
+-- { address, home, floated, was, transitioning } while something is held
 -- forward. `floated`
 -- records that the spotlight is what floated it, and so that letting go should
 -- tile it back; a window that was already floating (imv, by window rule) is
@@ -945,7 +945,7 @@ local function spotlight(w, opts)
         home = home,
         floated = floated,
         was = was,
-        focused_once = false,
+        transitioning = true,
     }
     hl.config({ decoration = { dim_special = opts.dim or 0.4 } })
     hl.dispatch(hl.dsp.window.move({
@@ -958,7 +958,8 @@ local function spotlight(w, opts)
     if opts.size then
         hl.dispatch(hl.dsp.window.resize({ x = opts.size[1], y = opts.size[2], window = w }))
     end
-    hl.dispatch(hl.dsp.window.center())
+    hl.dispatch(hl.dsp.window.center({ window = w }))
+    spotlit.transitioning = false
 end
 
 -- Half the monitor's width and 80% of its height, in layout coordinates — the
@@ -971,7 +972,7 @@ local function centred_size()
     return { math.floor(mon.width / scale * 0.5), math.floor(mon.height / scale * 0.8) }
 end
 
-hl.bind(mainMod .. " + CTRL + end", function()
+local function toggle_spotlight()
     local w = hl.get_active_window()
     if not w then return end
 
@@ -980,7 +981,9 @@ hl.bind(mainMod .. " + CTRL + end", function()
     else
         spotlight(w, { size = centred_size(), dim = 0.2 })
     end
-end)
+end
+
+hl.bind(mainMod .. " + CTRL + end", toggle_spotlight)
 
 -- imv is floated and sized by window rule already, so the spotlight only has to
 -- centre it and blur/dim what is behind.
@@ -988,18 +991,14 @@ hl.on("window.open", function(w)
     if w and w.class == "imv" then spotlight(w) end
 end)
 
--- Anything else taking focus ends it, but only after the spotlit window has
--- actually held focus. Moving the focused window to its hidden special
--- workspace produces a transient focus event for the underlying window; that
--- event is part of showing the spotlight, not a request to dismiss it.
+-- Anything else taking focus ends it once the setup transaction has settled.
+-- Floating a grouped window and moving it to the hidden special workspace both
+-- emit focus events for the tab left behind. Those events are consequences of
+-- showing the spotlight, not requests to dismiss it.
 hl.on("window.active", function()
-    if not spotlit then return end
+    if not spotlit or spotlit.transitioning then return end
     local active = hl.get_active_window()
-    if active and active.address == spotlit.address then
-        spotlit.focused_once = true
-    elseif spotlit.focused_once then
-        unspotlight()
-    end
+    if not active or active.address ~= spotlit.address then unspotlight() end
 end)
 
 hl.on("window.close", function(w)
