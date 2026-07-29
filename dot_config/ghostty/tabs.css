@@ -2,6 +2,6 @@
  * weight and size. Scope this to AdwTabBar so terminal content is unaffected. */
 .window tabbar tab {
   font-family: "Inter", "Adwaita Sans", sans-serif;
-  font-size: 18px;
+  font-size: 19px;
   font-weight: bold;
 }
