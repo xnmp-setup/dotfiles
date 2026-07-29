@@ -1,3 +1,5 @@
+model_reasoning_effort = "medium"
+
 # Route sandbox-escalation approvals to the guardian reviewer agent instead of
 # stopping for a human. Only applies while approvals are interactive
 # (approval_policy = "on-request"); a no-op under "never". Must stay above the
