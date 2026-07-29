@@ -24,3 +24,31 @@ trust_level = "trusted"
 
 [tui.model_availability_nux]
 "gpt-5.6-sol" = 4
+
+# Pre-trusted hashes for the hooks in ~/.codex/hooks.json, so a freshly
+# provisioned machine runs them without a trust prompt. Tracked here only
+# because both the hook definitions (.codex/hooks.json) and the script they all
+# invoke (.local/bin/wezterm-agent-status) are managed by this repo — the hashes
+# describe content chezmoi itself installs. Regenerate these (delete the block,
+# re-trust in Codex, copy back) whenever hooks.json changes, or the hooks go
+# silently untrusted. The keys embed an absolute path, so they only match on a
+# machine whose home is /home/chong.
+[hooks.state]
+
+[hooks.state."/home/chong/.codex/hooks.json:pre_tool_use:0:0"]
+trusted_hash = "sha256:2fd69f9806e7e9729439fc0e9c7f1a8ff0c20cb3d9ca840d0eb09758bbd550e0"
+
+[hooks.state."/home/chong/.codex/hooks.json:permission_request:0:0"]
+trusted_hash = "sha256:b631e3c8158f46fcc854b18589000bf4db99393e67121e74fce9fff7b5fd6109"
+
+[hooks.state."/home/chong/.codex/hooks.json:post_tool_use:0:0"]
+trusted_hash = "sha256:d90aa7fc96a95d934d8fe1fcc91e7c4304b99554ac57761490bac8fb2d5fe855"
+
+[hooks.state."/home/chong/.codex/hooks.json:session_end:0:0"]
+trusted_hash = "sha256:b0d31ab879e0e8b09aeb2646569e02852f1e59e831bdabd9078cd5ca3095c3b4"
+
+[hooks.state."/home/chong/.codex/hooks.json:user_prompt_submit:0:0"]
+trusted_hash = "sha256:81b8bda268005f15e4880e0813e73c4dd300162dd45bbc028741b2ef4c989da2"
+
+[hooks.state."/home/chong/.codex/hooks.json:stop:0:0"]
+trusted_hash = "sha256:e94985131fd32938c219616130ca61158110d11a57c490ad17c11ff3553d3b1d"
