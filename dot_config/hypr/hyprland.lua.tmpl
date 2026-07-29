@@ -591,6 +591,51 @@ local function expose_toggle()
     if exposed then expose_fold() else expose_unfold() end
 end
 
+-- Focus the most recently used window whose class is in `classes`. If that
+-- window is a hidden member of a tabbed group, raise its exact group index
+-- before focusing it; focusing alone can otherwise land on the group's current
+-- tab. The final focus dispatch also switches to the window's workspace/monitor.
+local function focus_app(classes)
+    return function()
+        local target
+        for _, w in ipairs(hl.get_windows() or {}) do
+            if w.mapped and classes[w.class]
+                and (not target
+                    or (w.focus_history_id or math.huge)
+                        < (target.focus_history_id or math.huge))
+            then
+                target = w
+            end
+        end
+        if not target then return end
+
+        -- Expose has temporarily dissolved groups. Fold it first and let that
+        -- transaction select/focus this window instead of racing its handlers.
+        if exposed then
+            expose_fold(target)
+            return
+        end
+
+        local group = target.group
+        if group and group.size > 1 and group.members then
+            local members = group.members
+            if members.stable_id then members = { members } end
+
+            for index, member in ipairs(members) do
+                if member.stable_id == target.stable_id then
+                    hl.dispatch(hl.dsp.group.active({
+                        index = index,
+                        window = group.current or target,
+                    }))
+                    break
+                end
+            end
+        end
+
+        hl.dispatch(hl.dsp.focus({ window = target }))
+    end
+end
+
 ---------------------
 ---- KEYBINDINGS ----
 ---------------------
@@ -802,6 +847,9 @@ hl.bind(mainMod .. " + ALT + Next",   hl.dsp.group.next())
 -- Unfold every tab strip on the workspace into panes; selecting a pane folds
 -- them back with that one showing.
 hl.bind("F1", expose_toggle)
+hl.bind("F3", focus_app({ ["dev.zed.Zed"] = true, ["dev.zed.Zed-Dev"] = true }))
+hl.bind("F4", focus_app({ obsidian = true }))
+hl.bind("F8", focus_app({ ["tauri-explorer"] = true }))
 
 ---------------------
 ---- SCRATCHPADS ----
