@@ -609,14 +609,11 @@ end
 -- Wall clock in milliseconds. THE reference for everything animated or expiring
 -- below, deliberately in place of counting update-status events.
 --
--- update-status does NOT fire on a fixed interval. It fires on the interval AND
--- on every repaint — and because the handler ends by writing a right-status that
--- differs each time, it invalidates the tab bar, which repaints, which fires the
--- handler again. Measured: ~24 events/sec in a single window, in bursts as close
--- as 9ms apart, against the 200ms status_update_interval you'd expect. Anything
--- paced by counting those events therefore runs at repaint rate and drifts with
--- machine load. Pacing off the clock instead makes the cadence exact and
--- independent of how often the handler happens to run.
+-- update-status may also run in response to repaints, so animation must be paced
+-- from wall-clock time rather than by counting events. The status handler below
+-- derives its invalidation payload from a 200ms clock bucket: a repaint in the
+-- same bucket writes the same value (a no-op), preventing a repaint feedback
+-- loop while preserving the configured 5fps animation.
 --
 -- Uses chrono's %s (epoch seconds) + %.3f (fractional part) via the wezterm.time
 -- API; pcall'd, falling back to 0 so a missing/changed API degrades to a frozen
@@ -627,12 +624,8 @@ local function now_ms()
   return (tonumber(s) or 0) * 1000
 end
 
--- Ticks once per update-status event. Only used to vary the right-status payload
--- (see the bottom of that handler) — NOT for timing anything.
-local status_tick = 0
-
 -- agent_of_proc memo, keyed by pane-id: { proc = <the process path it was
--- resolved from>, agent = 'claude'|'codex'|false, tick = <status_tick then> }.
+-- resolved from>, agent = 'claude'|'codex'|false, at = <wall-clock ms> }.
 --
 -- Necessary because the argv lookup reads /proc through the mux, while
 -- format-tab-title runs on EVERY tab-bar repaint (~8-24x/sec per window). Doing
@@ -686,7 +679,7 @@ end
 config.send_composed_key_when_left_alt_is_pressed = false
 config.send_composed_key_when_right_alt_is_pressed = false
 config.use_ime = false
-config.debug_key_events = true
+config.debug_key_events = false
 
 -- ---------- Appearance ----------
 -- Color schemes ported from the Ghostty themes (~/.config/ghostty/themes/).
@@ -753,7 +746,8 @@ config.tab_max_width = 32
 -- Drives the update-status timer cadence = spinner animation frame rate. The
 -- handler repaints via set_right_status (cheap, no config reload), so a fast
 -- cadence is fine here. 200ms = 5fps — a lively star grow/shrink.
-config.status_update_interval = 200
+local STATUS_UPDATE_INTERVAL_MS = 200
+config.status_update_interval = STATUS_UPDATE_INTERVAL_MS
 local scheme = config.color_schemes[config.color_scheme]
   or wezterm.color.get_builtin_schemes()[config.color_scheme]
   or { background = '#0e1330' }
@@ -1017,20 +1011,32 @@ local APP_SHOWS_FILE = {
 }
 
 -- Resolve the basename of the file a known editor has open, from its argv.
--- pane_id → mux pane → get_foreground_process_info().argv. Returns nil when the
--- API/info is unavailable or no file argument is present (e.g. `micro` with no
--- file), so the caller falls back to a cwd-only title. Picks the LAST non-flag
--- argv entry — editors put the file after any options, and if several files are
--- open the active/last one is the most useful label.
-local function editor_open_file(pane_id)
+-- get_foreground_process_info() crosses the mux/process boundary and is too
+-- expensive to call on every tab repaint, so cache its stable result per pane
+-- and foreground executable. The short TTL also handles restarting the same
+-- editor with a different file in the same pane.
+local EDITOR_FILE_CACHE_TTL_MS = 2000
+local editor_file_cache = {}
+
+local function editor_open_file(pane_id, proc)
+  local now = now_ms()
+  local hit = editor_file_cache[pane_id]
+  if hit and hit.proc == proc and (now - hit.at) < EDITOR_FILE_CACHE_TTL_MS then
+    return hit.file or nil
+  end
+
   local argv = pane_argv(pane_id)
   for i = #argv, 2, -1 do  -- skip argv[1] (the program itself)
     local a = argv[i]
     if a and a ~= '' and a:sub(1, 1) ~= '-' then
       local base = a:gsub('[/\\]+$', ''):match('[^/\\]+$')
-      if base and base ~= '' then return base end
+      if base and base ~= '' then
+        editor_file_cache[pane_id] = { proc = proc, file = base, at = now }
+        return base
+      end
     end
   end
+  editor_file_cache[pane_id] = { proc = proc, file = false, at = now }
   return nil
 end
 
@@ -1271,7 +1277,8 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
         -- just the cwd — no redundant "cwd: micro". For editors/pagers, show the
         -- open file's basename instead (" .zshrc"), falling back to cwd when no
         -- file arg is present.
-        local file = APP_SHOWS_FILE[proc_name] and editor_open_file(pane_info.pane_id)
+        local file = APP_SHOWS_FILE[proc_name]
+          and editor_open_file(pane_info.pane_id, proc)
         title = file and (basename .. ': ' .. file) or basename
       else
         -- Unknown command — show "cwd: command args" from pane title.
@@ -1448,14 +1455,16 @@ wezterm.on('window-focus-changed', function(window, pane)
   -- 200ms base so we don't change the spinner clock. See long note above re: why
   -- this specific override is the cheapest invalidation trigger.
   local overrides = window:get_config_overrides() or {}
-  overrides.status_update_interval = focused and 200 or 201
+  overrides.status_update_interval = focused
+    and STATUS_UPDATE_INTERVAL_MS
+    or STATUS_UPDATE_INTERVAL_MS + 1
   window:set_config_overrides(overrides)
 end)
 
 -- ---------- Working spinner animation ----------
--- Fires every status_update_interval ms. If any pane in any window reports
--- agent_status=working, advance the spinner frame and force a tab-bar
--- repaint so format-tab-title re-renders the new frame.
+-- Fires every status_update_interval ms. Repaint this window's tab bar only
+-- when one of its own panes reports agent_status=working. A working agent in a
+-- different window must not make unrelated editor windows continually repaint.
 --
 -- CRITICAL: the repaint is done with set_right_status, NOT set_config_overrides.
 -- The override trick used by window-focus-changed forces a full CONFIG RELOAD
@@ -1465,18 +1474,11 @@ end)
 -- re-runs format-tab-title) cheaply, with no reload. We stash the frame in a
 -- module global and write an (empty) right status purely to trigger the repaint.
 wezterm.on('update-status', function(window, pane)
-  -- Fires on a fixed interval whether or not anything is working, so it doubles
-  -- as the clock the agent_of_pane cache expires against.
-  status_tick = status_tick + 1
-
   local any_working = false
-  for _, w in ipairs(wezterm.mux.all_windows()) do
-    for _, tab in ipairs(w:tabs()) do
-      for _, p in ipairs(tab:panes()) do
-        local st = agent_status_of(p:pane_id(), p:get_user_vars())
-        if st == 'working' then any_working = true; break end
-      end
-      if any_working then break end
+  for _, tab in ipairs(window:mux_window():tabs()) do
+    for _, p in ipairs(tab:panes()) do
+      local st = agent_status_of(p:pane_id(), p:get_user_vars())
+      if st == 'working' then any_working = true; break end
     end
     if any_working then break end
   end
@@ -1492,19 +1494,15 @@ wezterm.on('update-status', function(window, pane)
 
   -- NOTE: no frame counters are advanced here. The glyph, its color and the title
   -- shimmer are all computed from now_ms() at render time (see GLYPH_MS /
-  -- COLOR_MS / SHIMMER_MS), because this handler does NOT fire on a fixed
-  -- interval — the invalidation below re-triggers it, so it runs at repaint rate
-  -- (~24x/sec, measured). Advancing a frame per call made the animation run at
-  -- that rate instead of the intended ~3 steps/sec. All this handler still owes
-  -- the animation is a steady stream of repaints, which is what the status write
-  -- below buys.
+  -- COLOR_MS / SHIMMER_MS).
   --
-  -- Alternate between two DIFFERENT zero-width chars (ZWSP U+200B / ZWNBSP
-  -- U+FEFF) so the value changes each tick — an unchanged right status is a
-  -- no-op and wouldn't repaint. Both are zero-width, so the region's size never
-  -- changes and the tab bar doesn't shift. The chars are never visibly rendered;
-  -- they exist only to invalidate the tab bar so format-tab-title re-runs.
-  window:set_right_status(wezterm.format({ { Text = (status_tick % 2 == 0) and '\u{200b}' or '\u{feff}' } }))
+  -- Alternate between two zero-width chars once per configured status interval.
+  -- Recursive/repaint-driven update-status events within the same bucket write
+  -- the same value, which WezTerm treats as a no-op. This keeps the animated tab
+  -- title at 5fps without creating a self-sustaining repaint loop.
+  local animation_bucket = math.floor(now_ms() / STATUS_UPDATE_INTERVAL_MS)
+  local payload = (animation_bucket % 2 == 0) and '\u{200b}' or '\u{feff}'
+  window:set_right_status(wezterm.format({ { Text = payload } }))
 end)
 
 -- ---------- Command palette: Set Theme ----------
