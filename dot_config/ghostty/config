@@ -7,6 +7,12 @@ macos-hidden = never
 macos-titlebar-style = tabs
 
 macos-window-buttons = hidden
+# Keep Linux window chrome in sync with the active terminal theme and use a
+# compact, integrated tab bar rather than the wide raised GNOME style.
+window-theme = ghostty
+gtk-titlebar-style = tabs
+gtk-toolbar-style = flat
+gtk-wide-tabs = false
 # Don't auto-copy on text selection (use ctrl+c to copy explicitly)
 copy-on-select = false
 split-divider-color = #FFBF00
