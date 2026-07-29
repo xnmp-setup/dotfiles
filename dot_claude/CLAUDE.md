@@ -33,5 +33,3 @@
 
 ## Misc
 - When testing whether hooks work, don't pipe text to the shell scripts. Instead run actual commands that would trigger the hooks.
-
-@RTK.md

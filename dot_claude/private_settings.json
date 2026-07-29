@@ -21,15 +21,6 @@
             "command": "~/.local/bin/wezterm-agent-status working"
           }
         ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "rtk hook claude"
-          }
-        ]
       }
     ],
     "PostToolUse": [
