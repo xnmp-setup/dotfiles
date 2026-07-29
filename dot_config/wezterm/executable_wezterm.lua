@@ -510,6 +510,23 @@ local last_tab_title = {}
 -- (before any focus event) → treated as focused so nothing dims on first paint.
 local window_focus = {}
 
+-- Tab-title truncation needs the terminal width, which is stable between resize
+-- events. Cache it per window instead of crossing the mux boundary once per tab
+-- on every repaint.
+local window_cols_by_id = {}
+
+local function refresh_window_cols(window_id, mux_window)
+  local tab = mux_window and mux_window:active_tab()
+  local size = tab and tab:get_size()
+  local cols = size and size.cols
+  if cols then window_cols_by_id[window_id] = cols end
+  return cols
+end
+
+wezterm.on('window-resized', function(window, pane)
+  refresh_window_cols(window:window_id(), window:mux_window())
+end)
+
 -- Per-pane coding-agent status (Claude Code or Codex), keyed by pane-id. This is
 -- the SOURCE OF TRUTH the tab bar reads — NOT the raw agent_status user var —
 -- because the var gets stuck.
@@ -526,17 +543,23 @@ local window_focus = {}
 -- prompt, flow through unchanged), AND the Esc keybind writes 'done' here
 -- directly. That gives interrupt a path the hooks can't provide, while a fresh
 -- prompt's 'working' write immediately overrides it back — no stuck state, no
--- background watchdog. Keyed by pane_id; nil → fall back to the var / no status.
+-- background watchdog. `false` means the pane was checked and has no status;
+-- nil means it has not been seeded since the last config reload.
 local pane_status = {}
 
 -- Resolve a pane's effective agent status: the table (source of truth) wins,
--- else the raw user var (covers panes that set the var before this session's
--- user-var-changed handler had seen them, e.g. a config reload mid-session).
+-- otherwise seed it once from the raw user var (covers panes that set the var
+-- before this session's handler saw them, e.g. a config reload mid-session).
 -- claude_status is the var's former, Claude-only name — still read so agent
 -- sessions started before this config landed keep reporting until they exit.
 local function agent_status_of(pane_id, user_vars)
-  local vars = user_vars or {}
-  return pane_status[pane_id] or vars.agent_status or vars.claude_status
+  local cached = pane_status[pane_id]
+  if cached ~= nil then return cached or nil end
+  if not user_vars then return nil end
+
+  local status = user_vars.agent_status or user_vars.claude_status
+  pane_status[pane_id] = status or false
+  return status
 end
 
 -- Mirror every agent_status var write into pane_status. Fires on each OSC
@@ -544,7 +567,7 @@ end
 -- Esc-set 'done' automatically.
 wezterm.on('user-var-changed', function(window, pane, name, value)
   if name == 'agent_status' or name == 'claude_status' then
-    pane_status[pane:pane_id()] = value
+    pane_status[pane:pane_id()] = (value and value ~= '') and value or false
   end
 end)
 
@@ -759,10 +782,8 @@ config.window_frame = {
   -- Adwaita Mono is a third fallback purely for the Claude status stars ❋ (U+274B)
   -- and ✹ (U+2739): they exist in NO other installed font, so without this entry
   -- wezterm can only reach them via its ASYNC system-wide font search. That search
-  -- result is flushed by the full config reload the window-focus-changed handler
-  -- forces (see below), so for a frame after every focus change the idle star drew
-  -- as .notdef (a tall box with a slash). Listing the font here makes the glyphs
-  -- resolve synchronously from the configured stack, so the reload can't gap them.
+  -- can briefly gap across genuine config/theme reloads. Listing the font here
+  -- resolves the glyphs synchronously from the configured stack.
   font = wezterm.font_with_fallback({ { family = 'Inter', weight = 'Medium' }, 'Hack Nerd Font', 'Adwaita Mono' }),
   font_size = 15,
   active_titlebar_bg = scheme.background,
@@ -1191,8 +1212,20 @@ end
 -- so the kerned pairs change and the title width jitters slightly. Defeat it by
 -- dithering the blue channel with index parity: neighbours can never be byte-
 -- identical, so every char stays its own run every frame → constant shaping, no
--- shift. The ±1 blue on a grey is imperceptible.
-local function shimmer_runs(title, phase, is_active)
+-- shift. The ±1 blue on a grey is imperceptible. Cache the most recent frame per
+-- tab because unrelated terminal output can request the same frame repeatedly.
+local shimmer_cache = {}
+
+local function shimmer_runs(tab_id, title, phase, is_active)
+  local hit = shimmer_cache[tab_id]
+  if hit
+    and hit.title == title
+    and hit.phase == phase
+    and hit.is_active == is_active
+  then
+    return hit.runs
+  end
+
   local lo, hi = is_active and 0xcc or 0x8e, is_active and 0xff or 0xbe
   local runs = {}
   local i = 0
@@ -1202,6 +1235,12 @@ local function shimmer_runs(title, phase, is_active)
     runs[#runs + 1] = { Text = utf8.char(cp) }
     i = i + 1
   end
+  shimmer_cache[tab_id] = {
+    title = title,
+    phase = phase,
+    is_active = is_active,
+    runs = runs,
+  }
   return runs
 end
 
@@ -1388,8 +1427,13 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
   -- Truncate via the pure helper. window_cols comes from the mux (a stable input)
   -- — NOT the content-driven max_width param, which feeds back on itself. See the
   -- long note on compute_tab_title above.
-  local mux_win = wezterm.mux.get_window(tab.window_id)
-  local window_cols = mux_win and mux_win:active_tab():get_size().cols or 200
+  local window_cols = window_cols_by_id[tab.window_id]
+  if not window_cols then
+    window_cols = refresh_window_cols(
+      tab.window_id,
+      wezterm.mux.get_window(tab.window_id)
+    ) or 200
+  end
   title = compute_tab_title {
     title = title,
     marker = marker,
@@ -1409,7 +1453,8 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
   }
   if is_working then
     -- Shimmering title: one colored run per char, bright band sweeps L→R.
-    for _, run in ipairs(shimmer_runs(title, math.floor(now_ms() / SHIMMER_MS), is_active)) do
+    local phase = math.floor(now_ms() / SHIMMER_MS)
+    for _, run in ipairs(shimmer_runs(tab.tab_id, title, phase, is_active)) do
       result[#result + 1] = run
     end
     result[#result + 1] = { Text = ' ' }
@@ -1428,37 +1473,18 @@ end)
 -- intensity on `tab.is_active and window_focused`), then force the tab bar to
 -- repaint immediately.
 --
--- Subtlety that cost real debugging time: format-tab-title recomputing does NOT
--- repaint the GUI surface — wezterm calls it constantly (~8-24x/sec per window)
--- but the visible tab bar only updates on an explicit invalidation. The reliable
--- trigger is the window-config-reloaded event, which set_config_overrides emits
--- — but ONLY when the override values actually CHANGE. Re-setting an unchanged
--- table is silently a no-op (verified: zero reload events), so the title would
--- lag 1-2s until the next surface refresh and the just-blurred window often
--- wouldn't update at all. So we flip an override every focus change.
---
--- The reload→repaint round trip costs ~135ms regardless of WHICH override is
--- flipped (measured: identical for opacity vs this), so latency isn't the reason
--- for the choice. But the override must be visually INERT, else it adds its own
--- cost/flicker on top: foreground_text_hsb re-renders every glyph (the original
--- ~2s lag), window_background_opacity recomposites the translucent surface (risk
--- of a faint opacity flicker). status_update_interval only changes a timer
--- cadence — no glyph render, no recomposite, no possible visual — so flipping it
--- 1000<->1001 is the cleanest pure repaint trigger. ~135ms is the floor for this
--- approach; wezterm exposes no cheaper tab-bar invalidation. window-focus-changed
--- fires for both the losing and gaining window, so both tab bars repaint at once.
+-- format-tab-title recomputing does not itself repaint the GUI surface, so write
+-- a focus-specific zero-width right status to invalidate the tab bar. This uses
+-- the same cheap path as the agent animation and avoids the ~135ms full config
+-- reload previously caused by set_config_overrides. Two characters distinguish
+-- focus invalidations from the animation's one-character payload; all remain
+-- zero-width, so the tab-bar layout is unchanged.
 wezterm.on('window-focus-changed', function(window, pane)
   local focused = window:is_focused()
   window_focus[window:window_id()] = focused
 
-  -- Flip the (inert) interval by 1ms to force a tab-bar repaint. Stay at the
-  -- 200ms base so we don't change the spinner clock. See long note above re: why
-  -- this specific override is the cheapest invalidation trigger.
-  local overrides = window:get_config_overrides() or {}
-  overrides.status_update_interval = focused
-    and STATUS_UPDATE_INTERVAL_MS
-    or STATUS_UPDATE_INTERVAL_MS + 1
-  window:set_config_overrides(overrides)
+  local payload = focused and '\u{200b}\u{200b}' or '\u{feff}\u{feff}'
+  window:set_right_status(wezterm.format({ { Text = payload } }))
 end)
 
 -- ---------- Working spinner animation ----------
@@ -1466,18 +1492,19 @@ end)
 -- when one of its own panes reports agent_status=working. A working agent in a
 -- different window must not make unrelated editor windows continually repaint.
 --
--- CRITICAL: the repaint is done with set_right_status, NOT set_config_overrides.
--- The override trick used by window-focus-changed forces a full CONFIG RELOAD
--- (~135ms) every call — fine for an occasional focus change, but at animation
--- cadence it made tab switches visibly laggy. set_right_status is WezTerm's
--- intended per-frame update path: it invalidates and repaints the tab bar (which
--- re-runs format-tab-title) cheaply, with no reload. We stash the frame in a
--- module global and write an (empty) right status purely to trigger the repaint.
+-- set_right_status is WezTerm's cheap tab-bar invalidation path: it repaints the
+-- bar (and re-runs format-tab-title) without reloading the configuration.
 wezterm.on('update-status', function(window, pane)
   local any_working = false
   for _, tab in ipairs(window:mux_window():tabs()) do
     for _, p in ipairs(tab:panes()) do
-      local st = agent_status_of(p:pane_id(), p:get_user_vars())
+      local pane_id = p:pane_id()
+      local st = agent_status_of(pane_id)
+      if pane_status[pane_id] == nil then
+        -- One-time seed after a config reload. Subsequent status changes arrive
+        -- through user-var-changed, so the 5fps path stays in memory.
+        st = agent_status_of(pane_id, p:get_user_vars())
+      end
       if st == 'working' then any_working = true; break end
     end
     if any_working then break end
