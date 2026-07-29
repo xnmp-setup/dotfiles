@@ -29,7 +29,7 @@ alpha-blending = native
 theme = Cosmic Dusk
 # Keep normal terminal text as bright as the theme's ANSI bright white.
 foreground = #f0f2fa
-mouse-scroll-multiplier = 1
+mouse-scroll-multiplier = 5
 
 window-padding-x = 10
 # window-padding-y = 10
