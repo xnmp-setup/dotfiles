@@ -1,3 +1,11 @@
+# Route sandbox-escalation approvals to the guardian reviewer agent instead of
+# stopping for a human. Only applies while approvals are interactive
+# (approval_policy = "on-request"); a no-op under "never". Must stay above the
+# first [table] header or TOML nests it. Values: user | auto_review |
+# guardian_subagent. NB: the published docs' [auto_review] table form does not
+# parse in 0.145 — this key is top-level.
+approvals_reviewer = "auto_review"
+
 # Lifecycle hooks are off by default; without this Codex silently ignores
 # ~/.codex/hooks.json (which drives the WezTerm tab status — see that file).
 [features]
