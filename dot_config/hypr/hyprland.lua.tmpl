@@ -591,23 +591,130 @@ local function expose_toggle()
     if exposed then expose_fold() else expose_unfold() end
 end
 
--- Focus the most recently used window whose class is in `classes`. If that
--- window is a hidden member of a tabbed group, raise its exact group index
--- before focusing it; focusing alone can otherwise land on the group's current
--- tab. The final focus dispatch also switches to the window's workspace/monitor.
-local function focus_app(classes)
-    return function()
-        local target
-        for _, w in ipairs(hl.get_windows() or {}) do
-            if w.mapped and classes[w.class]
-                and (not target
-                    or (w.focus_history_id or math.huge)
-                        < (target.focus_history_id or math.huge))
-            then
-                target = w
+-- The ordinary workspace in front of the user. A scratchpad's active window is
+-- on a special workspace, but new application windows belong on the regular
+-- workspace underneath it.
+local function current_workspace()
+    local monitor = hl.get_active_monitor()
+    local workspace = monitor and monitor.active_workspace
+    if workspace and workspace.id then return workspace end
+    return hl.get_active_workspace()
+end
+
+local function same_window(a, b)
+    return a and b and a.stable_id == b.stable_id
+end
+
+-- Raise a window's exact group index before focusing it. focus(window) alone
+-- can land on the group's currently visible member when `window` is hidden.
+local function focus_window(window)
+    if not (window and window.mapped) then return end
+
+    local group = window.group
+    if group and group.size > 1 and group.members then
+        local members = group.members
+        if members.stable_id then members = { members } end
+
+        for index, member in ipairs(members) do
+            if same_window(member, window) then
+                hl.dispatch(hl.dsp.group.active({
+                    index = index,
+                    window = group.current or window,
+                }))
+                break
             end
         end
-        if not target then return end
+    end
+
+    hl.dispatch(hl.dsp.focus({ window = window }))
+end
+
+-- One armed return per app. It exists only after this shortcut changed focus;
+-- manually arriving on an app window does not turn the shortcut into "back".
+local app_returns = {}
+local app_focus_transition = false
+
+hl.on("window.active", function()
+    if app_focus_transition then return end
+    local window = hl.get_active_window()
+    for name, state in pairs(app_returns) do
+        if not same_window(window, state.target) then app_returns[name] = nil end
+    end
+end)
+
+local pending_app_launches = {}
+
+hl.on("window.open", function(window)
+    if not window then return end
+
+    for name, pending in pairs(pending_app_launches) do
+        if pending.classes[window.class] then
+            pending_app_launches[name] = nil
+            hl.timer(function()
+                if not window.mapped then return end
+                if not (window.workspace and window.workspace.id == pending.workspace_id) then
+                    hl.dispatch(hl.dsp.window.move({
+                        workspace = tostring(pending.workspace_id),
+                        window = window,
+                    }))
+                end
+                focus_window(window)
+            end, { timeout = 60, type = "oneshot" })
+            return
+        end
+    end
+end)
+
+-- Per-workspace app toggle:
+--   1. Focus the most-recent matching window, including a hidden group tab.
+--   2. Press again while that exact window is still focused to restore the
+--      window/tab that this shortcut replaced.
+--   3. If no matching window exists here, create one on this workspace.
+local function focus_app(app)
+    return function()
+        local workspace = current_workspace()
+        if not (workspace and workspace.id) then return end
+
+        local active = hl.get_active_window()
+        local previous = app_returns[app.name]
+        if previous and same_window(active, previous.target) then
+            app_returns[app.name] = nil
+            if previous.window and previous.window.mapped
+                and previous.window.workspace
+                and previous.window.workspace.id == workspace.id
+            then
+                app_focus_transition = true
+                focus_window(previous.window)
+                app_focus_transition = false
+            end
+            return
+        end
+
+        local target
+        local running = false
+        for _, w in ipairs(hl.get_windows() or {}) do
+            if w.mapped and app.classes[w.class] then
+                running = true
+                if w.workspace and w.workspace.id == workspace.id
+                    and (not target
+                        or (w.focus_history_id or math.huge)
+                            < (target.focus_history_id or math.huge))
+                then
+                    target = w
+                end
+            end
+        end
+
+        if not target then
+            app_returns[app.name] = nil
+            pending_app_launches[app.name] = {
+                classes = app.classes,
+                workspace_id = workspace.id,
+            }
+            local command = running and (app.new_window or app.launch) or app.launch
+            hl.exec_cmd(command, { workspace = tostring(workspace.id) })
+            return
+        end
 
         -- Expose has temporarily dissolved groups. Fold it first and let that
         -- transaction select/focus this window instead of racing its handlers.
@@ -616,23 +723,17 @@ local function focus_app(classes)
             return
         end
 
-        local group = target.group
-        if group and group.size > 1 and group.members then
-            local members = group.members
-            if members.stable_id then members = { members } end
-
-            for index, member in ipairs(members) do
-                if member.stable_id == target.stable_id then
-                    hl.dispatch(hl.dsp.group.active({
-                        index = index,
-                        window = group.current or target,
-                    }))
-                    break
-                end
-            end
+        if active and not same_window(active, target)
+            and active.workspace and active.workspace.id == workspace.id
+        then
+            app_returns[app.name] = { target = target, window = active }
+        else
+            app_returns[app.name] = nil
         end
 
-        hl.dispatch(hl.dsp.focus({ window = target }))
+        app_focus_transition = true
+        focus_window(target)
+        app_focus_transition = false
     end
 end
 
@@ -847,9 +948,22 @@ hl.bind(mainMod .. " + ALT + Next",   hl.dsp.group.next())
 -- Unfold every tab strip on the workspace into panes; selecting a pane folds
 -- them back with that one showing.
 hl.bind("F1", expose_toggle)
-hl.bind("F3", focus_app({ ["dev.zed.Zed"] = true, ["dev.zed.Zed-Dev"] = true }))
-hl.bind("F4", focus_app({ obsidian = true }))
-hl.bind("F8", focus_app({ ["tauri-explorer"] = true }))
+hl.bind("F3", focus_app({
+    name = "zed",
+    classes = { ["dev.zed.Zed"] = true, ["dev.zed.Zed-Dev"] = true },
+    launch = "zed --new",
+}))
+hl.bind("F4", focus_app({
+    name = "obsidian",
+    classes = { obsidian = true },
+    launch = "obsidian",
+    new_window = "obsidian eval 'code=app.workspace.openPopoutLeaf()'",
+}))
+hl.bind("F8", focus_app({
+    name = "tauri-explorer",
+    classes = { ["tauri-explorer"] = true },
+    launch = "tauri-explorer",
+}))
 
 ---------------------
 ---- SCRATCHPADS ----
