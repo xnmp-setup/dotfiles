@@ -624,6 +624,22 @@ local function now_ms()
   return (tonumber(s) or 0) * 1000
 end
 
+-- Read a process-lifetime cache that survives config reloads. WezTerm rebuilds
+-- the Lua state on reload, while wezterm.GLOBAL persists for the GUI process.
+local function global_cache(name)
+  local cache = wezterm.GLOBAL[name]
+  return type(cache) == 'table' and cache or {}
+end
+
+-- Refresh before a miss so multiple Lua contexts merge through the latest
+-- process-global table instead of overwriting one another's entries.
+local function global_cache_on_miss(name, pane_id, proc)
+  local cache = global_cache(name)
+  local hit = cache[tostring(pane_id)]
+  if hit and hit.proc == proc then return cache, hit end
+  return cache, nil
+end
+
 -- agent_of_proc memo, keyed by pane-id: { proc = <the process path it was
 -- resolved from>, agent = 'claude'|'codex'|false }.
 --
@@ -636,17 +652,24 @@ end
 -- visible typing/tab-switch stalls. A direct node→node replacement can briefly
 -- retain the former agent icon, but normal agent→shell→agent transitions change
 -- the executable and invalidate correctly.
-local agent_cache = {}
+local AGENT_CACHE_NAME = 'wezterm_agent_identity_cache_v1'
+local agent_cache = global_cache(AGENT_CACHE_NAME)
 
 local function agent_of_pane(pane_id, proc)
-  local hit = agent_cache[pane_id]
+  local key = tostring(pane_id)
+  local hit = agent_cache[key]
   if hit and hit.proc == proc then
     return hit.agent or nil
   end
+
+  agent_cache, hit = global_cache_on_miss(AGENT_CACHE_NAME, pane_id, proc)
+  if hit then return hit.agent or nil end
+
   local agent = agent_of_proc(proc, function() return pane_argv(pane_id) end)
   -- `false`, not nil: a table lookup can't distinguish "cached as not-an-agent"
   -- from "never looked up", and not-an-agent is the common case worth caching.
-  agent_cache[pane_id] = { proc = proc, agent = agent or false }
+  agent_cache[key] = { proc = proc, agent = agent or false }
+  wezterm.GLOBAL[AGENT_CACHE_NAME] = agent_cache
   return agent
 end
 
@@ -755,10 +778,8 @@ config.window_frame = {
   -- Adwaita Mono is a third fallback purely for the Claude status stars ❋ (U+274B)
   -- and ✹ (U+2739): they exist in NO other installed font, so without this entry
   -- wezterm can only reach them via its ASYNC system-wide font search. That search
-  -- result is flushed by the full config reload the window-focus-changed handler
-  -- forces (see below), so for a frame after every focus change the idle star drew
-  -- as .notdef (a tall box with a slash). Listing the font here makes the glyphs
-  -- resolve synchronously from the configured stack, so the reload can't gap them.
+  -- can briefly gap across genuine config/theme reloads. Listing the font here
+  -- resolves the glyphs synchronously from the configured stack.
   font = wezterm.font_with_fallback({ { family = 'Inter', weight = 'Medium' }, 'Hack Nerd Font', 'Adwaita Mono' }),
   font_size = 15,
   active_titlebar_bg = scheme.background,
@@ -1010,13 +1031,22 @@ local APP_SHOWS_FILE = {
 -- get_foreground_process_info() crosses the mux/process boundary and is too
 -- expensive to poll, so cache its stable result until the foreground executable
 -- changes. Normal editor→shell→editor transitions invalidate the cache.
-local editor_file_cache = {}
+local EDITOR_CACHE_NAME = 'wezterm_editor_file_cache_v1'
+local editor_file_cache = global_cache(EDITOR_CACHE_NAME)
 
 local function editor_open_file(pane_id, proc)
-  local hit = editor_file_cache[pane_id]
+  local key = tostring(pane_id)
+  local hit = editor_file_cache[key]
   if hit and hit.proc == proc then
     return hit.file or nil
   end
+
+  editor_file_cache, hit = global_cache_on_miss(
+    EDITOR_CACHE_NAME,
+    pane_id,
+    proc
+  )
+  if hit then return hit.file or nil end
 
   local argv = pane_argv(pane_id)
   for i = #argv, 2, -1 do  -- skip argv[1] (the program itself)
@@ -1024,12 +1054,14 @@ local function editor_open_file(pane_id, proc)
     if a and a ~= '' and a:sub(1, 1) ~= '-' then
       local base = a:gsub('[/\\]+$', ''):match('[^/\\]+$')
       if base and base ~= '' then
-        editor_file_cache[pane_id] = { proc = proc, file = base }
+        editor_file_cache[key] = { proc = proc, file = base }
+        wezterm.GLOBAL[EDITOR_CACHE_NAME] = editor_file_cache
         return base
       end
     end
   end
-  editor_file_cache[pane_id] = { proc = proc, file = false }
+  editor_file_cache[key] = { proc = proc, file = false }
+  wezterm.GLOBAL[EDITOR_CACHE_NAME] = editor_file_cache
   return nil
 end
 
@@ -1421,37 +1453,18 @@ end)
 -- intensity on `tab.is_active and window_focused`), then force the tab bar to
 -- repaint immediately.
 --
--- Subtlety that cost real debugging time: format-tab-title recomputing does NOT
--- repaint the GUI surface — wezterm calls it constantly (~8-24x/sec per window)
--- but the visible tab bar only updates on an explicit invalidation. The reliable
--- trigger is the window-config-reloaded event, which set_config_overrides emits
--- — but ONLY when the override values actually CHANGE. Re-setting an unchanged
--- table is silently a no-op (verified: zero reload events), so the title would
--- lag 1-2s until the next surface refresh and the just-blurred window often
--- wouldn't update at all. So we flip an override every focus change.
---
--- The reload→repaint round trip costs ~135ms regardless of WHICH override is
--- flipped (measured: identical for opacity vs this), so latency isn't the reason
--- for the choice. But the override must be visually INERT, else it adds its own
--- cost/flicker on top: foreground_text_hsb re-renders every glyph (the original
--- ~2s lag), window_background_opacity recomposites the translucent surface (risk
--- of a faint opacity flicker). status_update_interval only changes a timer
--- cadence — no glyph render, no recomposite, no possible visual — so flipping it
--- 1000<->1001 is the cleanest pure repaint trigger. ~135ms is the floor for this
--- approach; wezterm exposes no cheaper tab-bar invalidation. window-focus-changed
--- fires for both the losing and gaining window, so both tab bars repaint at once.
+-- format-tab-title recomputing does not itself repaint the GUI surface, so write
+-- a focus-specific zero-width right status to invalidate the tab bar. This uses
+-- the same cheap path as the agent animation and avoids the measured ~116-135ms
+-- full config reload previously caused by set_config_overrides. Two characters
+-- distinguish focus invalidations from the animation's one-character payload;
+-- all remain zero-width, so the tab-bar layout is unchanged.
 wezterm.on('window-focus-changed', function(window, pane)
   local focused = window:is_focused()
   window_focus[window:window_id()] = focused
 
-  -- Flip the (inert) interval by 1ms to force a tab-bar repaint. Stay at the
-  -- 200ms base so we don't change the spinner clock. See long note above re: why
-  -- this specific override is the cheapest invalidation trigger.
-  local overrides = window:get_config_overrides() or {}
-  overrides.status_update_interval = focused
-    and STATUS_UPDATE_INTERVAL_MS
-    or STATUS_UPDATE_INTERVAL_MS + 1
-  window:set_config_overrides(overrides)
+  local payload = focused and '\u{200b}\u{200b}' or '\u{feff}\u{feff}'
+  window:set_right_status(wezterm.format({ { Text = payload } }))
 end)
 
 -- ---------- Working spinner animation ----------
@@ -1459,13 +1472,8 @@ end)
 -- when one of its own panes reports agent_status=working. A working agent in a
 -- different window must not make unrelated editor windows continually repaint.
 --
--- CRITICAL: the repaint is done with set_right_status, NOT set_config_overrides.
--- The override trick used by window-focus-changed forces a full CONFIG RELOAD
--- (~135ms) every call — fine for an occasional focus change, but at animation
--- cadence it made tab switches visibly laggy. set_right_status is WezTerm's
--- intended per-frame update path: it invalidates and repaints the tab bar (which
--- re-runs format-tab-title) cheaply, with no reload. We stash the frame in a
--- module global and write an (empty) right status purely to trigger the repaint.
+-- set_right_status is WezTerm's cheap tab-bar invalidation path: it repaints the
+-- bar (and re-runs format-tab-title) without reloading the configuration.
 wezterm.on('update-status', function(window, pane)
   local any_working = false
   for _, tab in ipairs(window:mux_window():tabs()) do
