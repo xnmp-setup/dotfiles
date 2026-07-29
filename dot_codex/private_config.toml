@@ -54,7 +54,7 @@ trust_level = "trusted"
 trusted_hash = "sha256:2fd69f9806e7e9729439fc0e9c7f1a8ff0c20cb3d9ca840d0eb09758bbd550e0"
 
 [hooks.state."/home/chong/.codex/hooks.json:permission_request:0:0"]
-trusted_hash = "sha256:b631e3c8158f46fcc854b18589000bf4db99393e67121e74fce9fff7b5fd6109"
+trusted_hash = "sha256:45b51991c1ba4191e319305984ef81eb651ed15b53259a8d05edf02c37711b72"
 
 [hooks.state."/home/chong/.codex/hooks.json:post_tool_use:0:0"]
 trusted_hash = "sha256:d90aa7fc96a95d934d8fe1fcc91e7c4304b99554ac57761490bac8fb2d5fe855"

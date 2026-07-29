@@ -11,9 +11,13 @@
 #     done      <- Stop, and Notification/idle_prompt (clears the interrupt-stuck
 #                  case, since no hook fires on user interrupt)
 #   Codex        ~/.codex/hooks.json  (needs features.hooks = true in config.toml)
-#     working   <- UserPromptSubmit, PreToolUse, PostToolUse
-#     attention <- PermissionRequest
+#     working   <- UserPromptSubmit, PreToolUse, PermissionRequest, PostToolUse
+#     attention <- PreToolUse/request_user_input (resolved from the hook payload)
 #     done      <- Stop, SessionEnd
+#   Codex routes permission requests to its configured auto-reviewer, so they
+#   represent agent work rather than human input. Codex exposes no hook after an
+#   auto-review decision, which means marking PermissionRequest as attention
+#   would leave the tab red until the entire approved tool call finishes.
 #   Codex has no Notification event, so it never passes "notification".
 #
 # A literal "notification" arg is resolved to attention/done/ignore below using
@@ -49,6 +53,17 @@ if [ "$status" = "notification" ]; then
     idle_prompt)       status=done ;;
     *)                 exit 0 ;;
   esac
+fi
+
+# A request_user_input call blocks on a human choice. It arrives through the
+# wildcard PreToolUse hook as "working", so promote that precise payload to
+# attention. PermissionRequest stays working because Codex auto-reviews it.
+if [ "$status" = "working" ] \
+  && printf '%s' "$payload" \
+    | jq -e '.hook_event_name == "PreToolUse"
+             and .tool_name == "request_user_input"' >/dev/null 2>&1
+then
+  status=attention
 fi
 
 [ "$TERM_PROGRAM" = "WezTerm" ] || exit 0

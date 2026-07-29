@@ -28,7 +28,7 @@
       {
         "matcher": "*",
         "hooks": [
-          { "type": "command", "command": "~/.local/bin/wezterm-agent-status attention" }
+          { "type": "command", "command": "~/.local/bin/wezterm-agent-status working" }
         ]
       }
     ],
