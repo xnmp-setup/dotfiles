@@ -161,6 +161,73 @@ hl.animation({ leaf = "workspaces",       enabled = true, speed = 2, bezier = "d
 hl.animation({ leaf = "specialWorkspace", enabled = true, speed = 3, bezier = "fastBezier", style = "slidefadevert -50%" })
 
 
+-----------------------------
+---- STARTUP TAB PAIRING ----
+-----------------------------
+-- The browser and the notes app come up as ONE tab strip with the notes on top,
+-- rather than as two panes squeezing the terminal.
+--
+-- Hyprland cannot build a group from a list of windows: the only way in is
+-- moveintogroup, which merges whatever lies in a DIRECTION (the same constraint
+-- the expose fold works around). So the two have to be neighbours before they
+-- can be tabbed — which is why the notes app is NOT launched with the rest.
+-- nary inserts a new leaf right after the FOCUSED one, so starting it once the
+-- browser's window is up and focused puts it beside the browser whatever else
+-- the workspace already holds.
+--
+-- Everything here is best-effort and one-shot: if either app is missing or slow
+-- enough that the user has moved on, the pairing simply never happens and the
+-- windows behave like any others.
+local STARTUP_TAB_BROWSER = "google-chrome"
+local STARTUP_TAB_NOTES   = "obsidian"
+
+local startup_tab = nil -- "waiting-browser" -> "waiting-notes" -> nil (done)
+
+local function find_window(class)
+    for _, w in ipairs(hl.get_windows() or {}) do
+        if w.class == class and w.mapped then return w end
+    end
+end
+
+-- Which way the browser lies from the notes window. Centres, not corners: the
+-- two tiles can differ in size, and the larger overlap on one axis is what
+-- decides whether they are side by side or stacked.
+local function direction_towards(from, to)
+    local dx = (to.at.x + to.size.x / 2) - (from.at.x + from.size.x / 2)
+    local dy = (to.at.y + to.size.y / 2) - (from.at.y + from.size.y / 2)
+    if math.abs(dx) >= math.abs(dy) then
+        return dx < 0 and "left" or "right"
+    end
+    return dy < 0 and "up" or "down"
+end
+
+local function startup_tab_merge(notes)
+    local browser = find_window(STARTUP_TAB_BROWSER)
+    if not (browser and notes.mapped and notes.at and browser.at) then return end
+
+    -- The merge inserts after the current tab and becomes it, so the notes end
+    -- up showing without a separate raise.
+    hl.dispatch(hl.dsp.window.move({
+        window = notes,
+        into_or_create_group = direction_towards(notes, browser),
+    }))
+end
+
+hl.on("window.open", function(w)
+    if not (startup_tab and w) then return end
+
+    if startup_tab == "waiting-browser" and w.class == STARTUP_TAB_BROWSER then
+        startup_tab = "waiting-notes"
+        hl.exec_cmd(STARTUP_TAB_NOTES, { workspace = "1" })
+    elseif startup_tab == "waiting-notes" and w.class == STARTUP_TAB_NOTES then
+        startup_tab = nil
+        -- The window exists but the layout has not placed it yet, and the merge
+        -- is decided entirely by where the two tiles sit.
+        hl.timer(function() startup_tab_merge(w) end, { timeout = 120, type = "oneshot" })
+    end
+end)
+
+
 -------------------
 ---- AUTOSTART ----
 -------------------
@@ -182,7 +249,9 @@ hl.on("hyprland.start", function()
     -- socket through socat to react to focus, which is an `hl.on` handler now.
     hl.exec_cmd("wezterm", { workspace = "1" })
     hl.exec_cmd("google-chrome-stable", { workspace = "1" })
-    hl.exec_cmd("obsidian", { workspace = "1" })
+    -- Obsidian is launched by the startup tab pairing above, once Chrome's
+    -- window is up, so the two land next to each other and can be tabbed.
+    startup_tab = "waiting-browser"
     hl.exec_cmd("systemctl --user start hypr-session-save.service")
 {{ if eq .chezmoi.hostname "t14s" }}
     -- NixOS laptop: polkit agent is not autostarted by anything else
