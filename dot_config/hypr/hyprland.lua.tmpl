@@ -856,7 +856,8 @@ hl.bind("F10", function() scratchpad.toggle("lite-xl") end)
 -- window blur only affects the pixels directly underneath a translucent window.
 local SPOTLIGHT_WORKSPACE = "spotlight"
 
--- { address, home, floated, was } while something is held forward. `floated`
+-- { address, home, floated, was, focused_once } while something is held
+-- forward. `floated`
 -- records that the spotlight is what floated it, and so that letting go should
 -- tile it back; a window that was already floating (imv, by window rule) is
 -- left floating.
@@ -939,7 +940,13 @@ local function spotlight(w, opts)
         was = { at = w.at, size = w.size }
     end
 
-    spotlit = { address = w.address, home = home, floated = floated, was = was }
+    spotlit = {
+        address = w.address,
+        home = home,
+        floated = floated,
+        was = was,
+        focused_once = false,
+    }
     hl.config({ decoration = { dim_special = opts.dim or 0.4 } })
     hl.dispatch(hl.dsp.window.move({
         workspace = "special:" .. SPOTLIGHT_WORKSPACE,
@@ -981,11 +988,18 @@ hl.on("window.open", function(w)
     if w and w.class == "imv" then spotlight(w) end
 end)
 
--- Anything else taking focus ends it.
+-- Anything else taking focus ends it, but only after the spotlit window has
+-- actually held focus. Moving the focused window to its hidden special
+-- workspace produces a transient focus event for the underlying window; that
+-- event is part of showing the spotlight, not a request to dismiss it.
 hl.on("window.active", function()
     if not spotlit then return end
     local active = hl.get_active_window()
-    if not active or active.address ~= spotlit.address then unspotlight() end
+    if active and active.address == spotlit.address then
+        spotlit.focused_once = true
+    elseif spotlit.focused_once then
+        unspotlight()
+    end
 end)
 
 hl.on("window.close", function(w)
