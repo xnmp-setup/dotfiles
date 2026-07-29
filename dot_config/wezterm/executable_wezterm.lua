@@ -625,32 +625,28 @@ local function now_ms()
 end
 
 -- agent_of_proc memo, keyed by pane-id: { proc = <the process path it was
--- resolved from>, agent = 'claude'|'codex'|false, at = <wall-clock ms> }.
+-- resolved from>, agent = 'claude'|'codex'|false }.
 --
 -- Necessary because the argv lookup reads /proc through the mux, while
 -- format-tab-title runs on EVERY tab-bar repaint (~8-24x/sec per window). Doing
 -- that read per tab per frame made the whole terminal visibly laggy.
 --
--- Two invalidations, because neither alone is sufficient:
---   - proc changed → the foreground process was replaced (agent exited back to
---     the shell, or a command started). Catches every common transition, and is
---     free: we already have proc in hand.
---   - TTL → catches the case proc CAN'T: one node process replaced by another
---     node process, where the path is identical but the argv is not. Rare, so a
---     couple of seconds of a stale icon is the right trade for the frames saved.
-local AGENT_CACHE_TTL_MS = 2000
+-- Invalidate only when the foreground executable changes. The argv lookup takes
+-- ~175-220ms on this system, so polling it on a TTL blocks the GUI and causes
+-- visible typing/tab-switch stalls. A direct node→node replacement can briefly
+-- retain the former agent icon, but normal agent→shell→agent transitions change
+-- the executable and invalidate correctly.
 local agent_cache = {}
 
 local function agent_of_pane(pane_id, proc)
   local hit = agent_cache[pane_id]
-  local now = now_ms()
-  if hit and hit.proc == proc and (now - hit.at) < AGENT_CACHE_TTL_MS then
+  if hit and hit.proc == proc then
     return hit.agent or nil
   end
   local agent = agent_of_proc(proc, function() return pane_argv(pane_id) end)
   -- `false`, not nil: a table lookup can't distinguish "cached as not-an-agent"
   -- from "never looked up", and not-an-agent is the common case worth caching.
-  agent_cache[pane_id] = { proc = proc, agent = agent or false, at = now }
+  agent_cache[pane_id] = { proc = proc, agent = agent or false }
   return agent
 end
 
@@ -1012,16 +1008,13 @@ local APP_SHOWS_FILE = {
 
 -- Resolve the basename of the file a known editor has open, from its argv.
 -- get_foreground_process_info() crosses the mux/process boundary and is too
--- expensive to call on every tab repaint, so cache its stable result per pane
--- and foreground executable. The short TTL also handles restarting the same
--- editor with a different file in the same pane.
-local EDITOR_FILE_CACHE_TTL_MS = 2000
+-- expensive to poll, so cache its stable result until the foreground executable
+-- changes. Normal editor→shell→editor transitions invalidate the cache.
 local editor_file_cache = {}
 
 local function editor_open_file(pane_id, proc)
-  local now = now_ms()
   local hit = editor_file_cache[pane_id]
-  if hit and hit.proc == proc and (now - hit.at) < EDITOR_FILE_CACHE_TTL_MS then
+  if hit and hit.proc == proc then
     return hit.file or nil
   end
 
@@ -1031,12 +1024,12 @@ local function editor_open_file(pane_id, proc)
     if a and a ~= '' and a:sub(1, 1) ~= '-' then
       local base = a:gsub('[/\\]+$', ''):match('[^/\\]+$')
       if base and base ~= '' then
-        editor_file_cache[pane_id] = { proc = proc, file = base, at = now }
+        editor_file_cache[pane_id] = { proc = proc, file = base }
         return base
       end
     end
   end
-  editor_file_cache[pane_id] = { proc = proc, file = false, at = now }
+  editor_file_cache[pane_id] = { proc = proc, file = false }
   return nil
 end
 
