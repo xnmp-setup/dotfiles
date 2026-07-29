@@ -8,6 +8,10 @@ model_reasoning_effort = "medium"
 # parse in 0.145 — this key is top-level.
 approvals_reviewer = "auto_review"
 
+[tui]
+# Keep the OSC 2 title emitted by ~/.config/zsh/ghostty-tab-title.zsh.
+terminal_title = null
+
 # Lifecycle hooks are off by default; without this Codex silently ignores
 # ~/.codex/hooks.json (which drives the WezTerm tab status — see that file).
 [features]
