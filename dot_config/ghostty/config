@@ -26,7 +26,9 @@ freetype-load-flags = hinting,no-force-autohint,no-monochrome,autohint,no-light
 # Match WezTerm's bold ANSI promotion and native sRGB glyph blending.
 bold-color = bright
 alpha-blending = native
-theme = Ayu Mirage
+theme = Cosmic Dusk
+# Keep normal terminal text as bright as the theme's ANSI bright white.
+foreground = #f0f2fa
 mouse-scroll-multiplier = 1
 
 window-padding-x = 10
@@ -82,7 +84,7 @@ keybind = shift+page_down=scroll_page_down
 keybind = ctrl+n=new_window
 # keybind = ctrl+c=copy_to_clipboard
 
-font-size = 16
+font-size = 14
 
 # Normal/full zsh tab
 keybind = ctrl+t=new_tab
