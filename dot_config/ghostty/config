@@ -12,6 +12,9 @@ copy-on-select = false
 split-divider-color = #FFBF00
 font-thicken = true
 font-thicken-strength = 80
+# WezTerm uses FreeType's normal hinting; Ghostty defaults to light hinting on
+# Linux, which makes the same JetBrains Mono Regular face look thinner.
+freetype-load-flags = hinting,no-force-autohint,no-monochrome,autohint,no-light
 theme = Ayu Mirage
 mouse-scroll-multiplier = 1
 
