@@ -1,6 +1,7 @@
 /* Ghostty's config exposes the tab font family, but GTK CSS controls its
  * weight and size. Scope this to AdwTabBar so terminal content is unaffected. */
 .window tabbar tab {
-  font-size: 17px;
+  font-family: "Inter", "Adwaita Sans", sans-serif;
+  font-size: 18px;
   font-weight: bold;
 }
