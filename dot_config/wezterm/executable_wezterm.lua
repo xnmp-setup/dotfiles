@@ -528,6 +528,27 @@ local window_focus = {}
 -- prompt's 'working' write immediately overrides it back — no stuck state, no
 -- background watchdog. Keyed by pane_id; nil → fall back to the var / no status.
 local pane_status = {}
+local animated_panes = {}
+
+local function now_ms()
+  local ok, value = pcall(function()
+    return wezterm.time.now():format('%s%.3f')
+  end)
+  return ok and (tonumber(value) or 0) * 1000 or 0
+end
+
+-- Maintain animation state from OSC user-variable events and tab renders. This
+-- cache is deliberately GUI-local: update-status must never walk the mux.
+local function track_animation(pane_id, window_id, status)
+  if status == 'working' then
+    animated_panes[pane_id] = {
+      window_id = window_id,
+      last_seen = now_ms(),
+    }
+  else
+    animated_panes[pane_id] = nil
+  end
+end
 
 -- Resolve a pane's effective agent status: the table (source of truth) wins,
 -- else the raw user var (covers panes that set the var before this session's
@@ -544,13 +565,11 @@ end
 -- Esc-set 'done' automatically.
 wezterm.on('user-var-changed', function(window, pane, name, value)
   if name == 'agent_status' or name == 'claude_status' then
-    pane_status[pane:pane_id()] = value
+    local pane_id = pane:pane_id()
+    pane_status[pane_id] = value
+    track_animation(pane_id, window:window_id(), value)
   end
 end)
-
--- Runtimes that run an agent as a SCRIPT, so the process name is the runtime and
--- says nothing about which agent (if any) it is hosting — see agent_of_proc.
-local JS_RUNTIMES = { node = 1, bun = 1, deno = 1 }
 
 local function agent_named_in(s)
   if not s or s == '' then return nil end
@@ -559,118 +578,15 @@ local function agent_named_in(s)
   return nil
 end
 
--- Which coding agent (if any) a pane's foreground process is: 'claude' | 'codex'
--- | nil. Drives both the Esc interrupt fix-up and the tab-bar status styling, so
--- adding an agent is a one-line change in agent_named_in.
---
--- The process path alone is NOT enough. Only a natively-installed Claude Code
--- names itself in its executable path (~/.local/share/claude/versions/<ver>);
--- Codex — and an npm-installed Claude Code — run as a node script, so the
--- executable is .../bin/node and the agent's name appears only in the ARGV:
---     node /home/you/.nvm/versions/node/vX/bin/codex
--- Matching the path alone therefore silently missed every Codex pane, which then
--- fell through to the generic per-app icon and rendered as APP_ICONS.node — the
--- Node.js hexagon, static and status-less. So when the foreground process is a JS
--- runtime, fall back to scanning argv.
---
--- argv is fetched through a callback, not passed in, so the (cheap but non-zero)
--- /proc read only happens for panes that are actually running a JS runtime —
--- format-tab-title calls this for every tab on every repaint.
---
--- Known imprecision: `node ~/Repos/codex-experiments/x.js` would read as a Codex
--- pane. It only costs a wrong tab icon, and requires a JS runtime whose argv
--- names an agent, so it's not worth a heavier check.
-local function agent_of_proc(proc, argv_fn)
-  if not proc or proc == '' then return nil end
-  local direct = agent_named_in(proc)
-  if direct then return direct end
-
-  local pname = (proc:match('[^/\\]+$') or ''):gsub('%.exe$', '')
-  if not JS_RUNTIMES[pname] then return nil end
-
-  for _, a in ipairs((argv_fn and argv_fn()) or {}) do
-    local hosted = agent_named_in(a)
-    if hosted then return hosted end
-  end
-  return nil
-end
-
--- argv of a pane's foreground process, or {} when unavailable. Everything is
--- pcall'd: format-tab-title runs on every repaint and an error there drops the
--- whole tab back to wezterm's raw default title.
-local function pane_argv(pane_id)
-  local ok, pane = pcall(wezterm.mux.get_pane, pane_id)
-  if not ok or not pane then return {} end
-  local ok2, info = pcall(function() return pane:get_foreground_process_info() end)
-  if not ok2 or not info or not info.argv then return {} end
-  return info.argv
-end
-
--- Wall clock in milliseconds. THE reference for everything animated or expiring
--- below, deliberately in place of counting update-status events.
---
--- update-status may also run in response to repaints, so animation must be paced
--- from wall-clock time rather than by counting events. The status handler below
--- derives its invalidation payload from a 200ms clock bucket: a repaint in the
--- same bucket writes the same value (a no-op), preventing a repaint feedback
--- loop while preserving the configured 5fps animation.
---
--- Uses chrono's %s (epoch seconds) + %.3f (fractional part) via the wezterm.time
--- API; pcall'd, falling back to 0 so a missing/changed API degrades to a frozen
--- animation rather than an error in the middle of format-tab-title.
-local function now_ms()
-  local ok, s = pcall(function() return wezterm.time.now():format('%s%.3f') end)
-  if not ok then return 0 end
-  return (tonumber(s) or 0) * 1000
-end
-
--- Read a process-lifetime cache that survives config reloads. WezTerm rebuilds
--- the Lua state on reload, while wezterm.GLOBAL persists for the GUI process.
-local function global_cache(name)
-  local cache = wezterm.GLOBAL[name]
-  return type(cache) == 'table' and cache or {}
-end
-
--- Refresh before a miss so multiple Lua contexts merge through the latest
--- process-global table instead of overwriting one another's entries.
-local function global_cache_on_miss(name, pane_id, proc)
-  local cache = global_cache(name)
-  local hit = cache[tostring(pane_id)]
-  if hit and hit.proc == proc then return cache, hit end
-  return cache, nil
-end
-
--- agent_of_proc memo, keyed by pane-id: { proc = <the process path it was
--- resolved from>, agent = 'claude'|'codex'|false }.
---
--- Necessary because the argv lookup reads /proc through the mux, while
--- format-tab-title runs on EVERY tab-bar repaint (~8-24x/sec per window). Doing
--- that read per tab per frame made the whole terminal visibly laggy.
---
--- Invalidate only when the foreground executable changes. The argv lookup takes
--- ~175-220ms on this system, so polling it on a TTL blocks the GUI and causes
--- visible typing/tab-switch stalls. A direct node→node replacement can briefly
--- retain the former agent icon, but normal agent→shell→agent transitions change
--- the executable and invalidate correctly.
-local AGENT_CACHE_NAME = 'wezterm_agent_identity_cache_v1'
-local agent_cache = global_cache(AGENT_CACHE_NAME)
-
-local function agent_of_pane(pane_id, proc)
-  local key = tostring(pane_id)
-  local hit = agent_cache[key]
-  if hit and hit.proc == proc then
-    return hit.agent or nil
-  end
-
-  agent_cache, hit = global_cache_on_miss(AGENT_CACHE_NAME, pane_id, proc)
-  if hit then return hit.agent or nil end
-
-  local agent = agent_of_proc(proc, function() return pane_argv(pane_id) end)
-  -- `false`, not nil: a table lookup can't distinguish "cached as not-an-agent"
-  -- from "never looked up", and not-an-agent is the common case worth caching.
-  agent_cache[key] = { proc = proc, agent = agent or false }
-  wezterm.GLOBAL[AGENT_CACHE_NAME] = agent_cache
-  return agent
+-- Agent identity is emitted by wezterm-agent-status as a pane user variable.
+-- Never inspect argv here: format-tab-title runs on WezTerm's GUI thread, and a
+-- synchronous mux/process query in this path can freeze both rendering and the
+-- embedded mux. Direct process-name matching remains only as a compatibility
+-- fallback for native Claude panes created before agent_kind was introduced.
+local function agent_of_pane(proc, user_vars)
+  local kind = (user_vars or {}).agent_kind
+  if kind == 'claude' or kind == 'codex' then return kind end
+  return agent_named_in(proc)
 end
 
 -- ---------- Default shell ----------
@@ -762,9 +678,6 @@ config.show_close_tab_button_in_tabs = false  -- drop the per-tab "x" (it overla
 -- native widget / available width). Kept for the retro-bar fallback only. Our
 -- own truncation in format-tab-title uses the per-tab max_width passed there.
 config.tab_max_width = 32
--- Drives the update-status timer cadence = spinner animation frame rate. The
--- handler repaints via set_right_status (cheap, no config reload), so a fast
--- cadence is fine here. 200ms = 5fps — a lively star grow/shrink.
 local STATUS_UPDATE_INTERVAL_MS = 200
 config.status_update_interval = STATUS_UPDATE_INTERVAL_MS
 local scheme = config.color_schemes[config.color_scheme]
@@ -860,7 +773,7 @@ config.keys = {
   { key = 'Escape', mods = 'NONE', action = wezterm.action_callback(function(window, pane)
     local proc = pane:get_foreground_process_name() or ''
     local pid = pane:pane_id()
-    local agent = agent_of_pane(pid, proc)
+    local agent = agent_of_pane(proc, pane:get_user_vars())
     if agent then
       pane_status[pid] = 'done'
     end
@@ -1016,136 +929,30 @@ local APP_ICONS = {
   man = '\u{f02d}',  brew = '\u{f0f4}',  psql = '\u{e76e}',  redis = '\u{e76d}',  sqlite3 = '\u{e7c4}',
 }
 
--- Apps whose tab title should show the open FILE's basename instead of just the
--- cwd (e.g. " .zshrc" for a micro session editing ~/.zshrc). Editors/pagers
--- take a file path as an argument; we pull it from the process argv. Value is
--- unused (set membership only).
-local APP_SHOWS_FILE = {
-  micro=1, nano=1, vim=1, nvim=1, vi=1, hx=1, helix=1, emacs=1, bat=1, less=1, man=1,
-}
-
--- Resolve the basename of the file a known editor has open, from its argv.
--- get_foreground_process_info() crosses the mux/process boundary and is too
--- expensive to poll, so cache its stable result until the foreground executable
--- changes. Normal editor→shell→editor transitions invalidate the cache.
-local EDITOR_CACHE_NAME = 'wezterm_editor_file_cache_v1'
-local editor_file_cache = global_cache(EDITOR_CACHE_NAME)
-
-local function editor_open_file(pane_id, proc)
-  local key = tostring(pane_id)
-  local hit = editor_file_cache[key]
-  if hit and hit.proc == proc then
-    return hit.file or nil
-  end
-
-  editor_file_cache, hit = global_cache_on_miss(
-    EDITOR_CACHE_NAME,
-    pane_id,
-    proc
-  )
-  if hit then return hit.file or nil end
-
-  local argv = pane_argv(pane_id)
-  for i = #argv, 2, -1 do  -- skip argv[1] (the program itself)
-    local a = argv[i]
-    if a and a ~= '' and a:sub(1, 1) ~= '-' then
-      local base = a:gsub('[/\\]+$', ''):match('[^/\\]+$')
-      if base and base ~= '' then
-        editor_file_cache[key] = { proc = proc, file = base }
-        wezterm.GLOBAL[EDITOR_CACHE_NAME] = editor_file_cache
-        return base
-      end
-    end
-  end
-  editor_file_cache[key] = { proc = proc, file = false }
-  wezterm.GLOBAL[EDITOR_CACHE_NAME] = editor_file_cache
-  return nil
-end
-
--- Spinner animation for "working" tabs. format-tab-title normally renders a
--- static ⬤ dot; while a claude pane reports status=working we twinkle Claude's
--- own star glyph in its place — the shape grows/shrinks (· → ✦ → ✳ → ✷ → …) and
--- the color pulses dim→bright, so it reads as a blinking Claude icon rather than
--- a generic spinner. WezTerm only repaints the tab bar on an invalidation (not a
--- timer), so the update-status handler forces a repaint while any pane is
--- working — ONLY then, so idle tabs don't churn repaints. WHICH frame gets drawn
--- is a pure function of the clock (see now_ms / GLYPH_MS), not of how many
--- repaints have happened.
---
--- Claude Code's own "working" spinner, replicated. Claude cycles a GROWING STAR
--- (not a rotation or color pulse): it eases up from a dot to a big asterisk and
--- back, ping-pong, over a 2000ms period with cosine timing. Glyphs (from the
--- Claude Code binary): · U+00B7, ✢ U+2722, ✳ U+2733, ✶ U+2736, ✻ U+273B,
--- ✽ U+273D. We list the forward ramp and mirror it in code for the ping-pong.
---
--- Each glyph carries a trailing \u{FE0E} (VARIATION SELECTOR-15) to force TEXT
--- presentation — bare ✳ would render as a green emoji that ignores our color.
--- With VS15 they're monochrome and obey the orange Foreground below.
---
--- Claude's TUI is monospace so its star can change width freely; our fancy tab
--- bar is proportional (Inter), so differing glyph widths would shift the title.
--- The marker is therefore rendered in a fixed-width wrapper (see format below).
--- Claude's ramp starts with · (U+00B7 middle dot), but in the proportional tab
--- font the dot is far narrower than the stars and its frame visibly shifted the
--- title. Dropped it: the remaining star-family glyphs are near-equal width, so
--- the grow/shrink still reads while the text barely moves.
---
--- Also dropped ✳ (U+2733): it has EMOJI presentation by default and our VS15
--- override doesn't stick in this wezterm build, so that one frame rendered as a
--- big green emoji star. The remaining glyphs are text-default and stay orange.
-local SPINNER_RAMP = {
-  '✢\u{FE0E}', '✶\u{FE0E}', '✻\u{FE0E}', '✽\u{FE0E}',
-}
-
--- Working spinner color: a HUE CYCLE sweeping blue → teal → green and back,
--- deliberately different from the orange done/idle star so an in-progress tab is
--- unmistakable. The hue ramp is ping-ponged (blue→green then green→blue) for a
--- seamless loop, and stepped on its OWN period (see COLOR_MS) rather than the
--- glyph's — the two periods differ, so color drifts against size instead of
--- locking to it, giving a livelier shimmer.
-local SPINNER_COLOR_RAMP = { '#4a7fd6', '#4aa6c8', '#3fb8a8', '#4fc785', '#63d46b' }
-
--- Animation periods, in MILLISECONDS PER STEP — the actual cadence you see,
--- because the indices below are computed from now_ms() rather than from a count
--- of update-status events (which fire ~24x/sec; see now_ms).
---
--- Claude Code's own spinner runs a ~2000ms grow/shrink cycle. Our ping-ponged
--- ramp is 6 frames, so 333ms/frame reproduces that period — about 3 steps/sec,
--- an unhurried pulse. COLOR_MS is deliberately NOT a divisor of GLYPH_MS so the
--- two cycles beat against each other instead of marching in lockstep.
-local GLYPH_MS = 333
-local COLOR_MS = 250
--- The title shimmer is a travelling band, not a blink, so it wants to be smooth:
--- fast enough to read as a sweep, slow enough not to strobe.
-local SHIMMER_MS = 60
-
--- Index into a ping-ponged ramp for the current instant. Wall-clock derived, so
--- every window/tab showing the same agent animates in lockstep, and the cadence
--- holds no matter how often (or unevenly) the tab bar repaints.
-local function frame_at(now, ramp, period_ms)
-  return ramp[(math.floor(now / period_ms) % #ramp) + 1]
-end
-
--- Ping-pong a ramp: 1..n then n-1..2, so it loops smoothly with no repeated peak.
-local function pingpong(ramp)
-  local out = {}
-  for i = 1, #ramp do out[#out + 1] = ramp[i] end
-  for i = #ramp - 1, 2, -1 do out[#out + 1] = ramp[i] end
-  return out
-end
-
--- Per-agent tab markers. COLOR encodes the STATE (in-progress hue cycle / idle /
--- red for needs-input) and is shared, so a red tab means the same thing whichever
--- agent it is; the GLYPH FAMILY encodes WHICH agent, so you can tell a Claude tab
--- from a Codex one at a glance:
---   claude — Claude's own growing star (✢✶✻✽), idle ❋, orange when idle
---   codex  — OpenAI's hexagon: outline ⬡ ↔ filled ⬢ pulse, idle ⬢, teal when idle
+-- Per-agent tab markers. Shape identifies the agent; color identifies whether it
+-- is working, idle or waiting for input. Working markers animate from wall-clock
+-- time; their repaint signal uses only the local animated_panes cache.
 -- Every glyph carries VARIATION SELECTOR-15 (\u{FE0E}) to force TEXT presentation
 -- — bare shapes in these blocks can render as emoji that ignore our color. All of
 -- them come from Adwaita Mono, the third window_frame fallback (Inter and Hack
 -- Nerd Font have none of these codepoints), same as the Claude stars always have.
 --
--- Adding an agent = one entry here plus one line in agent_of_proc.
+-- Adding an agent = one entry here plus one branch in agent_of_pane.
+local function pingpong(ramp)
+  local result = {}
+  for i = 1, #ramp do result[#result + 1] = ramp[i] end
+  for i = #ramp - 1, 2, -1 do result[#result + 1] = ramp[i] end
+  return result
+end
+
+local function frame_at(now, ramp, period_ms)
+  return ramp[(math.floor(now / period_ms) % #ramp) + 1]
+end
+
+local GLYPH_MS = 333
+local COLOR_MS = 250
+local SHIMMER_MS = 60
+
 local AGENT_MARKERS = {
   claude = {
     idle       = '❋\u{FE0E}',  -- U+274B heavy eight-teardrop asterisk
@@ -1154,75 +961,44 @@ local AGENT_MARKERS = {
     -- black star) is denser than the ❋ outline, so the tab stands out twice over
     -- (shape + red).
     attention  = '✹\u{FE0E}',
-    frames     = pingpong(SPINNER_RAMP),
-    colors     = pingpong(SPINNER_COLOR_RAMP),
+    frames = pingpong({
+      '✢\u{FE0E}', '✶\u{FE0E}', '✻\u{FE0E}', '✽\u{FE0E}',
+    }),
+    colors = pingpong({
+      '#4a7fd6', '#4aa6c8', '#3fb8a8', '#4fc785', '#63d46b',
+    }),
   },
   codex = {
     idle       = '⬢\u{FE0E}',  -- U+2B22 black hexagon — OpenAI's mark is hexagonal
     idle_fg    = '#10A37F',    -- OpenAI teal
     attention  = '⬣\u{FE0E}',  -- U+2B23 horizontal black hexagon: wider, denser
-    -- Working: a diamond that grows AND fills — small solid ⬩, then medium
-    -- outline ⬦, outline-with-core ◈, solid ⬥ — ping-ponged, so it swells and
-    -- settles the way Claude's star does, in a different shape family.
-    --
-    -- All four are deliberately from the U+2B2x/U+25C8 set rather than the
-    -- obvious ◆ ◇ (U+25C6/U+25C7): those two exist in Inter, which sits FIRST in
-    -- the window_frame stack, so they'd resolve from a PROPORTIONAL font while
-    -- their neighbours resolved from Adwaita Mono — different advance widths,
-    -- and the title would visibly shift each frame. Every glyph below is absent
-    -- from both Inter and Hack Nerd Font, so all four come from Adwaita Mono;
-    -- being monospaced, it gives them one identical advance width. That's also
-    -- why the small ⬩ frame is safe here, where Claude's ramp had to drop its
-    -- narrow · (that one came from a proportional font).
-    frames     = pingpong({ '⬩\u{FE0E}', '⬦\u{FE0E}', '◈\u{FE0E}', '⬥\u{FE0E}' }),
-    -- Teal → mint, a hue cycle in Codex's own colour rather than Claude's blue→green,
-    -- so even the working animation says which agent is running.
-    colors     = pingpong({ '#0E8C6E', '#10A37F', '#1FBF93', '#45D6A8', '#6FE8C0' }),
+    frames = pingpong({
+      '⬩\u{FE0E}', '⬦\u{FE0E}', '◈\u{FE0E}', '⬥\u{FE0E}',
+    }),
+    colors = pingpong({
+      '#0E8C6E', '#10A37F', '#1FBF93', '#45D6A8', '#6FE8C0',
+    }),
   },
 }
 
--- Title-text shimmer for "working" tabs. Claude Code shimmers its status text
--- (combobulating/lollygagging/…) with a bright band that sweeps across the
--- letters; we replicate it on the tab title. Each character is emitted as its
--- own colored run whose lightness is a cosine of (char_index - phase), so the
--- peak (a bright grey) travels left→right while the rest sits a shade dimmer.
--- The phase is derived from the clock (SHIMMER_MS per step) and only applied to
--- working tabs, so idle tabs render a flat title and don't churn repaints. The
--- band stays within the bright greys (dim floor well above black) so the title
--- never loses legibility — this is a subtle sheen, not a blink.
-
--- Grey between dim `lo` and bright `hi` (both 0..255) by t in [0,1]. `dither`
--- nudges the blue channel by ±0 (visually nothing) purely so that two adjacent
--- characters NEVER emit the exact same color string — see shimmer_runs.
-local function shimmer_grey(lo, hi, t, dither)
-  local v = math.floor(lo + (hi - lo) * t + 0.5)
-  -- Subtract (never add): v can reach the 255 ceiling at the peak where adding
-  -- would clamp and re-collide with a neighbour. v >= lo (>=0x8e) so v-1 is safe.
-  local b = v - dither
-  return string.format('#%02x%02x%02x', v, v, b)
+local function shimmer_grey(lo, hi, amount, dither)
+  local value = math.floor(lo + (hi - lo) * amount + 0.5)
+  return string.format('#%02x%02x%02x', value, value, value - dither)
 end
 
--- Per-character colored runs for a shimmering title. Active tabs sweep brighter
--- (dimmer band is still legible); inactive/unfocused tabs use a lower ceiling so
--- they read as backgrounded, matching the rest of the dulled styling.
---
--- WezTerm coalesces adjacent runs that share identical styling, then shapes each
--- merged run as a unit — applying proportional kerning across the pair. Near the
--- cosine peak/trough the wave is flat, so neighbours would quantize to the SAME
--- grey and merge; as the band sweeps, WHICH neighbours merge changes each frame,
--- so the kerned pairs change and the title width jitters slightly. Defeat it by
--- dithering the blue channel with index parity: neighbours can never be byte-
--- identical, so every char stays its own run every frame → constant shaping, no
--- shift. The ±1 blue on a grey is imperceptible.
 local function shimmer_runs(title, phase, is_active)
   local lo, hi = is_active and 0xcc or 0x8e, is_active and 0xff or 0xbe
   local runs = {}
-  local i = 0
-  for _, cp in utf8.codes(title) do
-    local wave = (math.cos((i - phase) * 0.5) + 1) / 2  -- 0..1
-    runs[#runs + 1] = { Foreground = { Color = shimmer_grey(lo, hi, wave, i % 2) } }
-    runs[#runs + 1] = { Text = utf8.char(cp) }
-    i = i + 1
+  local index = 0
+  for _, codepoint in utf8.codes(title) do
+    local wave = (math.cos((index - phase) * 0.5) + 1) / 2
+    runs[#runs + 1] = {
+      Foreground = {
+        Color = shimmer_grey(lo, hi, wave, index % 2),
+      },
+    }
+    runs[#runs + 1] = { Text = utf8.char(codepoint) }
+    index = index + 1
   end
   return runs
 end
@@ -1253,7 +1029,7 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
   -- because only Claude's pane title is a useful label (its current task).
   -- Codex titles its pane with its own run-state text, which duplicates what our
   -- marker already says, so codex tabs take the normal cwd path below.
-  local agent = agent_of_pane(pane_info.pane_id, proc)
+  local agent = agent_of_pane(proc, pane_info.user_vars)
   local is_claude = agent == 'claude'
 
   -- On exit Claude blanks its pane title (renders as a lone "_") for a frame
@@ -1296,12 +1072,9 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
     if proc_name ~= '' and not shells[proc_name] then
       if APP_ICONS[proc_name] then
         -- Known app: its marker icon (set below) already names the app, so show
-        -- just the cwd — no redundant "cwd: micro". For editors/pagers, show the
-        -- open file's basename instead (" .zshrc"), falling back to cwd when no
-        -- file arg is present.
-        local file = APP_SHOWS_FILE[proc_name]
-          and editor_open_file(pane_info.pane_id, proc)
-        title = file and (basename .. ': ' .. file) or basename
+        -- just the cwd — no redundant "cwd: micro". Reading an editor's argv to
+        -- recover its filename is intentionally avoided in this GUI-thread hook.
+        title = basename
       else
         -- Unknown command — show "cwd: command args" from pane title.
         -- pane title is usually set to the running command by the shell.
@@ -1363,13 +1136,10 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
   if agent then
     local m = AGENT_MARKERS[agent]
     local status = agent_status_of(pane_info.pane_id, pane_info.user_vars)
+    track_animation(pane_info.pane_id, tab.window_id, status)
     local style = status and STATUS_STYLE[status]
     if status == 'working' then
       is_working = true
-      -- Animate the agent's glyph with a synced color pulse — both glyph and
-      -- color come from the current ping-pong frame, so the marker brightens as
-      -- it animates. The working hue is deliberately not the idle hue, so an
-      -- in-progress tab reads as in-progress even out of the corner of your eye.
       local now = now_ms()
       marker = frame_at(now, m.frames, GLYPH_MS)
       marker_fg = frame_at(now, m.colors, COLOR_MS)
@@ -1407,16 +1177,13 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
     title_fg = is_active and '#ffffff' or '#aaaaaa'
   end
 
-  -- Truncate via the pure helper. window_cols comes from the mux (a stable input)
-  -- — NOT the content-driven max_width param, which feeds back on itself. See the
-  -- long note on compute_tab_title above.
-  local mux_win = wezterm.mux.get_window(tab.window_id)
-  local window_cols = mux_win and mux_win:active_tab():get_size().cols or 200
+  -- Truncate via the pure helper. Use a conservative fixed budget rather than
+  -- synchronously querying the mux from this GUI-thread callback.
   title = compute_tab_title {
     title = title,
     marker = marker,
     ntabs = #tabs,
-    window_cols = window_cols,
+    window_cols = 200,
     max_chars = 24,
     marker_pad = 3,  -- '  ' before + ' ' after the marker
     width = wezterm.column_width,
@@ -1430,8 +1197,8 @@ wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
     { Text = '  ' .. marker .. ' ' },
   }
   if is_working then
-    -- Shimmering title: one colored run per char, bright band sweeps L→R.
-    for _, run in ipairs(shimmer_runs(title, math.floor(now_ms() / SHIMMER_MS), is_active)) do
+    local phase = math.floor(now_ms() / SHIMMER_MS)
+    for _, run in ipairs(shimmer_runs(title, phase, is_active)) do
       result[#result + 1] = run
     end
     result[#result + 1] = { Text = ' ' }
@@ -1464,42 +1231,26 @@ wezterm.on('window-focus-changed', function(window, pane)
   window:set_right_status(wezterm.format({ { Text = payload } }))
 end)
 
--- ---------- Working spinner animation ----------
--- Fires every status_update_interval ms. Repaint this window's tab bar only
--- when one of its own panes reports agent_status=working. A working agent in a
--- different window must not make unrelated editor windows continually repaint.
---
--- set_right_status is WezTerm's cheap tab-bar invalidation path: it repaints the
--- bar (and re-runs format-tab-title) without reloading the configuration.
+-- Repaint animated titles from local state only. Entries not observed by a tab
+-- render recently are discarded, covering closed panes and hidden windows
+-- without querying the mux from the GUI event loop.
 wezterm.on('update-status', function(window, pane)
+  local now = now_ms()
+  local window_id = window:window_id()
   local any_working = false
-  for _, tab in ipairs(window:mux_window():tabs()) do
-    for _, p in ipairs(tab:panes()) do
-      local st = agent_status_of(p:pane_id(), p:get_user_vars())
-      if st == 'working' then any_working = true; break end
+
+  for pane_id, state in pairs(animated_panes) do
+    if now - state.last_seen > 3000 then
+      animated_panes[pane_id] = nil
+    elseif state.window_id == window_id then
+      any_working = true
     end
-    if any_working then break end
   end
 
-  if not any_working then
-    -- Keep a constant zero-width payload even when idle: toggling between empty
-    -- and non-empty adds/removes the right-status region and reflows the tab bar
-    -- vertically (a 1-2px jitter every frame). Always-present, always zero-width
-    -- = stable layout.
-    window:set_right_status(wezterm.format({ { Text = '\u{200b}' } }))
-    return
+  local payload = '\u{200b}'
+  if any_working and math.floor(now / STATUS_UPDATE_INTERVAL_MS) % 2 == 1 then
+    payload = '\u{feff}'
   end
-
-  -- NOTE: no frame counters are advanced here. The glyph, its color and the title
-  -- shimmer are all computed from now_ms() at render time (see GLYPH_MS /
-  -- COLOR_MS / SHIMMER_MS).
-  --
-  -- Alternate between two zero-width chars once per configured status interval.
-  -- Recursive/repaint-driven update-status events within the same bucket write
-  -- the same value, which WezTerm treats as a no-op. This keeps the animated tab
-  -- title at 5fps without creating a self-sustaining repaint loop.
-  local animation_bucket = math.floor(now_ms() / STATUS_UPDATE_INTERVAL_MS)
-  local payload = (animation_bucket % 2 == 0) and '\u{200b}' or '\u{feff}'
   window:set_right_status(wezterm.format({ { Text = payload } }))
 end)
 

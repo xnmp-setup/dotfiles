@@ -1,9 +1,10 @@
 #!/bin/sh
-# Set the WezTerm per-pane user var "agent_status" so format-tab-title can tint
-# the tab by coding-agent state (working | done | attention). Status passed as $1.
+# Set WezTerm per-pane user vars so format-tab-title can render coding-agent
+# identity and state without querying process information on the GUI thread.
+# Status (working | done | attention) is passed as $1.
 #
-# Shared by BOTH agents — the tab bar only cares about the state, and works out
-# which agent it is from the pane's foreground process:
+# Shared by both agents. Claude exports CLAUDECODE/CLAUDE_PID to its hooks;
+# invocations without either marker come from the Codex hook configuration.
 #   Claude Code  ~/.claude/settings.json  "hooks"
 #     working   <- UserPromptSubmit, PreToolUse, PostToolUse
 #     attention <- PermissionRequest (immediate; fires only on a real dialog)
@@ -53,9 +54,16 @@ fi
 [ "$TERM_PROGRAM" = "WezTerm" ] || exit 0
 [ -n "$WEZTERM_PANE" ] || exit 0
 
-# OSC 1337 SetUserVar requires the value to be base64-encoded.
-b64=$(printf '%s' "$status" | base64 | tr -d '\n')
-osc=$(printf '\033]1337;SetUserVar=agent_status=%s\007' "$b64")
+# OSC 1337 SetUserVar requires values to be base64-encoded.
+if [ -n "${CLAUDECODE:-}" ] || [ -n "${CLAUDE_PID:-}" ]; then
+  agent_kind=claude
+else
+  agent_kind=codex
+fi
+kind_b64=$(printf '%s' "$agent_kind" | base64 | tr -d '\n')
+status_b64=$(printf '%s' "$status" | base64 | tr -d '\n')
+osc=$(printf '\033]1337;SetUserVar=agent_kind=%s\007\033]1337;SetUserVar=agent_status=%s\007' \
+  "$kind_b64" "$status_b64")
 
 # Fast path: we have a controlling terminal (Codex). Costs no subprocess.
 #
@@ -79,8 +87,11 @@ fi
 wt="${WEZTERM_EXECUTABLE%-gui}"
 [ -x "$wt" ] || wt="$(command -v wezterm 2>/dev/null)"
 [ -n "$wt" ] && [ -x "$wt" ] || exit 0
+# A wedged GUI also wedges its embedded mux. Never let a synchronous agent hook
+# wait indefinitely behind it; dropping a cosmetic status update is preferable.
+command -v timeout >/dev/null 2>&1 || exit 0
 
-tty_dev=$("$wt" cli list --format json 2>/dev/null \
+tty_dev=$(timeout 2 "$wt" cli list --format json 2>/dev/null \
   | jq -r --argjson p "$WEZTERM_PANE" \
       '.[] | select(.pane_id == $p) | .tty_name // empty' 2>/dev/null)
 [ -n "$tty_dev" ] && [ -w "$tty_dev" ] || exit 0
