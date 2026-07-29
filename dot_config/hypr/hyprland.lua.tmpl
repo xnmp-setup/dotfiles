@@ -106,6 +106,9 @@ hl.config({
         kb_layout                   = "us",
         follow_mouse                = 0,
         float_switch_override_focus = 0,
+        -- Let a background click focus the regular workspace so the existing
+        -- focus handlers can dismiss scratchpads and restore spotlit windows.
+        special_fallthrough         = true,
         sensitivity                 = 0, -- Raw input, like turning off mouse accel in StarCraft
 
         -- Touchpad two-finger scroll only; a wheel mouse is unaffected, so this
@@ -277,7 +280,7 @@ hl.window_rule({ name = "chrome-opacity",    match = { class = "^google-chrome$"
 hl.window_rule({ name = "zeddev-opacity",    match = { class = "dev.zed.Zed-Dev" },         opacity = "0.93 0.93" })
 hl.window_rule({ name = "zed-opacity",       match = { class = "dev.zed.Zed$" },            opacity = "0.93 0.93" })
 hl.window_rule({ name = "tauriexpl-opacity", match = { class = "tauri-explorer" },          opacity = "0.9 0.9" })
-hl.window_rule({ name = "ghostty-opacity",   match = { class = "com.mitchellh.ghostty" },   opacity = "0.9 0.9" })
+hl.window_rule({ name = "ghostty-opacity",   match = { class = "com.mitchellh.ghostty" },   opacity = "0.95 0.95" })
 
 hl.window_rule({ name = "imv-float",  match = { class = "^imv$" }, float = true })
 hl.window_rule({ name = "imv-center", match = { class = "^imv$" }, center = true })
