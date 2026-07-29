@@ -857,3 +857,17 @@ alias ccr-glm="cc-glm --resume"
 # ---------------------------------------------------------------------------
 
 alias nix-rebuild="sudo nixos-rebuild switch --flake ~/Repos/nixos-t14s#t14s"
+
+# --- agent shells (Claude Code) ---------------------------------------------
+# `claude` exports CLAUDECODE=1 into every shell it spawns, including the one it
+# snapshots aliases and setopts from. Interactive shells are untouched.
+if [[ -n "$CLAUDECODE" ]]; then
+  # zsh aborts the *entire* command on an unmatched glob (`--include=*.ts`) and
+  # on `echo ===` (equals expansion); bash does neither. 885 such aborts in 6
+  # weeks of transcripts, 43% of them killing 3+ chained commands.
+  unsetopt nomatch equals
+  # eza reads its path list from stdin when given no operand and stdout isn't a
+  # tty, so a bare `ls` blocks until the tool timeout. dust parses `-h` as
+  # --help, so `du -sh` prints a usage page and exits 0.
+  unalias ls ll du cat 2>/dev/null
+fi
