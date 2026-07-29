@@ -20,7 +20,7 @@ mime = "image/*"
 use = "image"
 
 [[open.prepend_rules]]
-name = "*.csv"
+url = "*.csv"
 use = "view_csv"
 
 [[open.prepend_rules]]
