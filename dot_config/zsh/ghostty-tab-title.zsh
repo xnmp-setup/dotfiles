@@ -4,7 +4,6 @@ autoload -Uz add-zsh-hook
 
 typeset -gA __ghostty_tab_title_by_command=(
   claude '❋︎ Claude'
-  codex  '⬢︎ Codex'
 )
 
 __ghostty_set_tab_title() {

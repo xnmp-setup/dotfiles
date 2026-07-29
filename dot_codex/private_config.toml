@@ -9,8 +9,9 @@ model_reasoning_effort = "medium"
 approvals_reviewer = "auto_review"
 
 [tui]
-# Keep the OSC 2 title emitted by ~/.config/zsh/ghostty-tab-title.zsh.
-terminal_title = null
+# Codex owns its OSC 2 title while the TUI is running. Keep an activity glyph
+# and identify the app explicitly instead of relying on a shell-set prefix.
+terminal_title = ["spinner", "app-name", "project"]
 
 # Lifecycle hooks are off by default; without this Codex silently ignores
 # ~/.codex/hooks.json (which drives the WezTerm tab status — see that file).
