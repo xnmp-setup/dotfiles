@@ -852,19 +852,16 @@ config.keys = {
   end) },
   -- Esc: interrupt handling. A user interrupt (Esc mid-response) fires no hook in
   -- either agent, so the agent_status var stays stuck on 'working' and the tab
-  -- keeps spinning. Intercept Esc here: if the pane is running an agent AND it's
-  -- currently 'working', mark it 'done' in pane_status (the tab bar's source of
-  -- truth) so it drops to idle immediately. The 'working' guard is what keeps
-  -- non-interrupt uses of Esc from touching state: dismissing a /btw overlay
-  -- (or any Esc from an already-idle prompt) leaves status untouched, since only
-  -- a genuinely in-progress response is 'working'. Always forward the Esc to the
-  -- app afterwards, so this is purely additive — the agent still receives the
-  -- interrupt. A fresh prompt's 'working' var write overrides 'done' right back.
+  -- keeps spinning. Intercept Esc here: if the pane is running an agent, mark it
+  -- 'done' in pane_status (the tab bar's source of truth) so it drops to idle
+  -- immediately. This intentionally includes non-interrupt uses such as dismissing
+  -- a /btw overlay. Always forward the Esc to the app afterwards, so the agent
+  -- still receives it. A fresh prompt's 'working' var write overrides 'done'.
   { key = 'Escape', mods = 'NONE', action = wezterm.action_callback(function(window, pane)
     local proc = pane:get_foreground_process_name() or ''
     local pid = pane:pane_id()
     local agent = agent_of_pane(pid, proc)
-    if agent and agent_status_of(pid, pane:get_user_vars()) == 'working' then
+    if agent then
       pane_status[pid] = 'done'
     end
     window:perform_action(act.SendKey { key = 'Escape' }, pane)

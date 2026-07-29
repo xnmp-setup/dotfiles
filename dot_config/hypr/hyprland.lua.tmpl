@@ -80,10 +80,12 @@ hl.config({
         rounding     = 3, -- Sharp corners = faster visual scan
         dim_inactive = false,
         dim_strength = 0.4,
+        dim_special  = 0.4,
         blur = {
             enabled = true,
             size    = 3,
             passes  = 1,
+            special = true,
         },
     },
 
@@ -424,7 +426,7 @@ local expose_click -- bound on unfold, defined once folding exists to call
 local function visible_workspaces()
     local ids = {}
     for _, m in ipairs(hl.get_monitors() or {}) do
-        local ws, special = m.active_workspace, m.special_workspace
+        local ws, special = m.active_workspace, m.active_special_workspace
         if ws and ws.id then ids[ws.id] = true end
         if special and special.id then ids[special.id] = true end
     end
@@ -837,7 +839,7 @@ hl.bind("F10", function() scratchpad.toggle("lite-xl") end)
 ---- SPOTLIT WINDOWS ------
 ---------------------------
 -- One window pulled to the front of the workspace with everything behind it
--- dimmed, until focus moves on. Two ways in: SUPER + CTRL + End floats and
+-- blurred and dimmed, until focus moves on. Two ways in: SUPER + CTRL + End floats and
 -- centres whatever is focused, and an imv window does it to itself when it
 -- opens, so a previewed image lands centred rather than tiled into the grid.
 --
@@ -846,10 +848,15 @@ hl.bind("F10", function() scratchpad.toggle("lite-xl") end)
 -- command the Lua config refuses outright ("can't work with non-legacy
 -- parsers"). Dim is a config write and focus is an event, so both belong here.
 
--- { address, floated, was } while something is held forward. `floated` records
--- that the spotlight is what floated it, and so that letting go should tile it
--- back; a window that was already floating (imv, by window rule) is left
--- floating.
+-- The foreground window lives temporarily on a special workspace because
+-- `decoration.blur.special` is Hyprland's native full-background blur. Ordinary
+-- window blur only affects the pixels directly underneath a translucent window.
+local SPOTLIGHT_WORKSPACE = "spotlight"
+
+-- { address, home, floated, was } while something is held forward. `floated`
+-- records that the spotlight is what floated it, and so that letting go should
+-- tile it back; a window that was already floating (imv, by window rule) is
+-- left floating.
 --
 -- LETTING GO PUTS IT BACK. Pulling a window forward moves it, so releasing it
 -- has to move it home again, and where home is depends on which kind of window
@@ -863,14 +870,33 @@ hl.bind("F10", function() scratchpad.toggle("lite-xl") end)
 --     `was` records them, and they are dispatched straight back.
 local spotlit = nil
 
+local function spotlight_visible()
+    for _, m in ipairs(hl.get_monitors() or {}) do
+        local special = m.active_special_workspace
+        if special and (special.name == SPOTLIGHT_WORKSPACE
+                        or special.name == "special:" .. SPOTLIGHT_WORKSPACE) then
+            return true
+        end
+    end
+    return false
+end
+
 local function unspotlight()
     local held = spotlit
     spotlit = nil
-    hl.config({ decoration = { dim_inactive = false, dim_strength = 0.4 } })
+    hl.config({ decoration = { dim_special = 0.4 } })
     if not held then return end
 
     for _, w in ipairs(hl.get_windows() or {}) do
         if w.address == held.address then
+            if spotlight_visible() then
+                hl.dispatch(hl.dsp.workspace.toggle_special(SPOTLIGHT_WORKSPACE))
+            end
+            hl.dispatch(hl.dsp.window.move({
+                workspace = tostring(held.home),
+                silent = true,
+                window = w,
+            }))
             if held.floated then
                 if w.floating then
                     hl.dispatch(hl.dsp.window.float({ action = "off", window = w }))
@@ -886,6 +912,7 @@ local function unspotlight()
                 hl.dispatch(hl.dsp.window.resize({ x = held.was.size.x, y = held.was.size.y, window = w }))
                 hl.dispatch(hl.dsp.window.move({ x = held.was.at.x, y = held.was.at.y, window = w }))
             end
+            hl.dispatch(hl.dsp.focus({ window = w }))
             return
         end
     end
@@ -894,6 +921,9 @@ end
 local function spotlight(w, opts)
     if not w then return end
     opts = opts or {}
+
+    local home = w.workspace and w.workspace.id
+    if not home then return end
 
     local floated = not w.floating
     local was     = nil
@@ -906,14 +936,19 @@ local function spotlight(w, opts)
         was = { at = w.at, size = w.size }
     end
 
+    spotlit = { address = w.address, home = home, floated = floated, was = was }
+    hl.config({ decoration = { dim_special = opts.dim or 0.4 } })
+    hl.dispatch(hl.dsp.window.move({
+        workspace = "special:" .. SPOTLIGHT_WORKSPACE,
+        silent = true,
+        window = w,
+    }))
+    hl.dispatch(hl.dsp.workspace.toggle_special(SPOTLIGHT_WORKSPACE))
+    hl.dispatch(hl.dsp.focus({ window = w }))
     if opts.size then
         hl.dispatch(hl.dsp.window.resize({ x = opts.size[1], y = opts.size[2], window = w }))
     end
-    hl.dispatch(hl.dsp.focus({ window = w }))
     hl.dispatch(hl.dsp.window.center())
-
-    spotlit = { address = w.address, floated = floated, was = was }
-    hl.config({ decoration = { dim_inactive = true, dim_strength = opts.dim or 0.4 } })
 end
 
 -- Half the monitor's width and 80% of its height, in layout coordinates — the
@@ -938,7 +973,7 @@ hl.bind(mainMod .. " + CTRL + end", function()
 end)
 
 -- imv is floated and sized by window rule already, so the spotlight only has to
--- centre it and dim what is behind.
+-- centre it and blur/dim what is behind.
 hl.on("window.open", function(w)
     if w and w.class == "imv" then spotlight(w) end
 end)

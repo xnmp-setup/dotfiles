@@ -1,9 +1,9 @@
 -- scratchpad.lua — drop-down windows for Hyprland's Lua config.
 --
--- A scratchpad is one window parked in a special workspace while hidden and
--- floated onto the CURRENT workspace while shown, so the same key summons it
--- wherever you are and dismisses it again. Everything behind it is dimmed while
--- it is up, and it hides itself the moment focus goes elsewhere.
+-- A scratchpad is one window parked in a special workspace and toggled over the
+-- current workspace, so the same key summons it wherever you are and dismisses
+-- it again. Hyprland's special-workspace compositor path blurs and dims
+-- everything behind it, and it hides itself the moment focus goes elsewhere.
 --
 -- This was two bash scripts (toggle-scratchpad.sh, scratchpad-autohide.sh)
 -- driving `hyprctl dispatch` and `hyprctl keyword`, tailing the event socket
@@ -50,9 +50,17 @@ local function window_for(name)
     return w
 end
 
-local function is_parked(w)
-    local ws = w.workspace and w.workspace.name
-    return ws ~= nil and ws:sub(1, 8) == "special:"
+-- A shown special workspace has the same negative ID on its window and monitor.
+-- Comparing IDs also avoids coupling visibility to a particular workspace name.
+local function is_shown(w)
+    local workspace = w and w.workspace
+    if not (workspace and workspace.id) then return false end
+
+    for _, m in ipairs(hl.get_monitors() or {}) do
+        local special = m.active_special_workspace
+        if special and special.id == workspace.id then return true end
+    end
+    return false
 end
 
 -- A `hyprctl reload` re-runs this config from scratch, so the table of claimed
@@ -92,18 +100,6 @@ local function visible_workspace()
     return hl.get_active_workspace()
 end
 
--- Dim is a global setting, so it is owned by "is any scratchpad up?" rather than
--- by whichever one last moved — otherwise hiding one would undim while another
--- is still floating over the workspace.
-local function refresh_dim()
-    local any = false
-    for name in pairs(live) do
-        local w = window_for(name)
-        if w and not is_parked(w) then any = true break end
-    end
-    hl.config({ decoration = { dim_inactive = any } })
-end
-
 local function place(name, w)
     local pad = pads[name]
 
@@ -121,14 +117,15 @@ end
 
 local function show(name, w)
     focused_once[name] = nil
-    local ws = visible_workspace()
-    if ws and ws.id then
-        -- Silent, then focus: moving it non-silently would pull the special
-        -- workspace into view instead of just the window.
-        hl.dispatch(hl.dsp.window.move({ workspace = ws.id, silent = true, window = w }))
+    hl.dispatch(hl.dsp.window.move({
+        workspace = "special:" .. name,
+        silent = true,
+        window = w,
+    }))
+    if not is_shown(w) then
+        hl.dispatch(hl.dsp.workspace.toggle_special(name))
     end
     place(name, w)
-    refresh_dim()
 end
 
 -- Something on the visible workspace to hand focus to, that is not itself a
@@ -152,14 +149,12 @@ end
 local function hide(name, w, next_focus)
     focused_once[name] = nil
 
-    -- Chosen before the move, not after: parking is what makes the special
-    -- workspace the active one, and by then there is nothing left on it to find.
     local restore = next_focus or focus_fallback(w.address)
 
-    hl.dispatch(hl.dsp.window.move({ workspace = "special:" .. name, silent = true, window = w }))
+    if is_shown(w) then
+        hl.dispatch(hl.dsp.workspace.toggle_special(name))
+    end
     if restore then hl.dispatch(hl.dsp.focus({ window = restore })) end
-
-    refresh_dim()
 end
 
 -- A freshly launched window is floated and sized by the exec rules, but it still
@@ -169,8 +164,7 @@ local function adopt(name, w)
     hl.timer(function()
         local win = window_for(name)
         if win then
-            place(name, win)
-            refresh_dim()
+            show(name, win)
         end
     end, { timeout = 80, type = "oneshot" })
 end
@@ -197,10 +191,10 @@ function M.toggle(name)
         -- never flashes tiled at its natural size first.
         pending[pad.class] = name
         hl.dispatch(hl.dsp.exec_cmd(pad.cmd, { float = true, size = { pad.w, pad.h } }))
-    elseif is_parked(w) then
-        show(name, w)
-    else
+    elseif is_shown(w) then
         hide(name, w)
+    else
+        show(name, w)
     end
 end
 
@@ -229,7 +223,7 @@ hl.on("window.active", function()
 
     for name in pairs(live) do
         local w = window_for(name)
-        if w and not is_parked(w) then
+        if w and is_shown(w) then
             if w.address == address then
                 focused_once[name] = true
             elseif focused_once[name] then
@@ -248,7 +242,6 @@ hl.on("window.close", function(w)
     for name, held in pairs(live) do
         if held == address then live[name] = nil end
     end
-    refresh_dim()
 end)
 
 return M
