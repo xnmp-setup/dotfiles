@@ -1,3 +1,11 @@
+# Resolve the Gemini key in the host's interactive session. Sandboxed tools
+# inherit it but cannot connect to the host Secret Service over D-Bus.
+if [[ -z "${GEMINI_API_KEY:-}" ]] && command -v secret-tool >/dev/null 2>&1; then
+  _gemini_api_key="$(secret-tool lookup service gemini-api key api-key 2>/dev/null)"
+  [[ -n "$_gemini_api_key" ]] && export GEMINI_API_KEY="$_gemini_api_key"
+  unset _gemini_api_key
+fi
+
 # Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
 # Initialization code that may require console input (password prompts, [y/n]
 # confirmations, etc.) must go above this block; everything else may go below.
