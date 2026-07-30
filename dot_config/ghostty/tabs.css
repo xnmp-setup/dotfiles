@@ -4,4 +4,16 @@
   font-family: "Inter", "Adwaita Sans", sans-serif;
   font-size: 19px;
   font-weight: bold;
+  box-shadow: inset -1px 0 rgba(255, 255, 255, 0.25);
+}
+
+.window tabbar tab:selected {
+  background-color: rgba(255, 255, 255, 0.10);
+  box-shadow:
+    inset 0 -2px rgba(255, 255, 255, 0.65),
+    inset -1px 0 rgba(255, 255, 255, 0.25);
+}
+
+.window tabbar tab:not(:selected) label {
+  opacity: 0.5;
 }
