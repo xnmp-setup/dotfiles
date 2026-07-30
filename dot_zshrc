@@ -202,17 +202,41 @@ alias tv='tidy-viewer'
 
 export ANTHROPIC_MODEL="fable"
 
-# Intercepts !query before shell parsing — avoids history expansion and
-# allows apostrophes. !! and !( fall through to normal zsh behaviour.
-_haiku_accept_line() {
-  if [[ "$BUFFER" == '!'* && "$BUFFER" != '!!'* && "$BUFFER" != '!('* ]]; then
+# Preserve `ni`'s significant whitespace before shell parsing. The first run
+# of two or more spaces separates the issue title from its optional body.
+_rewrite_new_issue_command() {
+  [[ "$BUFFER" == 'ni' || "$BUFFER" == 'ni '* ]] || return 1
+
+  local input="${BUFFER#ni}"
+  input="${input#"${input%%[![:space:]]*}"}"
+  input="${input%"${input##*[![:space:]]}"}"
+
+  local title="$input"
+  local body=''
+  local separator_re='^([^ ]+( [^ ]+)*) {2,}(.*)$'
+  if [[ "$input" =~ "$separator_re" ]]; then
+    title="${match[1]}"
+    body="${match[3]}"
+  fi
+
+  BUFFER="ni ${(q)title}"
+  [[ -n "$body" ]] && BUFFER+=" ${(q)body}"
+  return 0
+}
+
+# Intercepts shortcuts before shell parsing, allowing significant whitespace
+# and apostrophes. !! and !( fall through to normal zsh behaviour.
+_shortcut_accept_line() {
+  if _rewrite_new_issue_command; then
+    :
+  elif [[ "$BUFFER" == '!'* && "$BUFFER" != '!!'* && "$BUFFER" != '!('* ]]; then
     local query="${BUFFER#!}"
     query="${query##[[:space:]]}"
     BUFFER="_anthropic_smart ${(q)query}"
   fi
   zle .accept-line
 }
-zle -N accept-line _haiku_accept_line
+zle -N accept-line _shortcut_accept_line
 
 # Sends a prompt to haiku and prints the response. Uses OAuth creds,
 # ANTHROPIC_API_KEY, or falls back to the claude CLI.
@@ -830,6 +854,25 @@ iss() {
   fi
 
   o "https://github.com/$slug/issues/$num"
+}
+
+# Create an issue in the cwd's GitHub repo. Interactive input is rewritten
+# before parsing so `ni title words  optional body words` remains unquoted.
+ni() {
+  if (( $# == 0 || $# > 2 )) || [[ -z "$1" ]]; then
+    echo "usage: ni title  [body]" >&2
+    return 2
+  fi
+
+  command -v gh &>/dev/null || {
+    echo "gh is not installed" >&2
+    return 1
+  }
+
+  local slug; slug=$(_gh_repo_slug) || return 1
+  local title="$1"
+  local body="${2:-}"
+  command gh issue create --repo "$slug" --title "$title" --body "$body"
 }
 
 # OpenClaw Completion
