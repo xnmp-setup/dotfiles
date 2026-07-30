@@ -31,6 +31,8 @@ end
 function M.new(hl, options)
     options = options or {}
     local parent_pid = options.parent_pid or proc_parent_pid
+    local direction_towards = options.direction_towards
+        or window_model.direction_towards
     local consume_managed_launch = options.consume_managed_launch
         or function() return false end
 
@@ -119,7 +121,7 @@ function M.new(hl, options)
 
             hl.dispatch(hl.dsp.window.move({
                 window = window,
-                into_or_create_group = options.direction_towards(window, source),
+                into_or_create_group = direction_towards(window, source),
             }))
         end, { timeout = 80, type = "oneshot" })
     end)

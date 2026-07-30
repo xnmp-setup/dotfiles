@@ -14,8 +14,16 @@ local theme           = require("theme")
 local window_actions  = require("window_actions").new(hl)
 local app_switchers   = require("app_switcher")
 local exposes         = require("expose")
+local group_actions   = require("group_actions").new(hl)
 local spotlights      = require("spotlight")
+local startup_pairing = require("startup_pairing").new(hl, {
+    browser_class = "google-chrome",
+    notes_class = "obsidian",
+    workspace = 1,
+})
 local terminal_groups = require("terminal_grouping")
+local navigation      = require("window_navigation").new(hl, nary, group_actions)
+local resize          = require("window_resize").new(hl)
 local scratchpad      = require("scratchpad").new(hl, window_actions)
 
 ------------------
@@ -170,74 +178,6 @@ hl.animation({ leaf = "windows",          enabled = true, speed = 2, bezier = "f
 hl.animation({ leaf = "workspaces",       enabled = true, speed = 2, bezier = "default" })
 hl.animation({ leaf = "specialWorkspace", enabled = true, speed = 3, bezier = "fastBezier", style = "slidefadevert -50%" })
 
-
------------------------------
----- STARTUP TAB PAIRING ----
------------------------------
--- The browser and the notes app come up as ONE tab strip with the notes on top,
--- rather than as two panes squeezing the terminal.
---
--- Hyprland cannot build a group from a list of windows: the only way in is
--- moveintogroup, which merges whatever lies in a DIRECTION (the same constraint
--- the expose fold works around). So the two have to be neighbours before they
--- can be tabbed — which is why the notes app is NOT launched with the rest.
--- nary inserts a new leaf right after the FOCUSED one, so starting it once the
--- browser's window is up and focused puts it beside the browser whatever else
--- the workspace already holds.
---
--- Everything here is best-effort and one-shot: if either app is missing or slow
--- enough that the user has moved on, the pairing simply never happens and the
--- windows behave like any others.
-local STARTUP_TAB_BROWSER = "google-chrome"
-local STARTUP_TAB_NOTES   = "obsidian"
-
-local startup_tab = nil -- "waiting-browser" -> "waiting-notes" -> nil (done)
-
-local function find_window(class)
-    for _, w in ipairs(hl.get_windows() or {}) do
-        if w.class == class and w.mapped then return w end
-    end
-end
-
--- Which way the browser lies from the notes window. Centres, not corners: the
--- two tiles can differ in size, and the larger overlap on one axis is what
--- decides whether they are side by side or stacked.
-local function direction_towards(from, to)
-    local dx = (to.at.x + to.size.x / 2) - (from.at.x + from.size.x / 2)
-    local dy = (to.at.y + to.size.y / 2) - (from.at.y + from.size.y / 2)
-    if math.abs(dx) >= math.abs(dy) then
-        return dx < 0 and "left" or "right"
-    end
-    return dy < 0 and "up" or "down"
-end
-
-local function startup_tab_merge(notes)
-    local browser = find_window(STARTUP_TAB_BROWSER)
-    if not (browser and notes.mapped and notes.at and browser.at) then return end
-
-    -- The merge inserts after the current tab and becomes it, so the notes end
-    -- up showing without a separate raise.
-    hl.dispatch(hl.dsp.window.move({
-        window = notes,
-        into_or_create_group = direction_towards(notes, browser),
-    }))
-end
-
-hl.on("window.open", function(w)
-    if not (startup_tab and w) then return end
-
-    if startup_tab == "waiting-browser" and w.class == STARTUP_TAB_BROWSER then
-        startup_tab = "waiting-notes"
-        hl.exec_cmd(STARTUP_TAB_NOTES, { workspace = "1" })
-    elseif startup_tab == "waiting-notes" and w.class == STARTUP_TAB_NOTES then
-        startup_tab = nil
-        -- The window exists but the layout has not placed it yet, and the merge
-        -- is decided entirely by where the two tiles sit.
-        hl.timer(function() startup_tab_merge(w) end, { timeout = 120, type = "oneshot" })
-    end
-end)
-
-
 -------------------
 ---- AUTOSTART ----
 -------------------
@@ -259,9 +199,9 @@ hl.on("hyprland.start", function()
     -- socket through socat to react to focus, which is an `hl.on` handler now.
     hl.exec_cmd("wezterm", { workspace = "1" })
     hl.exec_cmd("google-chrome-stable", { workspace = "1" })
-    -- Obsidian is launched by the startup tab pairing above, once Chrome's
+    -- Obsidian is launched by the startup pairing module, once Chrome's
     -- window is up, so the two land next to each other and can be tabbed.
-    startup_tab = "waiting-browser"
+    startup_pairing.start()
     hl.exec_cmd("systemctl --user start hypr-session-save.service")
 {{ if eq .chezmoi.hostname "t14s" }}
     -- NixOS laptop: polkit agent is not autostarted by anything else
@@ -294,86 +234,8 @@ hl.window_rule({ name = "imv-size",   match = { class = "^imv$" }, size = "75% 7
 hl.window_rule({ name = "thunar-dialog-float",  match = { class = "[Tt]hunar", title = "negative:.*[Tt]hunar.*" }, float = true })
 hl.window_rule({ name = "thunar-dialog-center", match = { class = "[Tt]hunar", title = "negative:.*[Tt]hunar.*" }, center = true })
 
-
---------------------------
----- TABS  (= GROUPS) ----
---------------------------
--- Hyprland "tabs" are groups: several windows share one tile and the groupbar
--- above it is the tab strip. A group is a single leaf of the nary tree, so
--- tabbing and tiling compose rather than compete.
---
--- A group is only dissolved when it is ALREADY down to one member at removal
--- time (CGroup::remove computes its REMOVING_GROUP flag before the erase), so
--- taking a window out of a pair leaves a one-tab group behind — a tab title
--- over what is plainly just a window. No config key turns that off, so sweep
--- them up ourselves.
-
-local function dissolve_lone_groups()
-    local lone = {}
-    for _, w in ipairs(hl.get_windows() or {}) do
-        local g = w.group
-        if g and g.size == 1 then lone[#lone + 1] = w end
-    end
-    for _, w in ipairs(lone) do
-        hl.dispatch(hl.dsp.group.toggle({ window = w }))
-    end
-end
-
--- Every way a group can shrink has to be covered and there is no "a group
--- changed" event: a tab can leave by being closed, dragged off the groupbar,
--- sent to another workspace or monitor, or tabbed into a different window
--- entirely. So the sweep hangs off the events that accompany any of those,
--- coalesced through a single one-shot timer.
---
--- Deferring is what makes it safe to hook so broadly. These events fire in the
--- middle of the operation — window.close before the window has left its group,
--- and moveIntoOrCreateGroup passing through a group of one on its way to two —
--- so a sweep running inline would variously miss the change or undo it, while
--- a moment later only the settled result is visible. It also reacts sooner than
--- window.destroy alone, which waits for the close animation to finish and would
--- leave the lone tab bar up for the length of the fade.
-local sweeping = false
-
-local function sweep_lone_groups()
-    if sweeping then return end
-    sweeping = true
-    hl.timer(function()
-        sweeping = false
-        dissolve_lone_groups()
-    end, { timeout = 60, type = "oneshot" })
-end
-
-for _, event in ipairs({ "window.close", "window.destroy", "window.active", "window.move_to_workspace" }) do
-    hl.on(event, sweep_lone_groups)
-end
-
--- group.toggle() on an ungrouped window creates a group of one — the very thing
--- swept up above. Keep only the useful half: dissolve a group, never open one.
--- Tabs are made by invading a neighbour (SUPER + ALT + arrows), which groups two
--- windows at once.
-local function ungroup()
-    local w = hl.get_active_window()
-    if w and w.group then hl.dispatch(hl.dsp.group.toggle()) end
-end
-
--- Take the focused window out of its tab strip and give it a pane on the named
--- side. nary has to be told which side first: Hyprland's own hint for this (the
--- focal point handed to movedTarget) is discarded by the Lua layout API, so
--- without the message the pane is merely adopted wherever the tree puts it.
-local DIR_SHORT = { left = "l", right = "r", up = "u", down = "d" }
-
-local function untab(dir)
-    local w = hl.get_active_window()
-    if not (w and w.group and w.group.size > 1) then return false end
-
-    hl.dispatch(hl.dsp.layout("untab " .. DIR_SHORT[dir]))
-    hl.dispatch(hl.dsp.window.move({ out_of_group = dir }))
-    dissolve_lone_groups() -- the tile it left may now be a group of one
-    return true
-end
-
 local expose = exposes.new(hl, {
-    dissolve_lone_groups = dissolve_lone_groups,
+    dissolve_lone_groups = group_actions.dissolve_lone_groups,
 })
 
 local app_switcher = app_switchers.new(hl, window_actions, {
@@ -381,10 +243,8 @@ local app_switcher = app_switchers.new(hl, window_actions, {
 })
 
 -- GUI windows launched by a terminal become another tab in that terminal's
--- tile. The feature owns process ancestry and focus-fallback tracking; the main
--- config supplies only the layout-specific direction.
+-- tile. The feature owns process ancestry and focus-fallback tracking.
 terminal_groups.new(hl, {
-    direction_towards = direction_towards,
     consume_managed_launch = app_switcher.consume_managed_launch,
 })
 
@@ -413,106 +273,23 @@ hl.bind(mainMod .. " + right", hl.dsp.focus({ direction = "right" }))
 hl.bind(mainMod .. " + up",    hl.dsp.focus({ direction = "up" }))
 hl.bind(mainMod .. " + down",  hl.dsp.focus({ direction = "down" }))
 
--- CROSSING MONITORS
---
--- nary's tree covers one workspace, so the workspace edge is exactly where the
--- next monitor begins: a move with nowhere left to go inside the tree is a move
--- off the side of the screen, and hands the window over.
---
--- "Nowhere left to go" is read off the layout rather than guessed at from
--- geometry. A tile flush against the edge often still has somewhere to go —
--- pressing up out of a row takes a band across the whole workspace — and only
--- the tree knows which case this is. So the move is dispatched and the layout
--- asked whether anything changed.
-local function layout_shape()
-    local ws = hl.get_active_workspace()
-    return ws and ws.id and nary.shape(nary.space(ws.id)) or nil
-end
-
--- The monitor next along the axis of travel. Nearest centre wins, with sideways
--- offset counting double, so the display stacked above the ultrawide is not
--- also "to the right" of it.
-local function monitor_in(dir)
-    local from = hl.get_active_monitor()
-    if not from then return nil end
-
-    local horizontal = (dir == "left" or dir == "right")
-    local ahead      = (dir == "right" or dir == "down") and 1 or -1
-
-    -- width/height are the mode's pixels; the layout coordinates monitors are
-    -- positioned in are those divided by the scale.
-    local function centre(m)
-        local scale = m.scale or 1
-        return (m.x or 0) + (m.width or 0) / scale / 2,
-               (m.y or 0) + (m.height or 0) / scale / 2
-    end
-
-    local fx, fy = centre(from)
-    local best, best_cost
-
-    for _, m in ipairs(hl.get_monitors() or {}) do
-        if m.id ~= from.id then
-            local x, y   = centre(m)
-            local along  = horizontal and (x - fx) or (y - fy)
-            local across = horizontal and (y - fy) or (x - fx)
-
-            if along * ahead > 0 then
-                local cost = math.abs(along) + math.abs(across) * 2
-                if not best_cost or cost < best_cost then best, best_cost = m, cost end
-            end
-        end
-    end
-    return best
-end
-
--- Hand the focused window to the monitor that way, entering by the edge it
--- crossed: `enter` tells that workspace's tree to take it as a division of the
--- whole workspace on the near side, rather than as a neighbour of whatever
--- happens to be focused over there. False when there is no monitor that way —
--- the single-display case, where these keys stay within-workspace moves.
-local function cross_monitor(dir)
-    local mon = monitor_in(dir)
-    local ws  = mon and mon.active_workspace
-    if not (ws and ws.id) then return false end
-
-    hl.dispatch(hl.dsp.layout(("enter %s %s"):format(DIR_SHORT[dir], nary.space(ws.id))))
-    hl.dispatch(hl.dsp.window.move({ workspace = tostring(ws.id) }))
-    return true
-end
-
-local function step_or_cross(dir)
-    local before = layout_shape()
-    hl.dispatch(hl.dsp.layout("move " .. DIR_SHORT[dir]))
-    if before and layout_shape() == before then cross_monitor(dir) end
-end
-
 -- Move Window — steps one insertion slot through the nary tree. Repeatedly
 -- pressing right walks: swap with sibling -> pop out of the group -> cross the
 -- row -> join the next neighbour -> swap inside it -> pop out again -> off the
 -- edge onto the next monitor.
---
--- A tab has no slot of its own to step through — its whole group occupies one
--- leaf — so for a tabbed window the same key means the other escape: leave the
--- tab strip and take a pane of its own on that side. Inverse of SUPER + ALT.
--- A tab leaves its strip for a pane on that side (see untab); anything else
--- steps through the tree as before.
-local function untab_or_step(dir)
-    return function()
-        if not untab(dir) then step_or_cross(dir) end
-    end
-end
-
-hl.bind(mainMod .. " + CTRL + left",  untab_or_step("left"))
-hl.bind(mainMod .. " + CTRL + right", untab_or_step("right"))
-hl.bind(mainMod .. " + CTRL + up",    untab_or_step("up"))
-hl.bind(mainMod .. " + CTRL + down",  untab_or_step("down"))
+hl.bind(mainMod .. " + CTRL + left",  navigation.untab_or_step("left"))
+hl.bind(mainMod .. " + CTRL + right", navigation.untab_or_step("right"))
+hl.bind(mainMod .. " + CTRL + up",    navigation.untab_or_step("up"))
+hl.bind(mainMod .. " + CTRL + down",  navigation.untab_or_step("down"))
 
 -- Same step through the tree, with the un-tab suppressed: a tab strip travels
 -- as one tile instead of the focused tab leaving it. nary already moves whole
 -- tiles — CTRL alone only looks different because it spends the keypress on
 -- escaping the strip first — so adding ALT is just declining that escape.
 for _, dir in ipairs({ "left", "right", "up", "down" }) do
-    hl.bind(mainMod .. " + CTRL + ALT + " .. dir, function() step_or_cross(dir) end)
+    hl.bind(mainMod .. " + CTRL + ALT + " .. dir, function()
+        navigation.step_or_cross(dir)
+    end)
 end
 
 -- UNDO — a key of its own, because an arrow cannot carry two meanings
@@ -586,9 +363,9 @@ hl.bind(mainMod .. " + CTRL + slash", hl.dsp.layout("toggleorient"))
 hl.bind(mainMod .. " + H",            hl.dsp.layout("toggleorient"))
 hl.bind(mainMod .. " + Y",            hl.dsp.layout("toggleorient"))
 
--- Tabs (see the TABS section above for the model)
-hl.bind(mainMod .. " + T",            ungroup)
-hl.bind(mainMod .. " + SHIFT + T",    ungroup)
+-- Native tab-group actions
+hl.bind(mainMod .. " + T",            group_actions.ungroup)
+hl.bind(mainMod .. " + SHIFT + T",    group_actions.ungroup)
 hl.bind(mainMod .. " + bracketleft",  hl.dsp.group.prev())
 hl.bind(mainMod .. " + bracketright", hl.dsp.group.next())
 hl.bind(mainMod .. " + CTRL + Prior", hl.dsp.group.prev())
@@ -659,102 +436,19 @@ hl.bind("F10", function() scratchpad.toggle("lite-xl") end)
 local spotlight = spotlights.new(hl, window_actions)
 hl.bind(mainMod .. " + CTRL + end", spotlight.toggle)
 
--- Invade the neighbour in that direction: the focused window leaves its tile and
--- becomes a tab of the window it lands on, creating that group if the neighbour
--- is a plain window. SUPER + T dissolves the group again.
---
--- The neighbour may be on the next monitor. Hyprland only ever looks for one on
--- the current workspace, so crossing is done by hand: the window is handed over
--- as a division of that whole workspace, which leaves everything already there
--- squarely in the same direction, and the same invade is dispatched again. What
--- it lands on is therefore the division against the boundary — the window that
--- WAS across it.
---
--- Whether the first invade found anything is read off the tile the window is
--- on: a merge changes the set of windows sharing it, and nothing else here can.
-local function tile_of(w)
-    local members = w and w.group and w.group.members
-    if not members then return "" end
-    if members.stable_id then members = { members } end -- a lone member is not wrapped
+-- Invade the neighbour in that direction, crossing monitors when necessary.
+hl.bind(mainMod .. " + ALT + left",  navigation.invade("left"))
+hl.bind(mainMod .. " + ALT + right", navigation.invade("right"))
+hl.bind(mainMod .. " + ALT + up",    navigation.invade("up"))
+hl.bind(mainMod .. " + ALT + down",  navigation.invade("down"))
 
-    local ids = {}
-    for _, m in ipairs(members) do ids[#ids + 1] = tostring(m.stable_id) end
-    table.sort(ids)
-    return table.concat(ids, ",")
-end
+hl.bind(mainMod .. " + CTRL + SHIFT + right", resize.resize_tile(50, 0),  { repeating = true })
+hl.bind(mainMod .. " + CTRL + SHIFT + left",  resize.resize_tile(-50, 0), { repeating = true })
+hl.bind(mainMod .. " + CTRL + SHIFT + down",  resize.resize_tile(0, 50),  { repeating = true })
+hl.bind(mainMod .. " + CTRL + SHIFT + up",    resize.resize_tile(0, -50), { repeating = true })
 
-local function invade(dir)
-    return function()
-        local w = hl.get_active_window()
-        if not w then return end
-
-        local before = tile_of(w)
-        hl.dispatch(hl.dsp.window.move({ into_or_create_group = dir }))
-        if tile_of(hl.get_active_window()) ~= before then return end
-
-        if cross_monitor(dir) then
-            hl.dispatch(hl.dsp.window.move({ into_or_create_group = dir }))
-        end
-    end
-end
-
-hl.bind(mainMod .. " + ALT + left",  invade("left"))
-hl.bind(mainMod .. " + ALT + right", invade("right"))
-hl.bind(mainMod .. " + ALT + up",    invade("up"))
-hl.bind(mainMod .. " + ALT + down",  invade("down"))
-
--- Resize. Tiled windows go through nary's own `resize`, not window.resize: the
--- Lua layout API has no resize hook at all (a provider is only recalculate +
--- layout_msg), so window.resize is silently a no-op on anything tiled. What it
--- moves is the TILE, which for a tab strip is the whole group.
---
--- Floating windows have no tile, so they keep the real dispatcher.
-local function resize_tile(dx, dy)
-    return function()
-        local w = hl.get_active_window()
-        if w and w.floating then
-            hl.dispatch(hl.dsp.window.resize({ x = dx, y = dy, relative = true }))
-        else
-            hl.dispatch(hl.dsp.layout(("resize %d %d"):format(dx, dy)))
-        end
-    end
-end
-
-hl.bind(mainMod .. " + CTRL + SHIFT + right", resize_tile(50, 0),  { repeating = true })
-hl.bind(mainMod .. " + CTRL + SHIFT + left",  resize_tile(-50, 0), { repeating = true })
-hl.bind(mainMod .. " + CTRL + SHIFT + down",  resize_tile(0, 50),  { repeating = true })
-hl.bind(mainMod .. " + CTRL + SHIFT + up",    resize_tile(0, -50), { repeating = true })
-
--- Grow/shrink the tile on both axes at once, with a step that accelerates while
--- the key is held so a large change does not take twenty presses. This lived in
--- accel-resize.sh, which timestamped itself through /tmp and drove
--- `hyprctl --batch dispatch` — a syntax the Lua config no longer accepts.
---
--- Rather than timing the gap between presses, each press arms a one-shot timer
--- that drops the step back to base. Held down, a later press always supersedes
--- the pending reset before it can fire.
-local ACCEL = { base = 40, max = 200, increment = 30, idle_ms = 400 }
-local accel = { step = ACCEL.base, generation = 0 }
-
-local function accel_resize(sign)
-    return function()
-        local step = sign * accel.step
-        hl.dispatch(hl.dsp.layout(("resize %d %d"):format(step, step)))
-
-        accel.step = math.min(ACCEL.max, accel.step + ACCEL.increment)
-
-        -- Superseding rather than cancelling: timers already in flight still
-        -- fire, but only the one armed by the most recent press still matches.
-        accel.generation = accel.generation + 1
-        local mine = accel.generation
-        hl.timer(function()
-            if accel.generation == mine then accel.step = ACCEL.base end
-        end, { timeout = ACCEL.idle_ms, type = "oneshot" })
-    end
-end
-
-hl.bind(mainMod .. " + CTRL + equal", accel_resize(1),  { repeating = true })
-hl.bind(mainMod .. " + CTRL + minus", accel_resize(-1), { repeating = true })
+hl.bind(mainMod .. " + CTRL + equal", resize.accelerated(1),  { repeating = true })
+hl.bind(mainMod .. " + CTRL + minus", resize.accelerated(-1), { repeating = true })
 
 -- Window State
 hl.bind(mainMod .. " + Q",      hl.dsp.window.close())

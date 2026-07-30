@@ -5,11 +5,15 @@ package.path = (arg[0]:match("^(.*)/") or ".") .. "/?.lua;" .. package.path
 
 local app_switcher   = require("app_switcher")
 local exposes        = require("expose")
+local group_actions  = require("group_actions")
 local scratchpads    = require("scratchpad")
 local spotlights     = require("spotlight")
+local startup_pairing = require("startup_pairing")
 local terminal_groups = require("terminal_grouping")
 local window_actions = require("window_actions")
 local window_model   = require("window_model")
+local window_navigation = require("window_navigation")
+local window_resize  = require("window_resize")
 
 local checks, failures = 0, 0
 
@@ -57,6 +61,15 @@ local function fake_runtime(spec)
     local special_workspace
     local callbacks, timers, dispatches, executions, configs = {}, {}, {}, {}, {}
     local bindings = {}
+    local active_monitor = spec.active_monitor or {
+        id = 0,
+        x = 0,
+        y = 0,
+        active_workspace = normal_workspace,
+        width = spec.monitor_width or 3440,
+        height = spec.monitor_height or 1440,
+        scale = spec.monitor_scale or 1,
+    }
 
     local function command(kind)
         return function(args) return { kind = kind, args = args } end
@@ -84,22 +97,15 @@ local function fake_runtime(spec)
         end,
         config = function(value) configs[#configs + 1] = value end,
         get_active_monitor = function()
-            return {
-                active_workspace = normal_workspace,
-                active_special_workspace = special_workspace,
-                width = spec.monitor_width or 3440,
-                height = spec.monitor_height or 1440,
-                scale = spec.monitor_scale or 1,
-            }
+            active_monitor.active_special_workspace = special_workspace
+            return active_monitor
         end,
         get_active_window = function() return active end,
         get_active_workspace = function() return normal_workspace end,
         get_cursor_pos = function() return spec.cursor end,
         get_monitors = function()
-            return {{
-                active_workspace = normal_workspace,
-                active_special_workspace = special_workspace,
-            }}
+            active_monitor.active_special_workspace = special_workspace
+            return spec.monitors or { active_monitor }
         end,
         get_windows = function() return windows end,
         on = function(event, callback)
@@ -254,6 +260,215 @@ do
     equal("exact grouped focus dispatches group then focus",
         control.dispatches[1].kind .. "," .. control.dispatches[2].kind,
         "group_active,focus")
+end
+
+--------------------------------------------------------------------------------
+-- Startup pairing
+--------------------------------------------------------------------------------
+
+do
+    local ws = { id = 1 }
+    local browser = window("browser", "google-chrome", ws)
+    local notes = window("notes", "obsidian", ws)
+    browser.at = { x = 0, y = 0 }
+    notes.at = { x = 100, y = 0 }
+    local hl, control = fake_runtime({
+        windows = { browser, notes },
+        workspace = ws,
+    })
+    local pairing = startup_pairing.new(hl, {
+        browser_class = "google-chrome",
+        notes_class = "obsidian",
+        workspace = 1,
+    })
+
+    control.emit("window.open", browser)
+    equal("startup pairing is inert until started", #control.executions, 0)
+
+    pairing.start()
+    control.emit("window.open", { class = "unrelated" })
+    equal("startup pairing ignores unrelated windows", #control.executions, 0)
+    control.emit("window.open", browser)
+    equal("browser startup launches notes", control.executions[1].cmd, "obsidian")
+    equal("startup notes launch targets the configured workspace",
+        control.executions[1].options.workspace, "1")
+
+    control.emit("window.open", notes)
+    check("startup merge waits for layout placement", control.run_timer(120))
+    equal("startup pairing moves notes toward browser",
+        control.dispatches[1].args.into_or_create_group, "left")
+    equal("startup pairing moves the notes window",
+        control.dispatches[1].args.window, notes)
+    check("startup pairing completes after one pair", not pairing.is_waiting())
+end
+
+equal("window direction rejects incomplete geometry",
+    window_model.direction_towards({}, {}), nil)
+do
+    local from = { at = { x = 100, y = 100 }, size = { x = 20, y = 20 } }
+    equal("window direction uses horizontal centres",
+        window_model.direction_towards(from, {
+            at = { x = 0, y = 105 },
+            size = { x = 20, y = 20 },
+        }), "left")
+    equal("window direction uses vertical centres",
+        window_model.direction_towards(from, {
+            at = { x = 105, y = 200 },
+            size = { x = 20, y = 20 },
+        }), "down")
+end
+
+--------------------------------------------------------------------------------
+-- Group lifecycle
+--------------------------------------------------------------------------------
+
+do
+    local ws = { id = 1 }
+    local lone = window("lone", "app", ws)
+    local paired_a = window("paired-a", "app", ws)
+    local paired_b = window("paired-b", "app", ws)
+    group(lone)
+    group(paired_a, paired_b)
+
+    local candidates = group_actions.lone_group_windows({
+        lone,
+        paired_a,
+        paired_b,
+        window("plain", "app", ws),
+    })
+    equal("group cleanup selects only one-member groups", #candidates, 1)
+    equal("group cleanup returns the lone grouped window", candidates[1], lone)
+
+    local hl, control = fake_runtime({
+        active = paired_a,
+        windows = { lone, paired_a, paired_b },
+        workspace = ws,
+    })
+    local actions = group_actions.new(hl)
+
+    control.emit("window.close")
+    control.emit("window.active")
+    check("group cleanup events coalesce into one timer", control.run_timer(60))
+    equal("deferred group cleanup dissolves the lone group",
+        control.dispatches[1].args.window, lone)
+    check("coalesced cleanup leaves no second timer",
+        not control.run_timer(60))
+
+    local before = #control.dispatches
+    check("untab succeeds for a multi-member group", actions.untab("right"))
+    equal("untab gives nary the requested side",
+        control.dispatches[before + 1].args, "untab r")
+    equal("untab asks Hyprland to leave the group",
+        control.dispatches[before + 2].args.out_of_group, "right")
+    check("invalid untab directions are rejected", not actions.untab("diagonal"))
+
+    check("ungroup dissolves the active group", actions.ungroup())
+    equal("ungroup dispatches the native group toggle",
+        control.dispatches[#control.dispatches].kind, "group_toggle")
+end
+
+--------------------------------------------------------------------------------
+-- Window navigation
+--------------------------------------------------------------------------------
+
+do
+    local ws1, ws2, ws3 = { id = 1 }, { id = 2 }, { id = 3 }
+    local centre = {
+        id = 1, x = 0, y = 1000, width = 2000, height = 1000, scale = 1,
+        active_workspace = ws1,
+    }
+    local right = {
+        id = 2, x = 2000, y = 1000, width = 2000, height = 1000, scale = 1,
+        active_workspace = ws2,
+    }
+    local above = {
+        id = 3, x = 500, y = 0, width = 2000, height = 1000, scale = 1,
+        active_workspace = ws3,
+    }
+    equal("monitor navigation selects the monitor along the requested axis",
+        window_navigation.monitor_in({ centre, above, right }, centre, "right"),
+        right)
+    equal("monitor navigation uses the nearest directional candidate",
+        window_navigation.monitor_in({ centre, above }, centre, "right"), above)
+
+    local active = window("active", "app", ws1)
+    local hl, control = fake_runtime({
+        active = active,
+        active_monitor = centre,
+        monitors = { centre, above, right },
+        windows = { active },
+        workspace = ws1,
+    })
+    local nary_fake = {
+        space = function(id) return "space:" .. id end,
+        shape = function() return "unchanged" end,
+    }
+    local navigation = window_navigation.new(hl, nary_fake, {
+        untab = function() return false end,
+    })
+
+    navigation.step_or_cross("right")
+    equal("tile movement first steps within the current layout",
+        control.dispatches[1].args, "move r")
+    equal("unchanged edge movement enters the adjacent workspace",
+        control.dispatches[2].args, "enter r space:2")
+    equal("edge movement transfers the window to that workspace",
+        control.dispatches[3].args.workspace, "2")
+
+    local blocked = window_navigation.new(hl, nary_fake, {
+        untab = function() return true end,
+    })
+    local dispatch_count = #control.dispatches
+    blocked.untab_or_step("left")()
+    equal("successful untab suppresses tile movement",
+        #control.dispatches, dispatch_count)
+end
+
+do
+    local ws = { id = 1 }
+    local a = window("a", "app", ws)
+    local b = window("b", "app", ws)
+    group(b, a)
+    equal("tile identity is independent of member order",
+        window_navigation.tile_id(a), "a,b")
+    equal("ungrouped windows have an empty tile identity",
+        window_navigation.tile_id(window("plain", "app", ws)), "")
+end
+
+--------------------------------------------------------------------------------
+-- Window resizing
+--------------------------------------------------------------------------------
+
+do
+    local ws = { id = 1 }
+    local tiled = window("tiled", "app", ws)
+    tiled.floating = false
+    local hl, control = fake_runtime({ active = tiled, windows = { tiled } })
+    local actions = window_resize.new(hl)
+
+    actions.resize_tile(50, -50)()
+    equal("tiled resize goes through the layout",
+        control.dispatches[1].args, "resize 50 -50")
+
+    tiled.floating = true
+    actions.resize_tile(30, 20)()
+    equal("floating resize goes through the window dispatcher",
+        control.dispatches[2].kind, "resize")
+    check("floating resize is relative",
+        control.dispatches[2].args.relative)
+
+    local grow = actions.accelerated(1)
+    grow()
+    grow()
+    equal("held resize begins at the base step",
+        control.dispatches[3].args, "resize 40 40")
+    equal("held resize accelerates subsequent steps",
+        control.dispatches[4].args, "resize 70 70")
+    control.run_timer(400)
+    control.run_timer(400)
+    grow()
+    equal("held resize resets after the idle interval",
+        control.dispatches[5].args, "resize 40 40")
 end
 
 --------------------------------------------------------------------------------

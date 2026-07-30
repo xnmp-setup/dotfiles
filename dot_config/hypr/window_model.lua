@@ -16,6 +16,19 @@ function M.same(a, b)
     return a_id ~= nil and a_id == b_id
 end
 
+function M.direction_towards(from, to)
+    if not (from and from.at and from.size and to and to.at and to.size) then
+        return nil
+    end
+
+    local dx = (to.at.x + to.size.x / 2) - (from.at.x + from.size.x / 2)
+    local dy = (to.at.y + to.size.y / 2) - (from.at.y + from.size.y / 2)
+    if math.abs(dx) >= math.abs(dy) then
+        return dx < 0 and "left" or "right"
+    end
+    return dy < 0 and "up" or "down"
+end
+
 function M.group_members(group)
     local members = group and group.members
     if not members then return {} end
