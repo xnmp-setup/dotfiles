@@ -346,6 +346,32 @@ end
 hl.bind(mainMod .. " + SHIFT + Prior", hl.dsp.window.move({ monitor = "l" }))
 hl.bind(mainMod .. " + SHIFT + Next",  hl.dsp.window.move({ monitor = "r" }))
 
+-- Codex writes its main conversation into terminal scrollback. WezTerm can
+-- inspect its foreground process directly; Ghostty cannot scope keybindings by
+-- process, so translate plain page keys at the compositor only while Codex owns
+-- a Ghostty window. Every other client receives the original key unchanged.
+local function ghostty_codex_page_scroll(key)
+    return function()
+        local active = hl.get_active_window()
+        local title = active and (active.title or ""):lower() or ""
+        if active
+            and active.class == "com.mitchellh.ghostty"
+            and title:find("codex |", 1, true)
+        then
+            hl.dispatch(hl.dsp.send_shortcut({
+                mods = "SHIFT",
+                key = key,
+                window = active,
+            }))
+        else
+            hl.dispatch(hl.dsp.pass({ window = active }))
+        end
+    end
+end
+
+hl.bind("Prior", ghostty_codex_page_scroll("Prior"), { repeating = true })
+hl.bind("Next",  ghostty_codex_page_scroll("Next"),  { repeating = true })
+
 -- Float center toggle with dim is bound in the SPOTLIT WINDOWS section below,
 -- which is where the state it toggles lives.
 

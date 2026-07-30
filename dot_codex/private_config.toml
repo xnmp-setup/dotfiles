@@ -13,15 +13,9 @@ approvals_reviewer = "auto_review"
 # and identify the app explicitly instead of relying on a shell-set prefix.
 terminal_title = ["spinner", "app-name", "project"]
 
-# Page keys enter the transcript from chat, then scroll it half a page at a time.
+# Keep the transcript available without intercepting terminal scroll keys.
 [tui.keymap.global]
-open_transcript = ["page-up", "page-down"]
-
-[tui.keymap.pager]
-page_up = []
-page_down = []
-half_page_up = "page-up"
-half_page_down = "page-down"
+open_transcript = "alt-t"
 
 # Lifecycle hooks are off by default; without this Codex silently ignores
 # ~/.codex/hooks.json (which drives the WezTerm tab status — see that file).
