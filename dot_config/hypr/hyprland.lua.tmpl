@@ -123,9 +123,10 @@ hl.config({
         -- focus handlers can dismiss scratchpads and restore spotlit windows.
         special_fallthrough         = true,
         sensitivity                 = 0, -- Raw input, like turning off mouse accel in StarCraft
+        scroll_factor               = 1.0, -- Preserve Hyprland's default external mouse-wheel speed
 
-        -- Touchpad two-finger scroll only; a wheel mouse is unaffected, so this
-        -- is safe on machines without a touchpad.
+        -- Touchpad two-finger scrolling remains slower and is configured
+        -- independently from the external mouse-wheel factor above.
         touchpad = {
             scroll_factor = 0.15, -- 1.0 is libinput's default; below ~0.15 discrete-wheel apps stall
         },
