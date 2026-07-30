@@ -1055,6 +1055,12 @@ hl.bind("F4", focus_app({
     launch = "obsidian",
     new_window = "obsidian eval 'code=app.workspace.openPopoutLeaf()'",
 }))
+hl.bind("F6", focus_app({
+    name = "chrome",
+    classes = { ["google-chrome"] = true },
+    launch = "google-chrome-stable",
+    new_window = "google-chrome-stable --new-window",
+}))
 hl.bind("F8", focus_app({
     name = "tauri-explorer",
     classes = { ["tauri-explorer"] = true },
@@ -1090,8 +1096,7 @@ scratchpad.define("lite-xl", {
     w     = 900, h = 600,
 })
 
-hl.bind("F6",  function() scratchpad.toggle("chrome-drop") end)
-hl.bind("F7",  function() scratchpad.toggle("ytmusic") end)
+hl.bind("F7",  function() scratchpad.toggle("chrome-drop") end)
 hl.bind("F9",  function() scratchpad.toggle("ghostty-drop") end)
 hl.bind("F10", function() scratchpad.toggle("lite-xl") end)
 
