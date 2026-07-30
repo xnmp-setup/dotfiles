@@ -199,10 +199,8 @@ alias ls="eza --icons --group-directories-first"
 alias ll="eza -l --icons --git --group-directories-first"
 alias du="dust"
 alias tv='tidy-viewer'
-# session cost report — opens the chart in the browser (no terminal dump)
-alias cc-cost='python ~/.claude/scripts/session_cost.py >/dev/null'
 
-export ANTHROPIC_MODEL="opus"
+export ANTHROPIC_MODEL="fable"
 
 # Intercepts !query before shell parsing — avoids history expansion and
 # allows apostrophes. !! and !( fall through to normal zsh behaviour.
@@ -307,6 +305,7 @@ alias cch="claude --permission-mode auto --model haiku"
 alias ccr="claude --resume --permission-mode auto"
 alias ccw="claude --permission-mode auto --worktree"
 alias ccc="claude --continue --permission-mode auto"
+alias cx="codex"
 alias cc-dsp='docker sandbox run claude . --dangerously-skip-permissions'
 alias m="micro"
 alias cc-box='~/Repos/claude-docker-base/run_cc-box.sh'
