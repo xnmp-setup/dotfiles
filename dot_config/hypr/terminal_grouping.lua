@@ -35,6 +35,8 @@ function M.new(hl, options)
         or window_model.direction_towards
     local consume_managed_launch = options.consume_managed_launch
         or function() return false end
+    local exclude_source = options.exclude_source
+        or function() return false end
 
     local function is_terminal(window)
         return window and TERMINAL_CLASSES[window.class] == true
@@ -103,6 +105,8 @@ function M.new(hl, options)
         if not (window and window.mapped) then return end
         local source = launch_source(window)
         if not source then return end
+
+        if exclude_source(source) then return end
 
         hl.timer(function()
             if consume_managed_launch(window) then return end

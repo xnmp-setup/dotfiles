@@ -34,6 +34,10 @@ local function new(hl, window_actions)
     -- Keeping the exact window matters for groups: an arbitrary workspace fallback
     -- may be a hidden member and would switch the visible tab on dismissal.
     local return_focus = {}
+    -- name -> ordinary workspace underneath the scratchpad on its latest showing.
+    -- Keep this after hiding: a child window can map on the special workspace just
+    -- before the focus event dismisses it, then ask for its destination afterwards.
+    local host_workspace = {}
 
     --------------------------------------------------------------------------------
     -- Window handles
@@ -89,6 +93,25 @@ local function new(hl, window_actions)
         return false
     end
 
+    local function declared_workspace_name(w)
+        local workspace_name = w.workspace and w.workspace.name
+        local name = workspace_name
+            and workspace_name:match("^special:(.+)$")
+        return name and pads[name] and name or nil
+    end
+
+    local function scratchpad_name(w)
+        if not w then return nil end
+
+        for name, address in pairs(live) do
+            if address == w.address then return name end
+        end
+
+        local name = declared_workspace_name(w)
+        local pad = name and pads[name]
+        return pad and w.class == pad.class and name or nil
+    end
+
     --------------------------------------------------------------------------------
     -- Showing and hiding
     --------------------------------------------------------------------------------
@@ -103,6 +126,21 @@ local function new(hl, window_actions)
         local ws  = mon and mon.active_workspace
         if ws and ws.id then return ws end
         return hl.get_active_workspace()
+    end
+
+    local function workspace_under(name, w)
+        local workspace = w and w.workspace
+        for _, monitor in ipairs(hl.get_monitors() or {}) do
+            local special = monitor.active_special_workspace
+            if workspace and special and special.id == workspace.id
+                and monitor.active_workspace
+            then
+                host_workspace[name] = monitor.active_workspace
+                return monitor.active_workspace
+            end
+        end
+
+        return host_workspace[name]
     end
 
     local function place(name, w)
@@ -122,6 +160,7 @@ local function new(hl, window_actions)
 
     local function show(name, w)
         focused_once[name] = nil
+        host_workspace[name] = visible_workspace()
         hl.dispatch(hl.dsp.window.move({
             workspace = "special:" .. name,
             silent = true,
@@ -192,9 +231,39 @@ local function new(hl, window_actions)
 
     --- Declare a scratchpad. `x`/`y` are optional; without them it is centred.
     --- @param name string   also the special workspace it is parked in
-    --- @param spec table    { class, cmd, w, h, x?, y? }
+    --- @param spec table    { class, cmd, w, h, x?, y?, isolate? }
     function M.define(name, spec)
         pads[name] = spec
+    end
+
+    --- Whether a window belongs to one of the declared scratchpads.
+    ---
+    --- The workspace check recovers ownership after a config reload, before the
+    --- first toggle has had a chance to reclaim the window into `live`.
+    function M.is_scratchpad(w)
+        return scratchpad_name(w) ~= nil
+    end
+
+    -- An isolated scratchpad owns its special workspace outright. Applications
+    -- opened from it inherit that workspace from Hyprland, so move any unclaimed
+    -- window straight onto the ordinary workspace underneath.
+    local function redirect_foreign_window(w)
+        if not (w and w.mapped) or claimed(w.address) then return end
+
+        local name = declared_workspace_name(w)
+        local pad = name and pads[name]
+        if not (pad and pad.isolate) then return end
+
+        local destination = workspace_under(name, w)
+        if not (destination and destination.id and destination.id > 0) then
+            return
+        end
+
+        hl.dispatch(hl.dsp.window.move({
+            workspace = tostring(destination.id),
+            follow = true,
+            window = w,
+        }))
     end
 
     --- Summon the named scratchpad, or dismiss it if it is already up.
@@ -232,7 +301,10 @@ local function new(hl, window_actions)
         adopt(name, w)
     end
 
-    hl.on("window.open", claim)
+    hl.on("window.open", function(w)
+        claim(w)
+        redirect_foreign_window(w)
+    end)
     hl.on("window.class", claim)
 
     -- Any scratchpad that is up and is not what the user just focused goes away.
@@ -259,7 +331,10 @@ local function new(hl, window_actions)
         local address = w and w.address
         if not address then return end
         for name, held in pairs(live) do
-            if held == address then live[name] = nil end
+            if held == address then
+                live[name] = nil
+                host_workspace[name] = nil
+            end
         end
     end)
 

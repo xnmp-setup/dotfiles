@@ -247,6 +247,7 @@ local app_switcher = app_switchers.new(hl, window_actions, {
 -- tile. The feature owns process ancestry and focus-fallback tracking.
 terminal_groups.new(hl, {
     consume_managed_launch = app_switcher.consume_managed_launch,
+    exclude_source = scratchpad.is_scratchpad,
 })
 
 ---------------------
@@ -448,6 +449,7 @@ scratchpad.define("ghostty-drop", {
     cmd   = "ghostty",
     w     = 1600, h = 1000,
     x     = 920,  y = 1440,
+    isolate = true,
 })
 scratchpad.define("lite-xl", {
     class = "com.lite_xl.LiteXL",

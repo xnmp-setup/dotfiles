@@ -159,6 +159,7 @@ local function fake_runtime(spec)
                     name = tostring(args.workspace),
                 }
             end
+            if args.follow then active = args.window end
         end
     end
 
@@ -804,6 +805,31 @@ do
     equal("unrelated windows are never grouped", #control.dispatches, 0)
 end
 
+do
+    local ws = { id = 1 }
+    local terminal = window("dropdown", "com.mitchellh.ghostty", ws, 0)
+    terminal.pid = 10
+    local app = window("app", "custom-app", ws, 1)
+    app.pid = 30
+    local parents = { [30] = 10, [10] = 1 }
+    local hl, control = fake_runtime({
+        active = terminal,
+        windows = { terminal, app },
+        workspace = ws,
+    })
+
+    terminal_groups.new(hl, {
+        exclude_source = function(source) return source == terminal end,
+        direction_towards = function() return "left" end,
+        parent_pid = function(pid) return parents[pid] end,
+    })
+    control.emit("window.open", app)
+    check("excluded terminal sources do not schedule grouping",
+        not control.run_timer(80))
+    equal("excluded terminal sources never group their child",
+        #control.dispatches, 0)
+end
+
 --------------------------------------------------------------------------------
 -- Scratchpad/group interaction
 --------------------------------------------------------------------------------
@@ -829,12 +855,27 @@ do
         cmd = "ghostty",
         w = 1600,
         h = 1000,
+        isolate = true,
     })
+
+    check("declared special-workspace windows are scratchpads",
+        scratchpad.is_scratchpad(pad))
+    check("ordinary windows are not scratchpads",
+        not scratchpad.is_scratchpad(chrome))
 
     scratchpad.toggle("ghostty-drop")
     equal("showing a scratchpad focuses it", control.active(), pad)
     check("showing a scratchpad opens its special workspace",
         control.special_shown())
+
+    local child = window("pad-child", "custom-app", special)
+    control.emit("window.open", child)
+    equal("isolated scratchpads redirect foreign windows to their host",
+        child.workspace.id, ws.id)
+    check("redirected scratchpad children follow onto the host workspace",
+        control.active() == child)
+    equal("redirected scratchpad children are not grouped",
+        control.dispatches[#control.dispatches].args.into_or_create_group, nil)
 
     scratchpad.toggle("ghostty-drop")
     equal("dismissal restores the exact prior window", control.active(), chrome)
