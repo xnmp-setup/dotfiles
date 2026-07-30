@@ -29,6 +29,10 @@ local pending = {}
 -- moves the race, so instead a scratchpad becomes eligible to autohide by having
 -- been focused — a state it reaches by observation rather than by clock.
 local focused_once = {}
+-- name -> address that held focus immediately before the scratchpad was shown.
+-- Keeping the exact window matters for groups: an arbitrary workspace fallback
+-- may be a hidden member and would switch the visible tab on dismissal.
+local return_focus = {}
 
 --------------------------------------------------------------------------------
 -- Window handles
@@ -142,6 +146,35 @@ local function focus_fallback(leaving)
     end
 end
 
+local function remember_return(name)
+    local active = hl.get_active_window()
+    return_focus[name] = active and not claimed(active.address)
+        and active.address or nil
+end
+
+-- Focusing a hidden group member through the generic focus dispatcher can land
+-- on whichever member Hyprland currently considers active. Select the recorded
+-- member explicitly first so restoring a scratchpad cannot change tabs.
+local function focus_window(w)
+    local group = w and w.group
+    if group and group.size > 1 and group.members then
+        local members = group.members
+        if members.stable_id then members = { members } end
+
+        for index, member in ipairs(members) do
+            if member.stable_id == w.stable_id then
+                hl.dispatch(hl.dsp.group.active({
+                    index = index,
+                    window = group.current or w,
+                }))
+                break
+            end
+        end
+    end
+
+    if w then hl.dispatch(hl.dsp.focus({ window = w })) end
+end
+
 -- `next_focus` is where focus should end up. Parking a window leaves Hyprland's
 -- focus ON it, so without this the keyboard would still be pointed at a terminal
 -- that is no longer on screen — dismissing a scratchpad would swallow whatever
@@ -149,12 +182,15 @@ end
 local function hide(name, w, next_focus)
     focused_once[name] = nil
 
-    local restore = next_focus or focus_fallback(w.address)
+    local restore = next_focus
+        or window_at(return_focus[name])
+        or focus_fallback(w.address)
+    return_focus[name] = nil
 
     if is_shown(w) then
         hl.dispatch(hl.dsp.workspace.toggle_special(name))
     end
-    if restore then hl.dispatch(hl.dsp.focus({ window = restore })) end
+    focus_window(restore)
 end
 
 -- A freshly launched window is floated and sized by the exec rules, but it still
@@ -189,11 +225,13 @@ function M.toggle(name)
     if not w then
         -- Nothing to toggle yet. Rules do the floating and sizing so the window
         -- never flashes tiled at its natural size first.
+        remember_return(name)
         pending[pad.class] = name
         hl.dispatch(hl.dsp.exec_cmd(pad.cmd, { float = true, size = { pad.w, pad.h } }))
     elseif is_shown(w) then
         hide(name, w)
     else
+        remember_return(name)
         show(name, w)
     end
 end
