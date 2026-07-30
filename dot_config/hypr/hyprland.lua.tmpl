@@ -629,19 +629,6 @@ local function focus_window(window)
     hl.dispatch(hl.dsp.focus({ window = window }))
 end
 
--- One armed return per app. It exists only after this shortcut changed focus;
--- manually arriving on an app window does not turn the shortcut into "back".
-local app_returns = {}
-local app_focus_transition = false
-
-hl.on("window.active", function()
-    if app_focus_transition then return end
-    local window = hl.get_active_window()
-    for name, state in pairs(app_returns) do
-        if not same_window(window, state.target) then app_returns[name] = nil end
-    end
-end)
-
 local pending_app_launches = {}
 local non_terminal_launches = {}
 
@@ -794,8 +781,8 @@ end)
 
 -- Per-workspace app toggle:
 --   1. Focus the most-recent matching window, including a hidden group tab.
---   2. Press again while that exact window is still focused to restore the
---      window/tab that this shortcut replaced.
+--   2. Press again while an app window is focused to show the next tab in its
+--      group. An ungrouped window (or a one-member group) stays focused.
 --   3. If no matching window exists here, create one on this workspace.
 local function focus_app(app)
     return function()
@@ -803,16 +790,9 @@ local function focus_app(app)
         if not (workspace and workspace.id) then return end
 
         local active = hl.get_active_window()
-        local previous = app_returns[app.name]
-        if previous and same_window(active, previous.target) then
-            app_returns[app.name] = nil
-            if previous.window and previous.window.mapped
-                and previous.window.workspace
-                and previous.window.workspace.id == workspace.id
-            then
-                app_focus_transition = true
-                focus_window(previous.window)
-                app_focus_transition = false
+        if active and app.classes[active.class] then
+            if active.group and active.group.size > 1 then
+                hl.dispatch(hl.dsp.group.next())
             end
             return
         end
@@ -833,7 +813,6 @@ local function focus_app(app)
         end
 
         if not target then
-            app_returns[app.name] = nil
             pending_app_launches[app.name] = {
                 classes = app.classes,
                 workspace_id = workspace.id,
@@ -850,17 +829,7 @@ local function focus_app(app)
             return
         end
 
-        if active and not same_window(active, target)
-            and active.workspace and active.workspace.id == workspace.id
-        then
-            app_returns[app.name] = { target = target, window = active }
-        else
-            app_returns[app.name] = nil
-        end
-
-        app_focus_transition = true
         focus_window(target)
-        app_focus_transition = false
     end
 end
 
