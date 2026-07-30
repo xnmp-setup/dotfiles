@@ -986,7 +986,7 @@ local AGENT_MARKERS = {
   },
   codex = {
     idle       = '⬢\u{FE0E}',  -- U+2B22 black hexagon — OpenAI's mark is hexagonal
-    idle_fg    = '#10A37F',    -- OpenAI teal
+    idle_fg    = '#B23A48',    -- muted crimson
     attention  = '⬣\u{FE0E}',  -- U+2B23 horizontal black hexagon: wider, denser
     frames = pingpong({
       '⬩\u{FE0E}', '⬦\u{FE0E}', '◈\u{FE0E}', '⬥\u{FE0E}',
