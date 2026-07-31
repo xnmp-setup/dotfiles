@@ -17,4 +17,5 @@ autoload -Uz add-zsh-hook
 
 source "${${(%):-%x}:A:h}/ghostty-page-scroll.zsh"
 source "${${(%):-%x}:A:h}/ghostty-tab-title.zsh"
+source "${${(%):-%x}:A:h}/ghostty-command-pulse.zsh"
 source "${${(%):-%x}:A:h}/ghostty-agent-integration.zsh"
