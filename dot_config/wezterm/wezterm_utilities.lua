@@ -9,9 +9,26 @@ local URL_POLL_INTERVAL_SECONDS = 0.1
 local URL_POLL_ATTEMPTS = 200
 local BOTTOM_PANE_SIZE = 0.40
 local TERMINAL_PANE_SIZE = 0.35
+local UTILITY_BACKGROUND = '#171d42'
 local UTILITY_PANE_STATE_KEY = 'utility_pane_ids'
 local TERMINAL_OWNER_STATE_KEY = 'utility_terminal_owner_ids'
 local TOOL_SHELF = 'tool_shelf'
+
+local function bottom_tab_split(size)
+  return {
+    direction = 'Bottom',
+    top_level = true,
+    size = size,
+  }
+end
+
+local function style_utility_pane(pane)
+  -- WezTerm's divider color is window-wide, so distinguish this specific area
+  -- with a slightly raised background behind the existing amber split line.
+  pcall(function()
+    pane:inject_output('\x1b]11;' .. UTILITY_BACKGROUND .. '\x1b\\')
+  end)
+end
 
 local UTILITY_PANES = {
   yazi = {
@@ -20,14 +37,12 @@ local UTILITY_PANES = {
     pass_cwd_as_entry = true,
     set_environment_variables = { YAZI_UTILITY_PANE = '1' },
     shelf = TOOL_SHELF,
-    top_level = true,
     size = BOTTOM_PANE_SIZE,
   },
   keifu = {
     id = 'keifu',
     command = 'keifu',
     shelf = TOOL_SHELF,
-    top_level = true,
     size = BOTTOM_PANE_SIZE,
   },
 }
@@ -248,13 +263,12 @@ function M.setup(config)
       -- split it sideways instead of adding another top-level vertical split.
       -- That keeps the main pane at one stable height while tools are added or
       -- removed, and leaves only one resize notification when the shelf closes.
-      local split_target = active_pane
       local shelf_anchor = find_shelf_anchor(panes, utility_panes[tab_id], spec)
-      local split = { direction = 'Bottom' }
+      local split_target = active_pane
+      local split = bottom_tab_split(spec.size)
       if shelf_anchor then
         split_target = shelf_anchor
-        split.direction = 'Right'
-        split.size = 0.5
+        split = { direction = 'Right', size = 0.5 }
       end
       local invoking_cwd = cwd_path(active_pane)
       if spec.command then
@@ -273,14 +287,10 @@ function M.setup(config)
       -- domains. Resolve the pane that invoked the chord and pass its directory
       -- explicitly, even when an existing shelf pane is the split target.
       split.cwd = invoking_cwd
-      if not shelf_anchor then
-        if spec.top_level ~= nil then split.top_level = spec.top_level end
-        if spec.size ~= nil then split.size = spec.size end
-      end
-
       local new_pane = split_target:split(split)
       utility_panes[tab_id][spec.id] = pane_id(new_pane)
       persist_utility_panes()
+      style_utility_pane(new_pane)
       new_pane:activate()
     end)
   end
@@ -324,10 +334,13 @@ function M.setup(config)
       -- its owner rather than closing the PTY, so foreground jobs keep running;
       -- closing the tab still terminates both panes together.
       tab:set_zoomed(false)
-      local new_pane = active_pane:split { direction = 'Bottom', size = TERMINAL_PANE_SIZE }
+      -- Split the tab rather than the focused leaf so this terminal always
+      -- spans the bottom edge and occupies 35% of the full tab.
+      local new_pane = active_pane:split(bottom_tab_split(TERMINAL_PANE_SIZE))
       utility_panes[tab_id].terminal = pane_id(new_pane)
       terminal_owners[tab_id] = pane_id(active_pane)
       persist_utility_panes()
+      style_utility_pane(new_pane)
       new_pane:activate()
     end)
   end

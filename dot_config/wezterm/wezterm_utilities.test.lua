@@ -43,6 +43,7 @@ local function pane(opts)
     get_foreground_process_name = function() return opts.process end,
     get_current_working_dir = function() return { file_path = opts.cwd } end,
     get_logical_lines_as_text = function() return opts.output or '' end,
+    inject_output = function(_, output) opts.injected_output = output end,
     activate = function(self)
       opts.activations = (opts.activations or 0) + 1
       if opts.on_activate then opts.on_activate(self) end
@@ -110,12 +111,14 @@ local shell = pane { id = 1, process = '/usr/bin/zsh', cwd = '/work/my-app' }
 local keifu = pane { id = 2, process = '/usr/bin/keifu', cwd = '/work/my-app' }
 local terminal = pane { id = 4, process = '/usr/bin/zsh', cwd = '/work/my-app' }
 local yazi = pane { id = 5, process = '/usr/bin/yazi', cwd = '/work/my-app' }
+local secondary = pane { id = 6, process = '/usr/bin/zsh', cwd = '/work/other' }
 local current_active = shell
 local zoomed_pane
 shell.opts.on_activate = function(target) current_active = target end
 keifu.opts.on_activate = function(target) current_active = target end
 terminal.opts.on_activate = function(target) current_active = target end
 yazi.opts.on_activate = function(target) current_active = target end
+secondary.opts.on_activate = function(target) current_active = target end
 local tab_panes = { shell }
 local split_options
 local split_source
@@ -132,6 +135,7 @@ end
 add_split_behavior(shell)
 add_split_behavior(keifu)
 add_split_behavior(yazi)
+add_split_behavior(secondary)
 
 local original_activations = 0
 local original_tab = {
@@ -210,6 +214,7 @@ eq('keifu/split size', split_options.size, 0.40)
 eq('keifu/command', split_options.args[1], 'keifu')
 eq('keifu/does not use compact Yazi profile', split_options.set_environment_variables, nil)
 eq('keifu/inherits invoking pane cwd', split_options.cwd, '/work/my-app')
+eq('keifu/uses utility background', keifu.opts.injected_output, '\x1b]11;#171d42\x1b\\')
 eq('keifu/activates new pane', keifu.opts.activations, 1)
 
 -- Regression: after focusing the shell and starting Codex, toggling Keifu must
@@ -251,6 +256,7 @@ eq(
 )
 eq('shelf/yazi inherits invoking pane cwd', split_options.cwd, '/work/my-app')
 eq('shelf/yazi opens invoking cwd as entry', split_options.args[2], '/work/my-app')
+eq('shelf/yazi uses utility background', yazi.opts.injected_output, '\x1b]11;#171d42\x1b\\')
 
 chord_by_key.g.action(window, yazi)
 eq('shelf/second tool splits existing shelf', split_source, yazi)
@@ -280,6 +286,18 @@ chord_by_key.e.action(window, shell)
 eq('shelf/reverse order also restores main pane', tab_panes[1], shell)
 eq('shelf/reverse order closes both tools', #tab_panes, 1)
 
+-- The initial shelf split is tab-level, so a tab that is already split still
+-- gets one full-width utility shelf at the bottom rather than a nested pane.
+tab_panes = { shell, secondary }
+current_active = secondary
+chord_by_key.e.action(window, secondary)
+eq('shelf/pre-split tab uses invoking pane', split_source, secondary)
+eq('shelf/pre-split tab opens at tab level', split_options.top_level, true)
+eq('shelf/pre-split tab keeps 40 percent size', split_options.size, 0.40)
+eq('shelf/pre-split tab preserves existing panes', #tab_panes, 3)
+chord_by_key.e.action(window, shell)
+eq('shelf/pre-split tab restores existing panes', #tab_panes, 2)
+
 -- The terminal split matches cmd+alt+; except for its requested 35% size. Its
 -- PTY remains in the tab while hidden so long-running jobs survive the toggle.
 tab_panes = { shell }
@@ -288,9 +306,10 @@ zoomed_pane = nil
 chord_by_key.t.action(window, shell)
 eq('terminal/split direction', split_options.direction, 'Bottom')
 eq('terminal/uses default shell', split_options.args, nil)
-eq('terminal/uses local split geometry', split_options.top_level, nil)
+eq('terminal/uses tab-level split geometry', split_options.top_level, true)
 eq('terminal/uses 35 percent size', split_options.size, 0.35)
 eq('terminal/opens below shell', tab_panes[2], terminal)
+eq('terminal/uses utility background', terminal.opts.injected_output, '\x1b]11;#171d42\x1b\\')
 
 terminal.opts.process = '/usr/bin/bun'
 shell:activate()
