@@ -270,11 +270,21 @@ _anthropic_haiku() {
 # Backed by GPT-5.6 Luna with a Haiku fallback.
 [[ -r ~/.config/zsh/quick-question.zsh ]] && source ~/.config/zsh/quick-question.zsh
 
+_cc_launch_claude() {
+  if [[ $TERM_PROGRAM == ghostty ]] \
+    && (( ${+functions[__ghostty_run_agent]} ))
+  then
+    __ghostty_run_agent claude "$@"
+  else
+    # Preserve the original direct executable dispatch in every other terminal.
+    command claude "$@"
+  fi
+}
+
 cc() {
   # No args or flags passed directly → skip routing
   if [[ $# -eq 0 ]] || [[ "$1" == -* ]]; then
-    # Keep shell-function dispatch: Ghostty wraps `claude` to own the tab title.
-    claude --permission-mode auto --model "$ANTHROPIC_MODEL" "$@"
+    _cc_launch_claude --permission-mode auto --model "$ANTHROPIC_MODEL" "$@"
     return
   fi
 
@@ -297,7 +307,7 @@ cc() {
   esac
 
   print -P "%F{cyan}→ $model%f"
-  claude --permission-mode auto --model "$model" "$query"
+  _cc_launch_claude --permission-mode auto --model "$model" "$query"
 }
 alias ccs="claude --permission-mode auto --model sonnet"
 alias ccf="claude --permission-mode auto --model fable"

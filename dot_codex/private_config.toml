@@ -9,8 +9,8 @@ model_reasoning_effort = "medium"
 approvals_reviewer = "auto_review"
 
 [tui]
-# Codex owns its OSC 2 title while the TUI is running. Keep an activity glyph
-# and identify the app explicitly instead of relying on a shell-set prefix.
+# Preserve Codex's native title in other terminals. The Ghostty shell wrapper
+# disables it per invocation while its custom OSC 2 renderer is active.
 terminal_title = ["spinner", "app-name", "project"]
 
 # Keep the transcript available without intercepting terminal scroll keys.
