@@ -224,16 +224,10 @@ _rewrite_new_issue_command() {
   return 0
 }
 
-# Intercepts shortcuts before shell parsing, allowing significant whitespace
-# and apostrophes. !! and !( fall through to normal zsh behaviour.
+# Rewrites the new-issue shortcut before shell parsing so significant
+# whitespace and apostrophes survive.
 _shortcut_accept_line() {
-  if _rewrite_new_issue_command; then
-    :
-  elif [[ "$BUFFER" == '!'* && "$BUFFER" != '!!'* && "$BUFFER" != '!('* ]]; then
-    local query="${BUFFER#!}"
-    query="${query##[[:space:]]}"
-    BUFFER="_anthropic_smart ${(q)query}"
-  fi
+  _rewrite_new_issue_command
   zle .accept-line
 }
 zle -N accept-line _shortcut_accept_line
@@ -242,6 +236,8 @@ zle -N accept-line _shortcut_accept_line
 # ANTHROPIC_API_KEY, or falls back to the claude CLI.
 _anthropic_haiku() {
   local prompt="$1"
+  local max_tokens="${2:-256}"
+  [[ "$max_tokens" == <-> ]] || max_tokens=256
   local _haiku_model="${ANTHROPIC_DEFAULT_HAIKU_MODEL:-claude-haiku-4-5-20251001}"
   local _base_url="${ANTHROPIC_BASE_URL:-https://api.anthropic.com}"
   local _creds=~/.claude/.credentials.json
@@ -262,7 +258,7 @@ _anthropic_haiku() {
       -H "$_auth_header" \
       -H "anthropic-version: 2023-06-01" \
       -H "content-type: application/json" \
-      -d "{\"model\":\"$_haiku_model\",\"max_tokens\":256,\"messages\":[{\"role\":\"user\",\"content\":$(printf '%s' "$prompt" | jq -Rs .)}]}" \
+      -d "{\"model\":\"$_haiku_model\",\"max_tokens\":$max_tokens,\"messages\":[{\"role\":\"user\",\"content\":$(printf '%s' "$prompt" | jq -Rs .)}]}" \
       2>/dev/null \
       | jq -r '.content[0].text // empty'
   else
@@ -270,34 +266,15 @@ _anthropic_haiku() {
   fi
 }
 
-# Routes a !query: if it maps to a shell command, pre-fills the next
-# prompt with it (just hit enter to run); otherwise prints the answer.
-_anthropic_smart() {
-  local query="$1"
-  local prompt="You are a shell assistant on $(uname -s). If the user's request can be satisfied by a single shell command, reply with ONLY that command on one line, prefixed by 'CMD: ' and nothing else. Otherwise, answer directly in plain text. Do not use markdown or code fences.
-
-Request: $query"
-
-  local response
-  response=$(_anthropic_haiku "$prompt")
-
-  if [[ "$response" == CMD:* ]]; then
-    local cmd="${response#CMD:}"
-    cmd="${cmd##[[:space:]]}"      # trim leading whitespace
-    cmd="${cmd%%[[:space:]]}"      # trim trailing whitespace
-    cmd="${cmd#\`}"; cmd="${cmd%\`}"   # strip stray backticks
-    print -z -- "$cmd"
-  else
-    print -r -- "$response"
-  fi
-}
-
-alias q="_anthropic_smart"
+# Fast one-off questions: `q` prefills one command; `qq` prints a full answer.
+# Backed by GPT-5.6 Luna with a Haiku fallback.
+[[ -r ~/.config/zsh/quick-question.zsh ]] && source ~/.config/zsh/quick-question.zsh
 
 cc() {
   # No args or flags passed directly → skip routing
   if [[ $# -eq 0 ]] || [[ "$1" == -* ]]; then
-    command claude --permission-mode auto --model "$ANTHROPIC_MODEL" "$@"
+    # Keep shell-function dispatch: Ghostty wraps `claude` to own the tab title.
+    claude --permission-mode auto --model "$ANTHROPIC_MODEL" "$@"
     return
   fi
 
@@ -320,7 +297,7 @@ cc() {
   esac
 
   print -P "%F{cyan}→ $model%f"
-  command claude --permission-mode auto --model "$model" "$query"
+  claude --permission-mode auto --model "$model" "$query"
 }
 alias ccs="claude --permission-mode auto --model sonnet"
 alias ccf="claude --permission-mode auto --model fable"
