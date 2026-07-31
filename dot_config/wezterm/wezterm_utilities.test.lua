@@ -250,6 +250,7 @@ eq(
   '1'
 )
 eq('shelf/yazi inherits invoking pane cwd', split_options.cwd, '/work/my-app')
+eq('shelf/yazi opens invoking cwd as entry', split_options.args[2], '/work/my-app')
 
 chord_by_key.g.action(window, yazi)
 eq('shelf/second tool splits existing shelf', split_source, yazi)
@@ -258,6 +259,7 @@ eq('shelf/second tool is local', split_options.top_level, nil)
 eq('shelf/tools share width equally', split_options.size, 0.5)
 eq('shelf/keifu peer does not use compact profile', split_options.set_environment_variables, nil)
 eq('shelf/peer inherits invoking pane cwd', split_options.cwd, '/work/my-app')
+eq('shelf/keifu has no cwd argument', split_options.args[2], nil)
 eq('shelf/both tools are present', #tab_panes, 3)
 
 chord_by_key.e.action(window, keifu)

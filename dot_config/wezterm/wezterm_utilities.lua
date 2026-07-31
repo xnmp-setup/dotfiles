@@ -17,6 +17,7 @@ local UTILITY_PANES = {
   yazi = {
     id = 'yazi',
     command = 'yazi',
+    pass_cwd_as_entry = true,
     set_environment_variables = { YAZI_UTILITY_PANE = '1' },
     shelf = TOOL_SHELF,
     top_level = true,
@@ -255,14 +256,23 @@ function M.setup(config)
         split.direction = 'Right'
         split.size = 0.5
       end
-      if spec.command then split.args = { spec.command } end
+      local invoking_cwd = cwd_path(active_pane)
+      if spec.command then
+        split.args = { spec.command }
+        -- WezTerm nightly currently ignores `Pane:split`'s explicit cwd for
+        -- this local mux pane. Yazi accepts an initial entry, so give it the
+        -- same resolved path rather than depending on the process cwd alone.
+        if spec.pass_cwd_as_entry and invoking_cwd then
+          split.args[#split.args + 1] = invoking_cwd
+        end
+      end
       if spec.set_environment_variables then
         split.set_environment_variables = spec.set_environment_variables
       end
       -- Supplying args bypasses reliable implicit cwd inheritance in some
       -- domains. Resolve the pane that invoked the chord and pass its directory
       -- explicitly, even when an existing shelf pane is the split target.
-      split.cwd = cwd_path(active_pane)
+      split.cwd = invoking_cwd
       if not shelf_anchor then
         if spec.top_level ~= nil then split.top_level = spec.top_level end
         if spec.size ~= nil then split.size = spec.size end
