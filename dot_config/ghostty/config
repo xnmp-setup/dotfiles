@@ -100,4 +100,5 @@ keybind = ctrl+t=new_tab
 # (Additive glow on one row only — does not distort/sample fresh output,
 # so it won't make output appear late like the earlier radial version did.)
 custom-shader = /home/chong/.config/ghostty/shaders/enter-ripple.glsl
+custom-shader = /home/chong/.config/ghostty/shaders/agent-aurora.glsl
 custom-shader-animation = true
