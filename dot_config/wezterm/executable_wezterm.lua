@@ -743,7 +743,7 @@ config.keys = {
     local dominated_by_shell = true
     local procs = pane:get_foreground_process_name()
     if procs then
-      local name = procs:match('[^/\\]+$') or procs
+      local name = (procs:match('[^/\\]+$') or procs):gsub(' %(deleted%)$', '')
       local skip = { bash=1, sh=1, zsh=1, fish=1, tmux=1, nu=1, login=1 }
       if not skip[name] then
         dominated_by_shell = false
