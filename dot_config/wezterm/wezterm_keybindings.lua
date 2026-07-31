@@ -13,6 +13,8 @@ function M.apply(config, deps)
   local reattach_bg_tab = deps.background.reattach_tab
   local page_keys_scroll_terminal = deps.agent.page_keys_scroll_terminal
   local activate_utility_chord = deps.utilities.activate_chord
+  local close_pane = deps.close.close_pane
+  local close_tab = deps.close.close_tab
 
   -- ---------- Keybinds ----------
   config.keys = {
@@ -23,31 +25,10 @@ function M.apply(config, deps)
     { key = 'm', mods = 'ALT', action = activate_utility_chord },
 
     -- tabs / windows / panes
-    -- Close pane: immediate if only shell running, else prompt (Enter to confirm).
-    { key = 'w', mods = 'CTRL', action = wezterm.action_callback(function(window, pane)
-      local dominated_by_shell = true
-      local procs = pane:get_foreground_process_name()
-      if procs then
-        local name = (procs:match('[^/\\]+$') or procs):gsub(' %(deleted%)$', '')
-        local skip = { bash=1, sh=1, zsh=1, fish=1, tmux=1, nu=1, login=1 }
-        if not skip[name] then
-          dominated_by_shell = false
-        end
-      end
-      if dominated_by_shell then
-        window:perform_action(act.CloseCurrentPane { confirm = false }, pane)
-      else
-        window:perform_action(act.InputSelector {
-          title = '🛑 Kill pane with running process? (Enter = yes, Esc = no)',
-          choices = { { label = 'Yes, close pane' } },
-          action = wezterm.action_callback(function(win, p, id, label)
-            if label then
-              win:perform_action(act.CloseCurrentPane { confirm = false }, p)
-            end
-          end),
-        }, pane)
-      end
-    end) },
+    -- Process-aware close actions: idle shells close immediately; attached jobs
+    -- get a styled confirmation. Tab close sees hidden persistent panes too.
+    { key = 'w', mods = 'CTRL', action = close_pane() },
+    { key = 'w', mods = 'SUPER', action = close_tab() },
     -- Esc: interrupt handling. A user interrupt (Esc mid-response) fires no hook in
     -- either agent, so the agent_status var stays stuck on 'working' and the tab
     -- keeps spinning. Intercept Esc here: if the pane is running an agent, mark it

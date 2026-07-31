@@ -9,6 +9,7 @@ local navigation = require 'wezterm_navigation'
 local background = require('wezterm_background').setup(config)
 local windowing = require('wezterm_windowing').setup()
 local utilities = require('wezterm_utilities').setup(config)
+local close = require('wezterm_close').setup()
 
 -- Restore normal panes from the last GUI session. Background panes are excluded
 -- because their dedicated mux domains already outlive the GUI.
@@ -23,6 +24,7 @@ require('wezterm_keybindings').apply(config, {
   background = background,
   windowing = windowing,
   agent = agent,
+  close = close,
   utilities = utilities,
 })
 
