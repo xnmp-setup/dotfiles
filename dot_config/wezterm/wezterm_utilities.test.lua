@@ -208,6 +208,7 @@ eq('keifu/split direction', split_options.direction, 'Bottom')
 eq('keifu/top-level split', split_options.top_level, true)
 eq('keifu/split size', split_options.size, 0.40)
 eq('keifu/command', split_options.args[1], 'keifu')
+eq('keifu/inherits invoking pane cwd', split_options.cwd, '/work/my-app')
 eq('keifu/activates new pane', keifu.opts.activations, 1)
 
 -- Regression: after focusing the shell and starting Codex, toggling Keifu must
@@ -242,12 +243,14 @@ eq('shelf/first tool splits main pane', split_source, shell)
 eq('shelf/first tool opens below', split_options.direction, 'Bottom')
 eq('shelf/first tool is top level', split_options.top_level, true)
 eq('shelf/first tool uses 40 percent', split_options.size, 0.40)
+eq('shelf/yazi inherits invoking pane cwd', split_options.cwd, '/work/my-app')
 
 chord_by_key.g.action(window, yazi)
 eq('shelf/second tool splits existing shelf', split_source, yazi)
 eq('shelf/second tool opens beside first', split_options.direction, 'Right')
 eq('shelf/second tool is local', split_options.top_level, nil)
 eq('shelf/tools share width equally', split_options.size, 0.5)
+eq('shelf/peer inherits invoking pane cwd', split_options.cwd, '/work/my-app')
 eq('shelf/both tools are present', #tab_panes, 3)
 
 chord_by_key.e.action(window, keifu)

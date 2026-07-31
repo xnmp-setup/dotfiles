@@ -255,6 +255,10 @@ function M.setup(config)
         split.size = 0.5
       end
       if spec.command then split.args = { spec.command } end
+      -- Supplying args bypasses reliable implicit cwd inheritance in some
+      -- domains. Resolve the pane that invoked the chord and pass its directory
+      -- explicitly, even when an existing shelf pane is the split target.
+      split.cwd = cwd_path(active_pane)
       if not shelf_anchor then
         if spec.top_level ~= nil then split.top_level = spec.top_level end
         if spec.size ~= nil then split.size = spec.size end
