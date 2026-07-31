@@ -15,6 +15,7 @@ function M.apply(config, deps)
   local activate_utility_chord = deps.utilities.activate_chord
   local close_pane = deps.close.close_pane
   local close_tab = deps.close.close_tab
+  local copy_previous_command = deps.output.copy_previous_command
 
   -- ---------- Keybinds ----------
   config.keys = {
@@ -93,6 +94,7 @@ function M.apply(config, deps)
         end
       end),
     },
+    { key = 'c', mods = 'CTRL|ALT', action = copy_previous_command },
 
     -- unbind ghostty's ctrl+shift+left/right
     { key = 'LeftArrow', mods = 'CTRL|SHIFT', action = act.DisableDefaultAssignment },
