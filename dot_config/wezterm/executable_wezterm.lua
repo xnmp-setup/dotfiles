@@ -843,7 +843,7 @@ config.keys = {
   { key = 'PageUp', mods = 'NONE', action = wezterm.action_callback(function(window, pane)
     local proc = pane:get_foreground_process_name() or ''
     if agent_of_pane(proc, pane:get_user_vars()) == 'codex' then
-      window:perform_action(act.ScrollByPage(-1), pane)
+      window:perform_action(act.ScrollByPage(-0.5), pane)
     else
       window:perform_action(act.SendKey { key = 'PageUp' }, pane)
     end
@@ -851,7 +851,7 @@ config.keys = {
   { key = 'PageDown', mods = 'NONE', action = wezterm.action_callback(function(window, pane)
     local proc = pane:get_foreground_process_name() or ''
     if agent_of_pane(proc, pane:get_user_vars()) == 'codex' then
-      window:perform_action(act.ScrollByPage(1), pane)
+      window:perform_action(act.ScrollByPage(0.5), pane)
     else
       window:perform_action(act.SendKey { key = 'PageDown' }, pane)
     end

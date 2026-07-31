@@ -351,7 +351,9 @@ hl.bind(mainMod .. " + SHIFT + Next",  hl.dsp.window.move({ monitor = "r" }))
 -- Codex writes its main conversation into terminal scrollback. WezTerm can
 -- inspect its foreground process directly; Ghostty cannot scope keybindings by
 -- process, so translate plain page keys at the compositor only while Codex owns
--- a Ghostty window. Every other client receives the original key unchanged.
+-- a Ghostty window. Ctrl+Alt+PageUp/PageDown is a private transport chord bound
+-- by Ghostty to half-page scrolling. Every other client receives the original
+-- key unchanged.
 local function ghostty_codex_page_scroll(key)
     return function()
         local active = hl.get_active_window()
@@ -361,7 +363,7 @@ local function ghostty_codex_page_scroll(key)
             and title:find("codex |", 1, true)
         then
             hl.dispatch(hl.dsp.send_shortcut({
-                mods = "SHIFT",
+                mods = "CTRL_ALT",
                 key = key,
                 window = active,
             }))

@@ -81,6 +81,9 @@ keybind = shift+home=text:\x1b[1;2H
 keybind = shift+end=text:\x1b[1;2F
 keybind = shift+page_up=scroll_page_up
 keybind = shift+page_down=scroll_page_down
+# Private transport used by Hyprland for plain PageUp/PageDown in Codex.
+keybind = ctrl+alt+page_up=scroll_page_fractional:-0.5
+keybind = ctrl+alt+page_down=scroll_page_fractional:0.5
 keybind = ctrl+n=new_window
 # keybind = ctrl+c=copy_to_clipboard
 
