@@ -18,6 +18,7 @@ require('sessionstore').setup { dir = background.socket_dir }
 local agent = require('wezterm_agent').setup()
 local appearance = require 'wezterm_appearance'
 appearance.apply(config)
+require('wezterm_links').setup(config)
 
 require('wezterm_keybindings').apply(config, {
   navigation = navigation,
