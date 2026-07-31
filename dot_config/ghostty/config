@@ -15,6 +15,9 @@ gtk-titlebar-style = native
 gtk-toolbar-style = flat
 gtk-wide-tabs = false
 gtk-custom-css = ~/.config/ghostty/tabs.css
+# The zsh title hook owns OSC 2. Disable only Ghostty's competing path-title
+# hook so new tabs do not flash the working directory before our first prompt.
+shell-integration-features = no-title
 # Don't auto-copy on text selection (use ctrl+c to copy explicitly)
 copy-on-select = false
 split-divider-color = #FFBF00
