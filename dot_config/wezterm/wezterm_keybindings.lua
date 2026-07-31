@@ -1,0 +1,171 @@
+-- User input bindings. Higher-level actions are injected by their owning modules.
+local wezterm = require 'wezterm'
+local act = wezterm.action
+
+local M = {}
+
+function M.apply(config, deps)
+  local spawn_tab_next = deps.navigation.spawn_tab_next
+  local tab_nav_across_windows = deps.navigation.tab_nav_across_windows
+  local move_tab_to_window = deps.windowing.move_tab_to_window
+  local spawn_bg_tab = deps.background.spawn_tab
+  local detach_bg_tab = deps.background.detach_tab
+  local reattach_bg_tab = deps.background.reattach_tab
+  local page_keys_scroll_terminal = deps.agent.page_keys_scroll_terminal
+
+  -- ---------- Keybinds ----------
+  config.keys = {
+    -- config / palette
+    { key = ',', mods = 'CTRL|SHIFT', action = act.ReloadConfiguration },
+    { key = 'p', mods = 'CTRL|SHIFT', action = act.ActivateCommandPalette },
+
+    -- tabs / windows / panes
+    -- Close pane: immediate if only shell running, else prompt (Enter to confirm).
+    { key = 'w', mods = 'CTRL', action = wezterm.action_callback(function(window, pane)
+      local dominated_by_shell = true
+      local procs = pane:get_foreground_process_name()
+      if procs then
+        local name = (procs:match('[^/\\]+$') or procs):gsub(' %(deleted%)$', '')
+        local skip = { bash=1, sh=1, zsh=1, fish=1, tmux=1, nu=1, login=1 }
+        if not skip[name] then
+          dominated_by_shell = false
+        end
+      end
+      if dominated_by_shell then
+        window:perform_action(act.CloseCurrentPane { confirm = false }, pane)
+      else
+        window:perform_action(act.InputSelector {
+          title = '🛑 Kill pane with running process? (Enter = yes, Esc = no)',
+          choices = { { label = 'Yes, close pane' } },
+          action = wezterm.action_callback(function(win, p, id, label)
+            if label then
+              win:perform_action(act.CloseCurrentPane { confirm = false }, p)
+            end
+          end),
+        }, pane)
+      end
+    end) },
+    -- Esc: interrupt handling. A user interrupt (Esc mid-response) fires no hook in
+    -- either agent, so the agent_status var stays stuck on 'working' and the tab
+    -- keeps spinning. Intercept Esc here: if the pane is running an agent, mark it
+    -- 'done' in pane_status (the tab bar's source of truth) so it drops to idle
+    -- immediately. This intentionally includes non-interrupt uses such as dismissing
+    -- a /btw overlay. Always forward the Esc to the app afterwards, so the agent
+    -- still receives it. A fresh prompt's 'working' var write overrides 'done'.
+    { key = 'Escape', mods = 'NONE', action = wezterm.action_callback(function(window, pane)
+      deps.agent.mark_done(pane)
+      window:perform_action(act.SendKey { key = 'Escape' }, pane)
+    end) },
+    { key = 't', mods = 'CTRL', action = spawn_tab_next('CurrentPaneDomain') },
+    -- new PowerShell (pwsh) tab in the local Windows domain (default domain is WSL).
+    -- Full path to the MSI install — avoids the slow WindowsApps execution-alias stub.
+    { key = 't', mods = 'CTRL|SHIFT', action = wezterm.action_callback(function(win, pane)
+      local idx
+      for _, item in ipairs(win:mux_window():tabs_with_info()) do
+        if item.is_active then idx = item.index; break end
+      end
+      win:perform_action(act.SpawnCommandInNewTab {
+        domain = { DomainName = 'local' },
+        args = { 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' },
+      }, pane)
+      win:perform_action(act.MoveTab(idx + 1), pane)
+    end) },
+    { key = 'n', mods = 'CTRL', action = act.SpawnWindow },
+    -- ctrl+shift+n: pop the current tab out into its own new window.
+    { key = 'n', mods = 'CTRL|SHIFT', action = wezterm.action_callback(function(win, pane)
+      local _, new_window = pane:move_to_new_window()
+      local gui = new_window:gui_window()
+      if gui then gui:focus() end
+    end) },
+    -- ctrl+shift+m: move the current tab into an existing window (pick from a list).
+    { key = 'm', mods = 'CTRL|SHIFT', action = move_tab_to_window() },
+    -- Background tabs: ctrl+alt+t opens one (unix-domain, survives GUI close),
+    -- ctrl+shift+w detaches the current bg tab, ctrl+shift+e reattaches one. The
+    -- callbacks no-op with a toast on non-macOS/Linux (BG_ENABLED). See the
+    -- See wezterm_background.lua for the full rationale.
+    { key = 't', mods = 'CTRL|ALT', action = spawn_bg_tab() },
+    { key = 'w', mods = 'CTRL|SHIFT', action = detach_bg_tab() },
+    { key = 'e', mods = 'CTRL|SHIFT', action = reattach_bg_tab() },
+    { key = 'PageUp', mods = 'CTRL', action = tab_nav_across_windows(-1) },
+    { key = 'PageDown', mods = 'CTRL', action = tab_nav_across_windows(1) },
+
+    -- clipboard
+    -- ctrl+v: normal text paste. ctrl+shift+v: forward ^V to the app so Claude
+    -- Code (running in WSL) fires its own image-paste handler — WezTerm's own
+    -- PasteFrom only handles text and would drop clipboard images.
+    { key = 'v', mods = 'CTRL', action = act.PasteFrom 'Clipboard' },
+    { key = 'v', mods = 'CTRL|SHIFT', action = act.SendKey { key = 'v', mods = 'CTRL' } },
+    { key = 'Insert', mods = 'SHIFT', action = act.PasteFrom 'Clipboard' },
+    -- performable ctrl+c: copy if there's a selection, else send SIGINT (^C)
+    {
+      key = 'c',
+      mods = 'CTRL',
+      action = wezterm.action_callback(function(window, pane)
+        local sel = window:get_selection_text_for_pane(pane)
+        if sel and sel ~= '' then
+          window:perform_action(act.CopyTo 'Clipboard', pane)
+        else
+          window:perform_action(act.SendKey { key = 'c', mods = 'CTRL' }, pane)
+        end
+      end),
+    },
+
+    -- unbind ghostty's ctrl+shift+left/right
+    { key = 'LeftArrow', mods = 'CTRL|SHIFT', action = act.DisableDefaultAssignment },
+    { key = 'RightArrow', mods = 'CTRL|SHIFT', action = act.DisableDefaultAssignment },
+
+    -- scrolling
+    { key = 'PageUp', mods = 'SHIFT', action = act.ScrollByPage(-1) },
+    { key = 'PageDown', mods = 'SHIFT', action = act.ScrollByPage(1) },
+    { key = 'PageUp', mods = 'NONE', action = wezterm.action_callback(function(window, pane)
+      if page_keys_scroll_terminal(pane) then
+        window:perform_action(act.ScrollByPage(-0.5), pane)
+      else
+        window:perform_action(act.SendKey { key = 'PageUp' }, pane)
+      end
+    end) },
+    { key = 'PageDown', mods = 'NONE', action = wezterm.action_callback(function(window, pane)
+      if page_keys_scroll_terminal(pane) then
+        window:perform_action(act.ScrollByPage(0.5), pane)
+      else
+        window:perform_action(act.SendKey { key = 'PageDown' }, pane)
+      end
+    end) },
+
+    -- panes: create (alt+super) and navigate (super). See NOTES re: Win key on Windows.
+    { key = "'", mods = 'ALT|SUPER', action = act.SplitPane { direction = 'Right' } },
+    { key = 't', mods = 'CTRL|SHIFT|ALT|SUPER', action = act.SplitPane { direction = 'Right' } },
+    { key = 'h', mods = 'CTRL', action = act.SplitPane { direction = 'Right' } },
+    { key = 'l', mods = 'ALT|SUPER', action = act.SplitPane { direction = 'Left' } },
+    { key = 'p', mods = 'ALT|SUPER', action = act.SplitPane { direction = 'Up' } },
+    { key = ';', mods = 'ALT|SUPER', action = act.SplitPane { direction = 'Down' } },
+    { key = 'o', mods = 'ALT', action = act.TogglePaneZoomState },
+    { key = 'RightArrow', mods = 'SUPER', action = act.ActivatePaneDirection 'Right' },
+    { key = 'LeftArrow', mods = 'SUPER', action = act.ActivatePaneDirection 'Left' },
+    { key = 'UpArrow', mods = 'SUPER', action = act.ActivatePaneDirection 'Up' },
+    { key = 'DownArrow', mods = 'SUPER', action = act.ActivatePaneDirection 'Down' },
+
+    -- raw escape / CSI-u sequences
+    { key = '/', mods = 'SUPER', action = act.SendString '\x1f' },
+    { key = 'l', mods = 'SUPER', action = act.SendString '\x1bl' },
+    { key = 'p', mods = 'SUPER', action = act.SendString '\x1bp' },
+    { key = ';', mods = 'SUPER', action = act.SendString '\x1b;' },
+    { key = "'", mods = 'SUPER', action = act.SendString "\x1b'" },
+    { key = 'Enter', mods = 'CTRL', action = act.SendString '\x1b[13;5u' },
+    { key = 'Enter', mods = 'SHIFT', action = act.SendString '\x1b[13;2u' },
+    { key = 'Backspace', mods = 'ALT', action = act.SendString '\x1b\x7f' },
+    { key = 'Backspace', mods = 'CTRL', action = act.SendString '\x17' },
+    { key = 'Delete', mods = 'ALT', action = act.SendString '\x1bd' },
+    { key = 'Delete', mods = 'CTRL', action = act.SendString '\x1bd' },
+    -- Word nav: karabiner rewrites ctrl+left/right => alt(option)+left/right,
+    -- so the terminal sees Alt+Arrow. Emit the real ctrl+arrow CSI sequences
+    -- (zsh binds these to backward-word/forward-word; TUIs read them too).
+    { key = 'LeftArrow', mods = 'ALT', action = act.SendString '\x1b[1;5D' },
+    { key = 'RightArrow', mods = 'ALT', action = act.SendString '\x1b[1;5C' },
+    { key = 'k', mods = 'CTRL|SHIFT', action = act.SendString '\x0b' },
+    { key = 'Home', mods = 'SHIFT', action = act.SendString '\x1b[1;2H' },
+    { key = 'End', mods = 'SHIFT', action = act.SendString '\x1b[1;2F' },
+  }
+end
+
+return M
