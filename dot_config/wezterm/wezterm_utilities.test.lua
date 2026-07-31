@@ -109,18 +109,28 @@ eq('chord/dev key', type(chord_by_key.d.action), 'function')
 local shell = pane { id = 1, process = '/usr/bin/zsh', cwd = '/work/my-app' }
 local keifu = pane { id = 2, process = '/usr/bin/keifu', cwd = '/work/my-app' }
 local terminal = pane { id = 4, process = '/usr/bin/zsh', cwd = '/work/my-app' }
+local yazi = pane { id = 5, process = '/usr/bin/yazi', cwd = '/work/my-app' }
 local current_active = shell
 shell.opts.on_activate = function(target) current_active = target end
 keifu.opts.on_activate = function(target) current_active = target end
 terminal.opts.on_activate = function(target) current_active = target end
+yazi.opts.on_activate = function(target) current_active = target end
 local tab_panes = { shell }
 local split_options
-shell.split = function(_, options)
-  split_options = options
-  local target = options.args and keifu or terminal
-  tab_panes[#tab_panes + 1] = target
-  return target
+local split_source
+local panes_by_command = { keifu = keifu, yazi = yazi }
+local function add_split_behavior(source)
+  source.split = function(_, options)
+    split_source = source
+    split_options = options
+    local target = options.args and panes_by_command[options.args[1]] or terminal
+    tab_panes[#tab_panes + 1] = target
+    return target
+  end
 end
+add_split_behavior(shell)
+add_split_behavior(keifu)
+add_split_behavior(yazi)
 
 local original_activations = 0
 local original_tab = {
@@ -204,6 +214,42 @@ local close_count = #performed
 chord_by_key.g.action(window, keifu)
 eq('keifu/last pane is not closed', #performed, close_count)
 eq('keifu/last pane explains refusal', toasts[#toasts], 'keifu is the last pane; refusing to close the tab.')
+
+-- Yazi and Keifu occupy one bottom shelf. Opening the second tool splits the
+-- shelf horizontally, so the main pane is not resized repeatedly as tools are
+-- independently opened and closed.
+tab_panes = { shell }
+current_active = shell
+chord_by_key.e.action(window, shell)
+eq('shelf/first tool splits main pane', split_source, shell)
+eq('shelf/first tool opens below', split_options.direction, 'Bottom')
+eq('shelf/first tool is top level', split_options.top_level, true)
+eq('shelf/first tool uses 40 percent', split_options.size, 0.40)
+
+chord_by_key.g.action(window, yazi)
+eq('shelf/second tool splits existing shelf', split_source, yazi)
+eq('shelf/second tool opens beside first', split_options.direction, 'Right')
+eq('shelf/second tool is local', split_options.top_level, nil)
+eq('shelf/tools share width equally', split_options.size, 0.5)
+eq('shelf/both tools are present', #tab_panes, 3)
+
+chord_by_key.e.action(window, keifu)
+eq('shelf/closing first tool preserves main and peer', #tab_panes, 2)
+eq('shelf/first close targets yazi', performed[#performed].target, yazi)
+chord_by_key.g.action(window, shell)
+eq('shelf/closing final tool leaves main pane', #tab_panes, 1)
+eq('shelf/final close targets keifu', performed[#performed].target, keifu)
+eq('shelf/main pane survives both closes', tab_panes[1], shell)
+
+chord_by_key.g.action(window, shell)
+eq('shelf/reverse order starts below main', split_source, shell)
+chord_by_key.e.action(window, keifu)
+eq('shelf/reverse order reuses existing shelf', split_source, keifu)
+eq('shelf/reverse order opens peer beside first', split_options.direction, 'Right')
+chord_by_key.g.action(window, yazi)
+chord_by_key.e.action(window, shell)
+eq('shelf/reverse order also restores main pane', tab_panes[1], shell)
+eq('shelf/reverse order closes both tools', #tab_panes, 1)
 
 -- The terminal split matches cmd+alt+; except for its requested 35% size, and
 -- remains toggleable after reload despite matching the main zsh process.

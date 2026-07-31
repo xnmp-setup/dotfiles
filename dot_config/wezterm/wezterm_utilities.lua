@@ -9,10 +9,23 @@ local URL_POLL_INTERVAL_SECONDS = 0.1
 local URL_POLL_ATTEMPTS = 200
 local BOTTOM_PANE_SIZE = 0.40
 local UTILITY_PANE_STATE_KEY = 'utility_pane_ids'
+local TOOL_SHELF = 'tool_shelf'
 
 local UTILITY_PANES = {
-  yazi = { id = 'yazi', command = 'yazi', top_level = true, size = BOTTOM_PANE_SIZE },
-  keifu = { id = 'keifu', command = 'keifu', top_level = true, size = BOTTOM_PANE_SIZE },
+  yazi = {
+    id = 'yazi',
+    command = 'yazi',
+    shelf = TOOL_SHELF,
+    top_level = true,
+    size = BOTTOM_PANE_SIZE,
+  },
+  keifu = {
+    id = 'keifu',
+    command = 'keifu',
+    shelf = TOOL_SHELF,
+    top_level = true,
+    size = BOTTOM_PANE_SIZE,
+  },
   -- Same local/default-shell split as cmd+alt+;, with a smaller initial size.
   terminal = { id = 'terminal', size = 0.35 },
 }
@@ -38,6 +51,17 @@ local function find_pane(panes, command, remembered_id)
     if (remembered_id and pane_id(candidate) == remembered_id)
         or (command and pane_running(candidate, command)) then
       return candidate
+    end
+  end
+end
+
+local function find_shelf_anchor(panes, remembered_panes, spec)
+  if not spec.shelf then return nil end
+
+  for id, candidate_spec in pairs(UTILITY_PANES) do
+    if id ~= spec.id and candidate_spec.shelf == spec.shelf then
+      local candidate = find_pane(panes, candidate_spec.command, remembered_panes[id])
+      if candidate then return candidate end
     end
   end
 end
@@ -202,12 +226,25 @@ function M.setup(config)
         return
       end
 
+      -- Yazi and Keifu share one top-level bottom shelf. Once the shelf exists,
+      -- split it sideways instead of adding another top-level vertical split.
+      -- That keeps the main pane at one stable height while tools are added or
+      -- removed, and leaves only one resize notification when the shelf closes.
+      local split_target = active_pane
+      local shelf_anchor = find_shelf_anchor(panes, utility_panes[tab_id], spec)
       local split = { direction = 'Bottom' }
+      if shelf_anchor then
+        split_target = shelf_anchor
+        split.direction = 'Right'
+        split.size = 0.5
+      end
       if spec.command then split.args = { spec.command } end
-      if spec.top_level ~= nil then split.top_level = spec.top_level end
-      if spec.size ~= nil then split.size = spec.size end
+      if not shelf_anchor then
+        if spec.top_level ~= nil then split.top_level = spec.top_level end
+        if spec.size ~= nil then split.size = spec.size end
+      end
 
-      local new_pane = active_pane:split(split)
+      local new_pane = split_target:split(split)
       utility_panes[tab_id][spec.id] = pane_id(new_pane)
       persist_utility_panes()
       new_pane:activate()
