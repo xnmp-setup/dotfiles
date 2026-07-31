@@ -17,6 +17,7 @@ local UTILITY_PANES = {
   yazi = {
     id = 'yazi',
     command = 'yazi',
+    set_environment_variables = { YAZI_UTILITY_PANE = '1' },
     shelf = TOOL_SHELF,
     top_level = true,
     size = BOTTOM_PANE_SIZE,
@@ -255,6 +256,9 @@ function M.setup(config)
         split.size = 0.5
       end
       if spec.command then split.args = { spec.command } end
+      if spec.set_environment_variables then
+        split.set_environment_variables = spec.set_environment_variables
+      end
       -- Supplying args bypasses reliable implicit cwd inheritance in some
       -- domains. Resolve the pane that invoked the chord and pass its directory
       -- explicitly, even when an existing shelf pane is the split target.
