@@ -84,8 +84,8 @@ keybind = shift+home=text:\x1b[1;2H
 keybind = shift+end=text:\x1b[1;2F
 keybind = shift+page_up=scroll_page_up
 keybind = shift+page_down=scroll_page_down
-# Private transport used by Hyprland for plain PageUp/PageDown in marked Codex
-# tabs. The marker is invisible and independent of the displayed tab title.
+# Private transport used by Hyprland for plain PageUp/PageDown at a zsh prompt
+# and in Codex. The title marker scopes this so child programs keep the keys.
 keybind = ctrl+alt+page_up=scroll_page_fractional:-0.5
 keybind = ctrl+alt+page_down=scroll_page_fractional:0.5
 keybind = ctrl+n=new_window

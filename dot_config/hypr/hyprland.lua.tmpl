@@ -348,18 +348,19 @@ end
 hl.bind(mainMod .. " + SHIFT + Prior", hl.dsp.window.move({ monitor = "l" }))
 hl.bind(mainMod .. " + SHIFT + Next",  hl.dsp.window.move({ monitor = "r" }))
 
--- The Ghostty Codex wrapper appends an invisible marker to its OSC 2 title.
--- Route plain page keys to Ghostty's half-page scroll action only for that
--- active tab. Visible icons and renamed session titles can change freely.
-local ghostty_codex_marker = "\u{2063}\u{2064}\u{2063}"
+-- The Ghostty zsh integration appends an invisible marker to its OSC 2 title
+-- while zsh owns the prompt or Codex owns the terminal. Route plain page keys
+-- to Ghostty's half-page scroll action only then, leaving child programs and
+-- other clients to receive the original keys.
+local ghostty_page_scroll_marker = "\u{2063}\u{2064}\u{2063}"
 
-local function ghostty_codex_page_scroll(key)
+local function ghostty_page_scroll(key)
     return function()
         local active = hl.get_active_window()
         local title = active and (active.title or "") or ""
         if active
             and active.class == "com.mitchellh.ghostty"
-            and title:find(ghostty_codex_marker, 1, true)
+            and title:find(ghostty_page_scroll_marker, 1, true)
         then
             hl.dispatch(hl.dsp.send_shortcut({
                 mods = "CTRL_ALT",
@@ -372,8 +373,8 @@ local function ghostty_codex_page_scroll(key)
     end
 end
 
-hl.bind("Prior", ghostty_codex_page_scroll("Prior"), { repeating = true })
-hl.bind("Next",  ghostty_codex_page_scroll("Next"),  { repeating = true })
+hl.bind("Prior", ghostty_page_scroll("Prior"), { repeating = true })
+hl.bind("Next",  ghostty_page_scroll("Next"),  { repeating = true })
 
 -- Float center toggle with dim is bound in the SPOTLIT WINDOWS section below,
 -- which is where the state it toggles lives.

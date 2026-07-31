@@ -589,6 +589,15 @@ local function agent_of_pane(proc, user_vars)
   return agent_named_in(proc)
 end
 
+-- Plain page keys scroll terminal history only when zsh itself or Codex owns
+-- the pane. Other foreground programs retain their native PageUp/PageDown.
+local function page_keys_scroll_terminal(pane)
+  local proc = pane:get_foreground_process_name() or ''
+  local proc_name = (proc:match('[^/\\]+$') or ''):gsub('%.exe$', ''):lower()
+  return proc_name == 'zsh'
+    or agent_of_pane(proc, pane:get_user_vars()) == 'codex'
+end
+
 -- ---------- Default shell ----------
 -- Default new tabs/windows to the WSL distro, but only on Windows: this domain
 -- doesn't exist on Mac/Linux and setting it there errors at config load. There
@@ -841,16 +850,14 @@ config.keys = {
   { key = 'PageUp', mods = 'SHIFT', action = act.ScrollByPage(-1) },
   { key = 'PageDown', mods = 'SHIFT', action = act.ScrollByPage(1) },
   { key = 'PageUp', mods = 'NONE', action = wezterm.action_callback(function(window, pane)
-    local proc = pane:get_foreground_process_name() or ''
-    if agent_of_pane(proc, pane:get_user_vars()) == 'codex' then
+    if page_keys_scroll_terminal(pane) then
       window:perform_action(act.ScrollByPage(-0.5), pane)
     else
       window:perform_action(act.SendKey { key = 'PageUp' }, pane)
     end
   end) },
   { key = 'PageDown', mods = 'NONE', action = wezterm.action_callback(function(window, pane)
-    local proc = pane:get_foreground_process_name() or ''
-    if agent_of_pane(proc, pane:get_user_vars()) == 'codex' then
+    if page_keys_scroll_terminal(pane) then
       window:perform_action(act.ScrollByPage(0.5), pane)
     else
       window:perform_action(act.SendKey { key = 'PageDown' }, pane)
