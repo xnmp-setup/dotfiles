@@ -8,7 +8,9 @@ local DEV_TAB_PREFIX = 'dev · '
 local URL_POLL_INTERVAL_SECONDS = 0.1
 local URL_POLL_ATTEMPTS = 200
 local BOTTOM_PANE_SIZE = 0.40
+local TERMINAL_PANE_SIZE = 0.35
 local UTILITY_PANE_STATE_KEY = 'utility_pane_ids'
+local TERMINAL_OWNER_STATE_KEY = 'utility_terminal_owner_ids'
 local TOOL_SHELF = 'tool_shelf'
 
 local UTILITY_PANES = {
@@ -26,8 +28,6 @@ local UTILITY_PANES = {
     top_level = true,
     size = BOTTOM_PANE_SIZE,
   },
-  -- Same local/default-shell split as cmd+alt+;, with a smaller initial size.
-  terminal = { id = 'terminal', size = 0.35 },
 }
 
 local function pane_id(pane)
@@ -64,6 +64,19 @@ local function find_shelf_anchor(panes, remembered_panes, spec)
       if candidate then return candidate end
     end
   end
+end
+
+local function find_other_pane(panes, excluded)
+  for _, candidate in ipairs(panes) do
+    if candidate ~= excluded then return candidate end
+  end
+end
+
+local function terminal_is_hidden(tab, terminal_id)
+  for _, info in ipairs(tab:panes_with_info()) do
+    if info.is_zoomed then return info.pane_id ~= terminal_id end
+  end
+  return false
 end
 
 local function cwd_path(pane)
@@ -191,11 +204,14 @@ function M.setup(config)
   -- additional fallback for Yazi/Keifu.
   local utility_panes = wezterm.GLOBAL[UTILITY_PANE_STATE_KEY]
   if type(utility_panes) ~= 'table' then utility_panes = {} end
+  local terminal_owners = wezterm.GLOBAL[TERMINAL_OWNER_STATE_KEY]
+  if type(terminal_owners) ~= 'table' then terminal_owners = {} end
   local dev_urls = {}
   local polling_panes = {}
 
   local function persist_utility_panes()
     wezterm.GLOBAL[UTILITY_PANE_STATE_KEY] = utility_panes
+    wezterm.GLOBAL[TERMINAL_OWNER_STATE_KEY] = terminal_owners
   end
 
   local function toggle_bottom_pane(spec)
@@ -251,6 +267,53 @@ function M.setup(config)
     end)
   end
 
+  local function toggle_persistent_terminal()
+    return wezterm.action_callback(function(window, active_pane)
+      local tab = window:active_tab()
+      local tab_id = tostring(tab:tab_id())
+      utility_panes[tab_id] = utility_panes[tab_id] or {}
+
+      local panes = tab:panes()
+      local remembered_id = utility_panes[tab_id].terminal
+      local existing = find_pane(panes, nil, remembered_id)
+      if existing then
+        if terminal_is_hidden(tab, pane_id(existing)) then
+          tab:set_zoomed(false)
+          existing:activate()
+          return
+        end
+
+        local owner = find_pane(panes, nil, terminal_owners[tab_id])
+          or find_other_pane(panes, existing)
+        if not owner then
+          window:toast_notification(
+            'WezTerm',
+            'The persistent terminal is the last pane; close the tab to stop it.',
+            nil,
+            3500
+          )
+          return
+        end
+
+        owner:activate()
+        tab:set_zoomed(true)
+        terminal_owners[tab_id] = pane_id(owner)
+        persist_utility_panes()
+        return
+      end
+
+      -- The terminal stays in this tab for its whole lifetime. Hiding it zooms
+      -- its owner rather than closing the PTY, so foreground jobs keep running;
+      -- closing the tab still terminates both panes together.
+      tab:set_zoomed(false)
+      local new_pane = active_pane:split { direction = 'Bottom', size = TERMINAL_PANE_SIZE }
+      utility_panes[tab_id].terminal = pane_id(new_pane)
+      terminal_owners[tab_id] = pane_id(active_pane)
+      persist_utility_panes()
+      new_pane:activate()
+    end)
+  end
+
   local function start_dev_server()
     return wezterm.action_callback(function(window, active_pane)
       local cwd = cwd_path(active_pane)
@@ -299,7 +362,7 @@ function M.setup(config)
   config.key_tables.utility_chord = {
     { key = 'e', mods = 'NONE', action = toggle_bottom_pane(UTILITY_PANES.yazi) },
     { key = 'g', mods = 'NONE', action = toggle_bottom_pane(UTILITY_PANES.keifu) },
-    { key = 't', mods = 'NONE', action = toggle_bottom_pane(UTILITY_PANES.terminal) },
+    { key = 't', mods = 'NONE', action = toggle_persistent_terminal() },
     { key = 'd', mods = 'NONE', action = start_dev_server() },
     { key = 'Escape', mods = 'NONE', action = act.PopKeyTable },
   }

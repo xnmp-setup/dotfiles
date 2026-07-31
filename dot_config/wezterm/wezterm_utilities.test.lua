@@ -111,6 +111,7 @@ local keifu = pane { id = 2, process = '/usr/bin/keifu', cwd = '/work/my-app' }
 local terminal = pane { id = 4, process = '/usr/bin/zsh', cwd = '/work/my-app' }
 local yazi = pane { id = 5, process = '/usr/bin/yazi', cwd = '/work/my-app' }
 local current_active = shell
+local zoomed_pane
 shell.opts.on_activate = function(target) current_active = target end
 keifu.opts.on_activate = function(target) current_active = target end
 terminal.opts.on_activate = function(target) current_active = target end
@@ -136,6 +137,21 @@ local original_activations = 0
 local original_tab = {
   tab_id = function() return 42 end,
   panes = function() return tab_panes end,
+  panes_with_info = function()
+    local result = {}
+    for _, candidate in ipairs(tab_panes) do
+      result[#result + 1] = {
+        pane_id = candidate:pane_id(),
+        is_zoomed = candidate == zoomed_pane,
+      }
+    end
+    return result
+  end,
+  set_zoomed = function(_, zoomed)
+    local prior = zoomed_pane ~= nil
+    zoomed_pane = zoomed and current_active or nil
+    return prior
+  end,
   active_pane = function() return shell end,
   get_title = function() return 'shell' end,
   activate = function() original_activations = original_activations + 1 end,
@@ -181,6 +197,7 @@ local window = {
         if candidate == target then table.remove(tab_panes, i); break end
       end
       current_active = tab_panes[1]
+      if zoomed_pane == target then zoomed_pane = nil end
     end
   end,
   toast_notification = function(_, _, message) toasts[#toasts + 1] = message end,
@@ -251,10 +268,11 @@ chord_by_key.e.action(window, shell)
 eq('shelf/reverse order also restores main pane', tab_panes[1], shell)
 eq('shelf/reverse order closes both tools', #tab_panes, 1)
 
--- The terminal split matches cmd+alt+; except for its requested 35% size, and
--- remains toggleable after reload despite matching the main zsh process.
+-- The terminal split matches cmd+alt+; except for its requested 35% size. Its
+-- PTY remains in the tab while hidden so long-running jobs survive the toggle.
 tab_panes = { shell }
 current_active = shell
+zoomed_pane = nil
 chord_by_key.t.action(window, shell)
 eq('terminal/split direction', split_options.direction, 'Bottom')
 eq('terminal/uses default shell', split_options.args, nil)
@@ -262,6 +280,23 @@ eq('terminal/uses local split geometry', split_options.top_level, nil)
 eq('terminal/uses 35 percent size', split_options.size, 0.35)
 eq('terminal/opens below shell', tab_panes[2], terminal)
 
+terminal.opts.process = '/usr/bin/bun'
+shell:activate()
+local close_count_before_hide = #performed
+chord_by_key.t.action(window, shell)
+eq('terminal/hide keeps pane alive', #tab_panes, 2)
+eq('terminal/hide does not close pane', #performed, close_count_before_hide)
+eq('terminal/hide zooms owner', zoomed_pane, shell)
+eq('terminal/hide preserves running process', terminal.opts.process, '/usr/bin/bun')
+
+chord_by_key.t.action(window, shell)
+eq('terminal/show restores split layout', zoomed_pane, nil)
+eq('terminal/show activates existing pane', current_active, terminal)
+eq('terminal/show reuses original pane', tab_panes[2], terminal)
+
+-- Pane and owner ids survive config reload; a shell-only persistent terminal is
+-- still found by id without misidentifying the main shell.
+terminal.opts.process = '/usr/bin/zsh'
 shell:activate()
 local reloaded_config = {}
 local reloaded_utilities = utilities_module.setup(reloaded_config)
@@ -271,10 +306,27 @@ for _, binding in ipairs(reloaded_config.key_tables.utility_chord) do
 end
 eq('terminal/reload preserves chord action', type(reloaded_chord.t.action), 'function')
 reloaded_chord.t.action(window, shell)
-eq('terminal/reload toggle closes terminal', performed[#performed].target, terminal)
-eq('terminal/reload toggle preserves shell', tab_panes[1], shell)
-eq('terminal/reload toggle leaves one pane', #tab_panes, 1)
+eq('terminal/reload toggle keeps terminal', tab_panes[2], terminal)
+eq('terminal/reload toggle hides terminal', zoomed_pane, shell)
+reloaded_chord.t.action(window, shell)
+eq('terminal/reload toggle restores terminal', current_active, terminal)
+eq('terminal/reload toggle retains two panes', #tab_panes, 2)
 eq('terminal/reload exposes activator', reloaded_utilities.activate_chord.value.name, 'utility_chord')
+
+tab_panes = { terminal }
+current_active = terminal
+zoomed_pane = nil
+local terminal_pane_count = #tab_panes
+reloaded_chord.t.action(window, terminal)
+eq('terminal/last pane remains alive', #tab_panes, terminal_pane_count)
+eq(
+  'terminal/last pane directs user to close tab',
+  toasts[#toasts],
+  'The persistent terminal is the last pane; close the tab to stop it.'
+)
+
+tab_panes = { shell, terminal }
+current_active = shell
 
 chord_by_key.d.action(window, shell)
 eq('dev/command', table.concat(spawned.args, ' '), 'bun run dev')
