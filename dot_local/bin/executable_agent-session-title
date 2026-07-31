@@ -1,0 +1,33 @@
+#!/bin/sh
+# Resolve an explicitly renamed coding-agent session title.
+#
+# This adapter deliberately reads each agent's small append-only rename index,
+# keeping storage-format knowledge out of the terminal renderer. It prints an
+# empty string when a session has not been renamed or metadata is unavailable.
+
+agent_kind=${1:-}
+session_id=${2:-}
+[ -n "$agent_kind" ] && [ -n "$session_id" ] || exit 0
+
+case "$agent_kind" in
+  codex)
+    index_file=${CODEX_SESSION_INDEX:-"${CODEX_HOME:-$HOME/.codex}/session_index.jsonl"}
+    [ -r "$index_file" ] || exit 0
+    jq -Rr --arg id "$session_id" '
+      fromjson?
+      | select(.id == $id)
+      | .thread_name // empty
+    ' "$index_file" 2>/dev/null | tail -n 1
+    ;;
+  claude)
+    history_file=${CLAUDE_HISTORY_FILE:-"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/history.jsonl"}
+    [ -r "$history_file" ] || exit 0
+    jq -Rr --arg id "$session_id" '
+      fromjson?
+      | select(.sessionId == $id)
+      | .display? // empty
+      | select(type == "string" and startswith("/rename "))
+      | .[8:]
+    ' "$history_file" 2>/dev/null | tail -n 1
+    ;;
+esac

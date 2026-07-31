@@ -348,19 +348,18 @@ end
 hl.bind(mainMod .. " + SHIFT + Prior", hl.dsp.window.move({ monitor = "l" }))
 hl.bind(mainMod .. " + SHIFT + Next",  hl.dsp.window.move({ monitor = "r" }))
 
--- Codex writes its main conversation into terminal scrollback. WezTerm can
--- inspect its foreground process directly; Ghostty cannot scope keybindings by
--- process, so translate plain page keys at the compositor only while Codex owns
--- a Ghostty window. Ctrl+Alt+PageUp/PageDown is a private transport chord bound
--- by Ghostty to half-page scrolling. Every other client receives the original
--- key unchanged.
+-- The Ghostty Codex wrapper appends an invisible marker to its OSC 2 title.
+-- Route plain page keys to Ghostty's half-page scroll action only for that
+-- active tab. Visible icons and renamed session titles can change freely.
+local ghostty_codex_marker = "\u{2063}\u{2064}\u{2063}"
+
 local function ghostty_codex_page_scroll(key)
     return function()
         local active = hl.get_active_window()
-        local title = active and (active.title or ""):lower() or ""
+        local title = active and (active.title or "") or ""
         if active
             and active.class == "com.mitchellh.ghostty"
-            and title:find("codex |", 1, true)
+            and title:find(ghostty_codex_marker, 1, true)
         then
             hl.dispatch(hl.dsp.send_shortcut({
                 mods = "CTRL_ALT",
