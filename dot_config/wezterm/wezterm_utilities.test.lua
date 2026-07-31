@@ -43,7 +43,6 @@ local function pane(opts)
     get_foreground_process_name = function() return opts.process end,
     get_current_working_dir = function() return { file_path = opts.cwd } end,
     get_logical_lines_as_text = function() return opts.output or '' end,
-    inject_output = function(_, output) opts.injected_output = output end,
     activate = function(self)
       opts.activations = (opts.activations or 0) + 1
       if opts.on_activate then opts.on_activate(self) end
@@ -214,7 +213,6 @@ eq('keifu/split size', split_options.size, 0.40)
 eq('keifu/command', split_options.args[1], 'keifu')
 eq('keifu/does not use compact Yazi profile', split_options.set_environment_variables, nil)
 eq('keifu/inherits invoking pane cwd', split_options.cwd, '/work/my-app')
-eq('keifu/uses utility background', keifu.opts.injected_output, '\x1b]11;#171d42\x1b\\')
 eq('keifu/activates new pane', keifu.opts.activations, 1)
 
 -- Regression: after focusing the shell and starting Codex, toggling Keifu must
@@ -256,7 +254,6 @@ eq(
 )
 eq('shelf/yazi inherits invoking pane cwd', split_options.cwd, '/work/my-app')
 eq('shelf/yazi opens invoking cwd as entry', split_options.args[2], '/work/my-app')
-eq('shelf/yazi uses utility background', yazi.opts.injected_output, '\x1b]11;#171d42\x1b\\')
 
 chord_by_key.g.action(window, yazi)
 eq('shelf/second tool splits existing shelf', split_source, yazi)
@@ -309,7 +306,6 @@ eq('terminal/uses default shell', split_options.args, nil)
 eq('terminal/uses tab-level split geometry', split_options.top_level, true)
 eq('terminal/uses 35 percent size', split_options.size, 0.35)
 eq('terminal/opens below shell', tab_panes[2], terminal)
-eq('terminal/uses utility background', terminal.opts.injected_output, '\x1b]11;#171d42\x1b\\')
 
 terminal.opts.process = '/usr/bin/bun'
 shell:activate()

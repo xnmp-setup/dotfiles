@@ -9,7 +9,6 @@ local URL_POLL_INTERVAL_SECONDS = 0.1
 local URL_POLL_ATTEMPTS = 200
 local BOTTOM_PANE_SIZE = 0.40
 local TERMINAL_PANE_SIZE = 0.35
-local UTILITY_BACKGROUND = '#171d42'
 local UTILITY_PANE_STATE_KEY = 'utility_pane_ids'
 local TERMINAL_OWNER_STATE_KEY = 'utility_terminal_owner_ids'
 local TOOL_SHELF = 'tool_shelf'
@@ -20,14 +19,6 @@ local function bottom_tab_split(size)
     top_level = true,
     size = size,
   }
-end
-
-local function style_utility_pane(pane)
-  -- WezTerm's divider color is window-wide, so distinguish this specific area
-  -- with a slightly raised background behind the existing amber split line.
-  pcall(function()
-    pane:inject_output('\x1b]11;' .. UTILITY_BACKGROUND .. '\x1b\\')
-  end)
 end
 
 local UTILITY_PANES = {
@@ -290,7 +281,6 @@ function M.setup(config)
       local new_pane = split_target:split(split)
       utility_panes[tab_id][spec.id] = pane_id(new_pane)
       persist_utility_panes()
-      style_utility_pane(new_pane)
       new_pane:activate()
     end)
   end
@@ -340,7 +330,6 @@ function M.setup(config)
       utility_panes[tab_id].terminal = pane_id(new_pane)
       terminal_owners[tab_id] = pane_id(active_pane)
       persist_utility_panes()
-      style_utility_pane(new_pane)
       new_pane:activate()
     end)
   end
