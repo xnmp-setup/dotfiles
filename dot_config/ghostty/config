@@ -73,16 +73,6 @@ keybind = super+l=goto_split:left
 keybind = super+p=goto_split:up
 keybind = super+;=goto_split:down
 keybind = super+'=goto_split:right
-
-# Ghostty can reproduce the alt+m chord and bottom-split launchers, but it
-# cannot find, resize, hide or restore a named split conditionally. These open
-# inherited-CWD splits; close or zoom them with ctrl+w / alt+o.
-keybind = alt+m>e=new_split:down
-keybind = chain=text:yazi\r
-keybind = alt+m>g=new_split:down
-keybind = chain=text:keifu\r
-keybind = alt+m>t=new_split:down
-
 keybind = ctrl+shift+t=undo
 keybind = ctrl+backspace=text:\x17
 keybind = shift+home=text:\x1b[1;2H
