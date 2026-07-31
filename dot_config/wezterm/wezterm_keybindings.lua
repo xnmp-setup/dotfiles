@@ -12,12 +12,15 @@ function M.apply(config, deps)
   local detach_bg_tab = deps.background.detach_tab
   local reattach_bg_tab = deps.background.reattach_tab
   local page_keys_scroll_terminal = deps.agent.page_keys_scroll_terminal
+  local activate_utility_chord = deps.utilities.activate_chord
 
   -- ---------- Keybinds ----------
   config.keys = {
     -- config / palette
     { key = ',', mods = 'CTRL|SHIFT', action = act.ReloadConfiguration },
     { key = 'p', mods = 'CTRL|SHIFT', action = act.ActivateCommandPalette },
+    -- One-shot utility chord: alt+m, then e=yazi, g=keifu, t=terminal, d=dev server.
+    { key = 'm', mods = 'ALT', action = activate_utility_chord },
 
     -- tabs / windows / panes
     -- Close pane: immediate if only shell running, else prompt (Enter to confirm).
