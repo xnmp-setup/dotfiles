@@ -135,7 +135,8 @@ function M.apply(config, deps)
       end
     end) },
 
-    -- panes: create (alt+super) and navigate (super). See NOTES re: Win key on Windows.
+    -- panes: create (alt+super) and navigate (super). The letter navigation
+    -- avoids super+arrow, which Hyprland consumes before WezTerm sees it.
     { key = "'", mods = 'ALT|SUPER', action = act.SplitPane { direction = 'Right' } },
     { key = 't', mods = 'CTRL|SHIFT|ALT|SUPER', action = act.SplitPane { direction = 'Right' } },
     { key = 'h', mods = 'CTRL', action = act.SplitPane { direction = 'Right' } },
@@ -143,17 +144,13 @@ function M.apply(config, deps)
     { key = 'p', mods = 'ALT|SUPER', action = act.SplitPane { direction = 'Up' } },
     { key = ';', mods = 'ALT|SUPER', action = act.SplitPane { direction = 'Down' } },
     { key = 'o', mods = 'ALT', action = act.TogglePaneZoomState },
-    { key = 'RightArrow', mods = 'SUPER', action = act.ActivatePaneDirection 'Right' },
-    { key = 'LeftArrow', mods = 'SUPER', action = act.ActivatePaneDirection 'Left' },
-    { key = 'UpArrow', mods = 'SUPER', action = act.ActivatePaneDirection 'Up' },
-    { key = 'DownArrow', mods = 'SUPER', action = act.ActivatePaneDirection 'Down' },
+    { key = 'l', mods = 'SUPER', action = act.ActivatePaneDirection 'Left' },
+    { key = 'p', mods = 'SUPER', action = act.ActivatePaneDirection 'Up' },
+    { key = ';', mods = 'SUPER', action = act.ActivatePaneDirection 'Down' },
+    { key = "'", mods = 'SUPER', action = act.ActivatePaneDirection 'Right' },
 
     -- raw escape / CSI-u sequences
     { key = '/', mods = 'SUPER', action = act.SendString '\x1f' },
-    { key = 'l', mods = 'SUPER', action = act.SendString '\x1bl' },
-    { key = 'p', mods = 'SUPER', action = act.SendString '\x1bp' },
-    { key = ';', mods = 'SUPER', action = act.SendString '\x1b;' },
-    { key = "'", mods = 'SUPER', action = act.SendString "\x1b'" },
     { key = 'Enter', mods = 'CTRL', action = act.SendString '\x1b[13;5u' },
     { key = 'Enter', mods = 'SHIFT', action = act.SendString '\x1b[13;2u' },
     { key = 'Backspace', mods = 'ALT', action = act.SendString '\x1b\x7f' },
