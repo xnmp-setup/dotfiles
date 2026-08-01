@@ -194,6 +194,31 @@ def bar_color(proportion, cutoff=0.8):
 # the trigger, so it is intentionally ignored here.
 COMPACT_RESERVE_TOKENS = 13000
 
+# Usable budget before auto-compaction, when CLAUDE_AUTOCOMPACT_PCT_OVERRIDE
+# pulls the trigger below the native ceiling. The context window itself does not
+# shrink -- the model still accepts the full 1M -- so the bar keeps measuring
+# real tokens, but the number that matters day to day is how far you are from
+# compaction, not from a ceiling you will never reach. Mirrors the CLI formula
+# (verified in the binary): threshold = min(window * pct/100, window - 13000).
+#
+# Returns None when no override is set, leaving the bar exactly as it was, so
+# this stays correct on a machine that does not set the variable.
+#
+# NOTE: no apostrophes anywhere in this block — it is a single-quoted shell
+# string, so one would end it early.
+def compact_budget_tokens(window_tokens):
+    ov = os.environ.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE", "").strip()
+    if not window_tokens or not ov or window_tokens <= COMPACT_RESERVE_TOKENS:
+        return None
+    try:
+        pct = float(ov)
+    except ValueError:
+        return None
+    if not 0 < pct <= 100:
+        return None
+    budget = min(window_tokens * pct / 100.0, window_tokens - COMPACT_RESERVE_TOKENS)
+    return budget if budget > 0 else None
+
 def compact_cutoff_fraction(window_tokens):
     """Fraction of the full window at which auto-compaction fires, or None if the
     window is unknown / too small to reason about."""
@@ -229,6 +254,13 @@ def parse_tokens(s):
         val *= 1e6
     return val
 
+def format_tokens(val):
+    """Inverse of parse_tokens, matching the ccstatusline style: 400000 -> 400k,
+    1000000 -> 1.0M."""
+    if val >= 1e6:
+        return f"{val / 1e6:.1f}M"
+    return f"{round(val / 1e3)}k"
+
 def format_cost(usd):
     if usd >= 1:
         return f"${usd:.2f}"
@@ -255,10 +287,23 @@ def rebuild_context_bar(m):
     # Reformat label "203k/1.0M (20%)" -> "20% of 1.0M". Capture the window size
     # (the "/1.0M" total) in tokens so the cutoff marker can be placed correctly.
     window = None
-    mm = re.search(r"/\s*([0-9.]+[kKmM]?)\s*\((\d+)%\)", label)
+    cutoff = None
+    mm = re.search(r"([0-9.]+[kKmM]?)\s*/\s*([0-9.]+[kKmM]?)\s*\((\d+)%\)", label)
     if mm:
-        total, pct = mm.group(1), mm.group(2)
+        used_txt, total, pct = mm.group(1), mm.group(2), mm.group(3)
         window = parse_tokens(total)
+        # ccstatusline measures both the percentage and the ░/█ fill against the
+        # native window. With an autocompact override that ceiling is no longer
+        # the number that matters, so re-base both on the compaction budget:
+        # 100% then means "compacting now" rather than "window full", and the
+        # gradient below reaches full red at exactly that point.
+        budget = compact_budget_tokens(window)
+        used = parse_tokens(used_txt)
+        if budget and used is not None:
+            proportion = min(1.0, used / budget)
+            pct = str(round(proportion * 100))
+            total = format_tokens(budget)
+            cutoff = 1.0  # proportion is already relative to compaction
         label = f"{pct}% of {total}"
     else:
         # Fallback: just shorten 1000k -> 1m if the format is unexpected.
@@ -277,7 +322,7 @@ def rebuild_context_bar(m):
 
     # Fill colour ramps to full red at the auto-compaction cutoff (fall back to
     # 0.8 of the window when the window size is unknown).
-    r, g, b = bar_color(proportion, compact_cutoff_fraction(window) or 0.8)
+    r, g, b = bar_color(proportion, cutoff or compact_cutoff_fraction(window) or 0.8)
 
     # Filled: bg is the (continuous) bar color, text is black
     # Empty: grey bg, text in the bar color
