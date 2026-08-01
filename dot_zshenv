@@ -1,2 +1,6 @@
-. "$HOME/.cargo/env"
+# Written by the rustup.rs standalone installer, absent where Rust comes from
+# the system instead (nix, pacman, brew). Guarded so those machines get a quiet
+# shell rather than an error on every startup; .zshrc also puts ~/.cargo/bin on
+# PATH for interactive shells, so this only matters for non-interactive ones.
+[ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
 export XCURSOR_SIZE=24
