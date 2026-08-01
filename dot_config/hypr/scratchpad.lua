@@ -113,6 +113,69 @@ local function new(hl, window_actions)
     end
 
     --------------------------------------------------------------------------------
+    -- Geometry
+    --------------------------------------------------------------------------------
+
+    -- A pad pinned with `monitor = "builtin"` always appears in the same physical
+    -- place: the laptop panel, or on a machine that has none the first output
+    -- Hyprland reports. Both are properties of the hardware rather than of a named
+    -- machine, so the rule survives docking, undocking and a desktop with only
+    -- external displays. Any other pad follows focus, which is what the
+    -- special-workspace model implies — summoned where you already are.
+    local function is_builtin(monitor)
+        local name = monitor.name or ""
+        return name:match("^eDP") or name:match("^LVDS") or name:match("^DSI")
+    end
+
+    local function builtin_monitor()
+        local first
+        for _, m in ipairs(hl.get_monitors() or {}) do
+            if is_builtin(m) then return m end
+            if not first or (m.id or 0) < (first.id or 0) then first = m end
+        end
+        return first
+    end
+
+    local function target_monitor(pad)
+        if pad.monitor == "builtin" then return builtin_monitor() end
+        return hl.get_active_monitor()
+    end
+
+    -- Sizes and offsets are read as a share of the monitor when they are 0..1 and as
+    -- logical pixels above that. Declaring 0.8 instead of 1536 keeps one definition
+    -- correct on a 1920x1200 laptop panel and a 3440x1440 ultrawide alike, which
+    -- absolute coordinates did not: they placed a pad off-screen entirely on any
+    -- display smaller than the one they were measured against.
+    local function extent(value, available)
+        if not value then return nil end
+        if value <= 1 then return math.floor(available * value) end
+        return math.floor(value)
+    end
+
+    -- Absolute logical geometry for a pad, or nil if no monitor could be resolved.
+    -- Hyprland reports monitors in physical pixels; windows are placed in logical
+    -- ones, hence the division by scale.
+    local function layout(pad)
+        local mon = target_monitor(pad)
+        if not (mon and mon.width and mon.height) then return nil end
+
+        local scale = mon.scale or 1
+        local screen_w = math.floor(mon.width / scale)
+        local screen_h = math.floor(mon.height / scale)
+
+        local w = extent(pad.w, screen_w) or screen_w
+        local h = extent(pad.h, screen_h) or screen_h
+        local gap = extent(pad.gap, screen_h) or 0
+
+        local x = (mon.x or 0) + math.floor((screen_w - w) / 2)
+        local y = (mon.y or 0) + (pad.anchor == "top"
+            and gap
+            or math.floor((screen_h - h) / 2))
+
+        return { w = w, h = h, x = x, y = y, monitor = mon }
+    end
+
+    --------------------------------------------------------------------------------
     -- Showing and hiding
     --------------------------------------------------------------------------------
 
@@ -143,14 +206,12 @@ local function new(hl, window_actions)
         return host_workspace[name]
     end
 
-    local function place(name, w)
-        local pad = pads[name]
-
+    local function place(w, box)
         hl.dispatch(hl.dsp.window.float({ action = "on", window = w }))
-        hl.dispatch(hl.dsp.window.resize({ x = pad.w, y = pad.h, window = w }))
 
-        if pad.x and pad.y then
-            hl.dispatch(hl.dsp.window.move({ x = pad.x, y = pad.y, window = w }))
+        if box then
+            hl.dispatch(hl.dsp.window.resize({ x = box.w, y = box.h, window = w }))
+            hl.dispatch(hl.dsp.window.move({ x = box.x, y = box.y, window = w }))
         else
             hl.dispatch(hl.dsp.focus({ window = w }))
             hl.dispatch(hl.dsp.window.center())
@@ -158,7 +219,17 @@ local function new(hl, window_actions)
         hl.dispatch(hl.dsp.focus({ window = w }))
     end
 
+    -- A special workspace is shown on whichever monitor is focused, and the ordinary
+    -- workspace underneath is read from the same place, so a pad pinned to a monitor
+    -- has to have that monitor focused before either happens. The window to restore
+    -- on dismissal was recorded by its address before this, so moving focus here does
+    -- not lose it.
     local function show(name, w)
+        local box = layout(pads[name])
+        if box and box.monitor and not box.monitor.focused then
+            hl.dispatch(hl.dsp.focus({ monitor = box.monitor }))
+        end
+
         focused_once[name] = nil
         host_workspace[name] = visible_workspace()
         hl.dispatch(hl.dsp.window.move({
@@ -169,7 +240,7 @@ local function new(hl, window_actions)
         if not is_shown(w) then
             hl.dispatch(hl.dsp.workspace.toggle_special(name))
         end
-        place(name, w)
+        place(w, box)
     end
 
     -- Something on the visible workspace to hand focus to, that is not itself a
@@ -229,9 +300,13 @@ local function new(hl, window_actions)
     -- Public API
     --------------------------------------------------------------------------------
 
-    --- Declare a scratchpad. `x`/`y` are optional; without them it is centred.
+    --- Declare a scratchpad.
+    ---
+    --- `w`/`h`/`gap` are a share of the monitor at 0..1 and logical pixels above it.
+    --- `anchor` is "top" or, by default, centred. `monitor = "builtin"` pins the pad
+    --- to the laptop panel instead of following focus.
     --- @param name string   also the special workspace it is parked in
-    --- @param spec table    { class, cmd, w, h, x?, y?, isolate? }
+    --- @param spec table    { class, cmd, w, h, anchor?, gap?, monitor?, isolate? }
     function M.define(name, spec)
         pads[name] = spec
     end
@@ -274,10 +349,15 @@ local function new(hl, window_actions)
         local w = window_for(name) or reclaim(name)
         if not w then
             -- Nothing to toggle yet. Rules do the floating and sizing so the window
-            -- never flashes tiled at its natural size first.
+            -- never flashes tiled at its natural size first — in resolved pixels,
+            -- since an exec rule cannot express a share of a monitor.
+            local box = layout(pad)
             remember_return(name)
             pending[pad.class] = name
-            hl.dispatch(hl.dsp.exec_cmd(pad.cmd, { float = true, size = { pad.w, pad.h } }))
+            hl.dispatch(hl.dsp.exec_cmd(pad.cmd, {
+                float = true,
+                size = box and { box.w, box.h } or nil,
+            }))
         elseif is_shown(w) then
             hide(name, w)
         else

@@ -77,7 +77,11 @@ local function fake_runtime(spec)
 
     local hl = {
         dsp = {
-            exec_cmd = command("exec"),
+            -- The only dispatcher taking a second argument: the window rules applied
+            -- to whatever the command opens.
+            exec_cmd = function(cmd, rules)
+                return { kind = "exec", args = cmd, rules = rules }
+            end,
             focus = command("focus"),
             group = {
                 active = command("group_active"),
@@ -920,6 +924,169 @@ do
     scratchpad.toggle("ghostty-drop")
     equal("closed scratchpad return targets use a visible fallback",
         control.active(), obsidian)
+end
+
+-- Scratchpad geometry. The sizes below are shares of a monitor rather than pixel
+-- counts, so the same declaration has to land on screens of different sizes — the
+-- failure these replaced was a pad positioned entirely off a smaller display.
+local function last_dispatch(control, kind)
+    for index = #control.dispatches, 1, -1 do
+        if control.dispatches[index].kind == kind then
+            return control.dispatches[index].args
+        end
+    end
+end
+
+local function monitor(spec)
+    return {
+        id = spec.id,
+        name = spec.name,
+        x = spec.x or 0,
+        y = spec.y or 0,
+        width = spec.width,
+        height = spec.height,
+        scale = spec.scale or 1,
+        focused = spec.focused,
+        active_workspace = spec.workspace,
+    }
+end
+
+do
+    local ws = { id = 1, name = "1" }
+    local special = { id = -94, name = "special:ghostty-drop" }
+    local chrome = window("chrome", "google-chrome", ws)
+    local pad = window("pad", "com.mitchellh.ghostty", special)
+
+    local ultrawide = monitor({
+        id = 0, name = "DP-1", width = 3440, height = 1440,
+        focused = true, workspace = ws,
+    })
+    local panel = monitor({
+        id = 1, name = "eDP-1", y = 1440, width = 1920, height = 1200,
+        workspace = ws,
+    })
+
+    local hl, control = fake_runtime({
+        active = chrome,
+        active_monitor = ultrawide,
+        monitors = { ultrawide, panel },
+        windows = { chrome, pad },
+        workspace = ws,
+    })
+    local scratchpad = scratchpads.new(hl, window_actions.new(hl))
+    scratchpad.define("ghostty-drop", {
+        class = "com.mitchellh.ghostty",
+        cmd = "ghostty",
+        w = 0.8, h = 0.7,
+        anchor = "top", gap = 12,
+        monitor = "builtin",
+    })
+
+    scratchpad.toggle("ghostty-drop")
+    local size = last_dispatch(control, "resize")
+    local at = last_dispatch(control, "move")
+
+    equal("fractional width resolves against the built-in panel", size.x, 1536)
+    equal("fractional height resolves against the built-in panel", size.y, 840)
+    equal("a top-anchored pad is centred horizontally", at.x, 192)
+    equal("a top-anchored pad hangs from the top edge by its gap", at.y, 1452)
+    check("a pinned pad is placed on the panel, not the focused monitor",
+        at.y >= panel.y and at.y + size.y <= panel.y + panel.height)
+end
+
+do
+    -- Scaling: Hyprland reports monitors in physical pixels but places windows in
+    -- logical ones, so a HiDPI panel must not halve the share the pad occupies.
+    local ws = { id = 1, name = "1" }
+    local special = { id = -94, name = "special:ghostty-drop" }
+    local pad = window("pad", "com.mitchellh.ghostty", special)
+    local hidpi = monitor({
+        id = 0, name = "eDP-1", width = 3840, height = 2400, scale = 2,
+        focused = true, workspace = ws,
+    })
+
+    local hl, control = fake_runtime({
+        active_monitor = hidpi,
+        monitors = { hidpi },
+        windows = { pad },
+        workspace = ws,
+    })
+    local scratchpad = scratchpads.new(hl, window_actions.new(hl))
+    scratchpad.define("ghostty-drop", {
+        class = "com.mitchellh.ghostty",
+        cmd = "ghostty",
+        w = 0.8, h = 0.7,
+        anchor = "top",
+        monitor = "builtin",
+    })
+
+    scratchpad.toggle("ghostty-drop")
+    local size = last_dispatch(control, "resize")
+    equal("fractional sizes are logical, not physical, pixels", size.x, 1536)
+    equal("a pad with no gap sits flush against the top edge",
+        last_dispatch(control, "move").y, 0)
+end
+
+do
+    -- Absolute sizes and the default anchor still behave as they always did.
+    local ws = { id = 1, name = "1" }
+    local special = { id = -94, name = "special:chrome-drop" }
+    local pad = window("pad", "google-chrome", special)
+    local screen = monitor({
+        id = 0, name = "DP-1", width = 3440, height = 1440,
+        focused = true, workspace = ws,
+    })
+
+    local hl, control = fake_runtime({
+        active_monitor = screen,
+        monitors = { screen },
+        windows = { pad },
+        workspace = ws,
+    })
+    local scratchpad = scratchpads.new(hl, window_actions.new(hl))
+    scratchpad.define("chrome-drop", {
+        class = "google-chrome",
+        cmd = "google-chrome-stable",
+        w = 1800, h = 1100,
+    })
+
+    scratchpad.toggle("chrome-drop")
+    local size = last_dispatch(control, "resize")
+    local at = last_dispatch(control, "move")
+    equal("sizes above one are taken as pixels", size.x, 1800)
+    equal("an unanchored pad is centred horizontally", at.x, 820)
+    equal("an unanchored pad is centred vertically", at.y, 170)
+end
+
+do
+    -- The first press launches the app, and an exec rule cannot express a share of
+    -- a monitor, so the fraction has to be resolved before the window exists.
+    local ws = { id = 1, name = "1" }
+    local panel = monitor({
+        id = 0, name = "eDP-1", width = 1920, height = 1200,
+        focused = true, workspace = ws,
+    })
+
+    local hl, control = fake_runtime({
+        active_monitor = panel,
+        monitors = { panel },
+        windows = {},
+        workspace = ws,
+    })
+    local scratchpad = scratchpads.new(hl, window_actions.new(hl))
+    scratchpad.define("ghostty-drop", {
+        class = "com.mitchellh.ghostty",
+        cmd = "ghostty",
+        w = 0.8, h = 0.7,
+        anchor = "top",
+        monitor = "builtin",
+    })
+
+    scratchpad.toggle("ghostty-drop")
+    local launch = control.dispatches[#control.dispatches]
+    equal("the first press launches the app", launch.args, "ghostty")
+    equal("the launch rule sizes in resolved pixels", launch.rules.size[1], 1536)
+    equal("the launch rule height is resolved too", launch.rules.size[2], 840)
 end
 
 io.write(("%d checks, %d failures\n"):format(checks, failures))
