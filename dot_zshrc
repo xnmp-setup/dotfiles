@@ -904,11 +904,31 @@ alias ccr-glm="cc-glm --resume"
 nix-rebuild() {
   local start_dir="$PWD"
   local flake_dir="$HOME/Repos/nixos-t14s"
+  local -i upgrade=0
+
+  case "$1" in
+    --upgrade)
+      upgrade=1
+      shift
+      ;;
+    "") ;;
+    *)
+      print -u2 "usage: nix-rebuild [--upgrade]"
+      return 2
+      ;;
+  esac
+
+  if (( $# > 0 )); then
+    print -u2 "usage: nix-rebuild [--upgrade]"
+    return 2
+  fi
 
   cd "$flake_dir" || return
   {
-    nix flake update &&
-      sudo nixos-rebuild switch --flake .#t14s
+    if (( upgrade )); then
+      nix flake update || return
+    fi
+    sudo nixos-rebuild switch --flake .#t14s
   } always {
     cd "$start_dir"
   }
