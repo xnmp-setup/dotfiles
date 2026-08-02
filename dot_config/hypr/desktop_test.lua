@@ -232,6 +232,49 @@ do
         window_model.next_group_plan(window("plain", "plain", ws)), nil)
 end
 
+-- Going back is not the same as going forward: with three tabs the one after
+-- the focused window in strip order is rarely the one it replaced on screen.
+do
+    local ws = { id = 1 }
+    local terminal = window("terminal", "org.wezfurlong.wezterm", ws, 1)
+    local chrome = window("chrome", "google-chrome", ws, 0)
+    local obsidian = window("obsidian", "obsidian", ws, 2)
+    local tabs = group(terminal, chrome, obsidian)
+    tabs.current, tabs.current_index = chrome, 2
+    local windows = { terminal, chrome, obsidian }
+
+    equal("previous group plan returns to the last focused member",
+        window_model.previous_group_plan(chrome, windows).index, 1)
+    equal("next group plan would instead advance past it",
+        window_model.next_group_plan(chrome).index, 3)
+    equal("previous group plan anchors on the shown tab",
+        window_model.previous_group_plan(chrome, windows).window, chrome)
+
+    -- Focus moving on flips which tab each key goes back to.
+    terminal.focus_history_id, chrome.focus_history_id = 0, 1
+    tabs.current, tabs.current_index = terminal, 1
+    equal("previous group plan follows the updated focus history",
+        window_model.previous_group_plan(terminal, windows).index, 2)
+
+    equal("ungrouped windows have no previous-group plan",
+        window_model.previous_group_plan(window("plain", "plain", ws, 0), windows), nil)
+
+    -- Members carry their own history when no window list is supplied.
+    local left = window("left", "app", ws, 3)
+    local right = window("right", "app", ws, 0)
+    group(left, right)
+    equal("group members supply their own focus history",
+        window_model.previous_group_plan(right).index, 1)
+
+    -- A group nobody has focused yet has nothing to go back to; the caller
+    -- falls back to advancing a tab.
+    local fresh_a = window("fresh-a", "app", ws)
+    local fresh_b = window("fresh-b", "app", ws)
+    group(fresh_a, fresh_b)
+    equal("members without focus history have no previous-group plan",
+        window_model.previous_group_plan(fresh_a, { fresh_a, fresh_b }), nil)
+end
+
 do
     local ws = { id = 1 }
     local members = {}
@@ -553,7 +596,7 @@ do
     })
 
     toggle()
-    equal("focused app shortcut advances within its own group",
+    equal("focused app shortcut goes back within its own group",
         control.active(), obsidian)
     equal("focused app shortcut does not launch", #control.executions, 0)
 
@@ -579,6 +622,66 @@ do
     equal("launched window is moved to the requested workspace",
         launched.workspace.id, 1)
     equal("launched window receives focus", control.active(), launched)
+end
+
+-- The reported sequence: from the terminal, obsidian's key and back, then
+-- chrome's key and back. Each "and back" has to land on the terminal.
+do
+    local ws = { id = 1 }
+    local terminal = window("terminal", "org.wezfurlong.wezterm", ws, 0)
+    local chrome = window("chrome", "google-chrome", ws, 1)
+    local obsidian = window("obsidian", "obsidian", ws, 2)
+    local tabs = group(terminal, chrome, obsidian)
+    local windows = { terminal, chrome, obsidian }
+    local hl, control = fake_runtime({
+        active = terminal,
+        windows = windows,
+        workspace = ws,
+    })
+    -- The fake runtime tracks which tab is shown, not focus recency, so keep
+    -- Hyprland's ordering in step with the focus the switcher asks for.
+    local function focus(window)
+        control.set_active(window)
+        local rank = 1
+        for _, candidate in ipairs(windows) do
+            if window_model.same(candidate, window) then
+                candidate.focus_history_id = 0
+            else
+                candidate.focus_history_id = rank
+                rank = rank + 1
+            end
+        end
+    end
+
+    local switcher = app_switcher.new(hl, window_actions.new(hl))
+    local to_obsidian = switcher.toggle({
+        name = "obsidian",
+        classes = { obsidian = true },
+        launch = "obsidian",
+    })
+    local to_chrome = switcher.toggle({
+        name = "chrome",
+        classes = { ["google-chrome"] = true },
+        launch = "chrome",
+    })
+
+    to_obsidian()
+    equal("notes key focuses notes", control.active(), obsidian)
+    focus(obsidian)
+
+    to_obsidian()
+    equal("notes key again returns to the terminal", control.active(), terminal)
+    focus(terminal)
+
+    to_chrome()
+    equal("browser key focuses the browser", control.active(), chrome)
+    focus(chrome)
+
+    to_chrome()
+    equal("browser key again returns to the terminal, not the notes tab",
+        control.active(), terminal)
+    equal("toggling back never launches anything", #control.executions, 0)
+    equal("the group's shown tab tracks the toggles", tabs.current, terminal)
 end
 
 do

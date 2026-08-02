@@ -64,6 +64,43 @@ function M.exact_focus_plan(window)
     return plan
 end
 
+-- The tab a group was showing before the current one: its most recently
+-- focused member other than `window`. Hyprland already keeps that ordering in
+-- focus_history_id (0 is the focused window), so this needs no history of our
+-- own — and it stays right when the group gains or loses tabs.
+--
+-- `windows` is the live window list; group members carry their own
+-- focus_history_id when it is omitted.
+function M.previous_group_plan(window, windows)
+    local group = window and window.group
+    if not (group and group.size > 1) then return nil end
+
+    local members = M.group_members(group)
+    if #members < 2 then return nil end
+
+    local ranks = {}
+    for _, candidate in ipairs(windows or {}) do
+        local id = M.id(candidate)
+        if id then ranks[id] = candidate.focus_history_id end
+    end
+
+    local best_index, best_rank
+    for index, member in ipairs(members) do
+        if not M.same(member, window) then
+            local rank = ranks[M.id(member)] or member.focus_history_id
+            if rank and (not best_rank or rank < best_rank) then
+                best_index, best_rank = index, rank
+            end
+        end
+    end
+
+    if not best_index then return nil end
+    return {
+        index = best_index,
+        window = group.current or window,
+    }
+end
+
 function M.next_group_plan(window)
     local group = window and window.group
     if not (group and group.size > 1) then return nil end

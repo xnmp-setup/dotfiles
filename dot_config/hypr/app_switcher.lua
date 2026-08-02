@@ -76,7 +76,13 @@ function M.new(hl, window_actions, options)
 
             local active = hl.get_active_window()
             if active and app.classes[active.class] then
-                window_actions.next_group(active)
+                -- Pressing an app's key while it already has focus puts its
+                -- group back to whatever tab it was showing before, so the key
+                -- reads as a toggle. Cycling to the next tab is the fallback
+                -- for a group nobody has focused elsewhere yet.
+                if not window_actions.previous_group(active, hl.get_windows()) then
+                    window_actions.next_group(active)
+                end
                 return
             end
 

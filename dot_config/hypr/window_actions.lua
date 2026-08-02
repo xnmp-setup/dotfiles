@@ -24,6 +24,14 @@ function M.new(hl)
             return true
         end,
 
+        previous_group = function(window, windows)
+            local plan = model.previous_group_plan(window, windows)
+            if not plan then return false end
+
+            select_group(plan)
+            return true
+        end,
+
         next_group = function(window)
             local plan = model.next_group_plan(window)
             if not plan then return false end
