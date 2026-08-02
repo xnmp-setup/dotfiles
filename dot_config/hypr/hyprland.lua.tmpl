@@ -429,10 +429,13 @@ hl.bind("F7", app_switcher.toggle({
     classes = { ["tauri-explorer"] = true },
     launch = "tauri-explorer",
 }))
+-- nixpkgs installs Zed's binary as `zeditor`; everywhere else it is `zed`.
+-- Detected when the key is pressed rather than templated at apply time, so the
+-- same config follows the machine if that ever changes.
 hl.bind("F10", app_switcher.toggle({
     name = "zed",
     classes = { ["dev.zed.Zed"] = true, ["dev.zed.Zed-Dev"] = true },
-    launch = "zed --new",
+    launch = "if command -v zeditor >/dev/null 2>&1; then zeditor --new; else zed --new; fi",
 }))
 
 ---------------------
