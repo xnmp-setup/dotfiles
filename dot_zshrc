@@ -201,6 +201,7 @@ alias du="dust"
 alias tv='tidy-viewer'
 
 export ANTHROPIC_MODEL="fable"
+export CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=40
 
 # Preserve `ni`'s significant whitespace before shell parsing. The first run
 # of two or more spaces separates the issue title from its optional body.
