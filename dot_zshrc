@@ -201,6 +201,9 @@ alias du="dust"
 alias tv='tidy-viewer'
 
 export ANTHROPIC_MODEL="fable"
+# The pct override is honored only when Claude Code compacts proactively, which
+# a local session on most models does not do unless AUTO_COMPACT_WINDOW is set.
+export CLAUDE_CODE_AUTO_COMPACT_WINDOW=1000000
 export CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=40
 
 # Preserve `ni`'s significant whitespace before shell parsing. The first run
