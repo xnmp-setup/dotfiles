@@ -1,6 +1,7 @@
 -- User input bindings. Higher-level actions are injected by their owning modules.
 local wezterm = require 'wezterm'
 local act = wezterm.action
+local clipboard = require 'wezterm_clipboard'
 
 local M = {}
 
@@ -74,12 +75,9 @@ function M.apply(config, deps)
     { key = 'PageUp', mods = 'CTRL', action = tab_nav_across_windows(-1) },
     { key = 'PageDown', mods = 'CTRL', action = tab_nav_across_windows(1) },
 
-    -- clipboard
-    -- ctrl+v: normal text paste. ctrl+shift+v: forward ^V to the app so Claude
-    -- Code (running in WSL) fires its own image-paste handler — WezTerm's own
-    -- PasteFrom only handles text and would drop clipboard images.
-    { key = 'v', mods = 'CTRL', action = act.PasteFrom 'Clipboard' },
-    { key = 'v', mods = 'CTRL|SHIFT', action = act.SendKey { key = 'v', mods = 'CTRL' } },
+    -- Text is pasted by WezTerm. For an image clipboard, forward ^V so TUI
+    -- applications such as Claude Code and Codex can attach the image directly.
+    { key = 'v', mods = 'CTRL', action = clipboard.paste_action() },
     { key = 'Insert', mods = 'SHIFT', action = act.PasteFrom 'Clipboard' },
     -- performable ctrl+c: copy if there's a selection, else send SIGINT (^C)
     {

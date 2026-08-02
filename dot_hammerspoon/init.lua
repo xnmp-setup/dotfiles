@@ -171,36 +171,3 @@ hs.hotkey.bind({ "shift", "cmd" }, "S", function()
     hs.application.launchOrFocusByBundleID("com.apple.screenshot")
   end
 end)
-
--- ---------- Smart paste (image -> file path) ----------
-
-local function imageClipboardToTempPath()
-  local image = hs.pasteboard.readImage()
-  if not image then return nil end
-
-  local tmpPath = string.format("/tmp/clipboard-%s.png", os.date("%Y%m%d-%H%M%S"))
-
-  -- hs.image:saveToFile returns boolean
-  local ok = image:saveToFile(tmpPath)
-  if not ok then return nil end
-
-  return tmpPath
-end
-
-local function typeText(text)
-  hs.eventtap.keyStrokes(text)
-end
-
-local function pasteClipboardPathOrNormalPaste()
-  local tmpPath = imageClipboardToTempPath()
-
-  if tmpPath then
-    typeText(tmpPath)
-  else
-    -- Fallback to normal paste
-    hs.eventtap.keyStroke({ "cmd" }, "v")
-  end
-end
-
--- Ctrl+Shift+V: if clipboard has an image, save to /tmp and paste the path; otherwise normal paste.
-hs.hotkey.bind({ "ctrl", "shift" }, "v", pasteClipboardPathOrNormalPaste)
