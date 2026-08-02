@@ -407,9 +407,10 @@ hl.bind(mainMod .. " + ALT + Next",   hl.dsp.group.next())
 -- them back with that one showing.
 hl.bind("F1", expose.toggle)
 hl.bind("F3", app_switcher.toggle({
-    name = "zed",
-    classes = { ["dev.zed.Zed"] = true, ["dev.zed.Zed-Dev"] = true },
-    launch = "zed --new",
+    name = "wezterm",
+    classes = { ["org.wezfurlong.wezterm"] = true },
+    launch = "wezterm",
+    new_window = "wezterm start",
 }))
 hl.bind("F4", app_switcher.toggle({
     name = "obsidian",
@@ -423,10 +424,15 @@ hl.bind("F6", app_switcher.toggle({
     launch = "google-chrome-stable",
     new_window = "google-chrome-stable --new-window",
 }))
-hl.bind("F8", app_switcher.toggle({
+hl.bind("F7", app_switcher.toggle({
     name = "tauri-explorer",
     classes = { ["tauri-explorer"] = true },
     launch = "tauri-explorer",
+}))
+hl.bind("F10", app_switcher.toggle({
+    name = "zed",
+    classes = { ["dev.zed.Zed"] = true, ["dev.zed.Zed-Dev"] = true },
+    launch = "zed --new",
 }))
 
 ---------------------
@@ -463,9 +469,9 @@ scratchpad.define("lite-xl", {
     w     = 900, h = 600,
 })
 
-hl.bind("F7",  function() scratchpad.toggle("chrome-drop") end)
+hl.bind("F8",  function() scratchpad.toggle("chrome-drop") end)
 hl.bind("F9",  function() scratchpad.toggle("ghostty-drop") end)
-hl.bind("F10", function() scratchpad.toggle("lite-xl") end)
+hl.bind("F11", function() scratchpad.toggle("lite-xl") end)
 
 
 local spotlight = spotlights.new(hl, window_actions)
