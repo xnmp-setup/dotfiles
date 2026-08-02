@@ -41,8 +41,9 @@ local function window(id, class, workspace, history)
     }
 end
 
-local function group(...)
-    local members = { ... }
+-- Takes the members as a list, so the large-group case below does not have to
+-- unpack ten thousand of them onto the stack (LuaJIT refuses well before that).
+local function group_of(members)
     local value = {
         current = members[1],
         current_index = 1,
@@ -51,6 +52,10 @@ local function group(...)
     }
     for _, member in ipairs(members) do member.group = value end
     return value
+end
+
+local function group(...)
+    return group_of({ ... })
 end
 
 local function fake_runtime(spec)
@@ -281,7 +286,7 @@ do
     for index = 1, 10000 do
         members[index] = window(tostring(index), "test", ws)
     end
-    local tabs = group(table.unpack(members))
+    local tabs = group_of(members)
     tabs.current, tabs.current_index = members[#members], #members
     equal("large groups wrap without scanning past their bounds",
         window_model.next_group_plan(members[#members]).index, 1)

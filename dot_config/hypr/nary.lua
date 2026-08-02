@@ -1023,7 +1023,10 @@ local function cmd_explode(root, key, args)
     local id, cols = args:match("^(%S+)%s+(%d+)$")
     if not id then return "nary: explode expects '<window id> <columns>'" end
 
-    cols = math.max(1, math.tointeger(tonumber(cols)) or 1)
+    -- math.floor, not math.tointeger: the pattern above already guarantees
+    -- digits, and tointeger only exists from 5.3 on, which would leave the
+    -- offline tests unrunnable on a 5.1/5.2 or LuaJIT interpreter.
+    cols = math.max(1, math.floor(tonumber(cols) or 1))
 
     local leaf = find_leaf(root, id)
     if not leaf then return true end
