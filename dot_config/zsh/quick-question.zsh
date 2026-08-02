@@ -22,8 +22,12 @@ typeset -g _Q_BASE_INSTRUCTIONS='You are a fast, read-only shell assistant for o
 - Do not call tools or inspect files. Answer only from the request and the environment context below.
 - Use commands and package names native to the detected platform; do not assume a different operating system or distribution.'
 
-typeset -g _Q_COMMAND_INSTRUCTIONS='Return exactly one executable Zsh command on one line and nothing else.
-- Do not include a prefix, backticks, Markdown, explanation, alternatives, or comments.
+typeset -g _Q_COMMAND_INSTRUCTIONS='Return exactly one executable Zsh command on one line, optionally followed by a short trailing Zsh comment.
+- Format: <command>  # <explanation>
+- Omit the comment when the command is self-explanatory to someone who knows the shell: a common command with obvious flags, or one whose name already states what it does.
+- Add the comment only when it tells the reader something the command does not: cryptic flags, a non-obvious pipeline, a surprising choice of tool, or a side effect worth noticing.
+- When present, keep the explanation to one clause, under about twelve words, on the same line.
+- Do not include a prefix, backticks, Markdown, alternatives, or any prose outside that trailing comment.
 - Do not execute the command; the shell will prefill it for the user to review.
 - For a factual question, return a command that prints the answer.
 - If the request is ambiguous, choose the safest useful command rather than asking a question.'
@@ -221,14 +225,24 @@ _q_read_stream() {
 # Command mode constrains decoding to a schema. Without it the model trails
 # junk tokens onto short answers ("ls -lS" + garbage) at low reasoning effort;
 # the schema removes that failure and keeps the cheaper effort setting.
+# The explanation is a separate field rather than part of the command string so
+# the model cannot smuggle a multi-line rationale into the prefilled line. Strict
+# decoding requires every property, so "omitted" is the empty string rather than
+# a missing key; the extract filter drops the comment when it comes back empty.
 typeset -g _Q_COMMAND_FORMAT='{
   "type": "json_schema",
   "name": "shell_command",
   "strict": true,
   "schema": {
     "type": "object",
-    "properties": { "command": { "type": "string" } },
-    "required": ["command"],
+    "properties": {
+      "command": { "type": "string" },
+      "explanation": {
+        "type": "string",
+        "description": "Short clause explaining the command, or the empty string when it is self-explanatory."
+      }
+    },
+    "required": ["command", "explanation"],
     "additionalProperties": false
   }
 }'
@@ -256,11 +270,23 @@ _q_direct() {
       # exceed 60s on some questions. The schema keeps output clean at any
       # effort, so there is nothing to buy by reasoning harder here.
       verbosity=low effort=none format="$_Q_COMMAND_FORMAT"
-      extract='.text | fromjson | .command // empty'
+      # Rejoins the two fields into one prefillable line. The explanation is
+      # flattened and de-duplicated of any leading "#" the model adds itself.
+      extract='.text | fromjson
+        | (.command | sub("\\s+$"; "")) as $command
+        | (.explanation // ""
+           | gsub("[\r\n\t]+"; " ")
+           | sub("^\\s+"; "") | sub("\\s+$"; "")
+           | sub("^#\\s*"; "")) as $explanation
+        | if $command == "" then empty
+          elif $explanation == "" then $command
+          else $command + "  # " + $explanation
+          end'
       ;;
     answer)
-      # Prose has no fixed shape to constrain, so it buys stability with effort.
-      verbosity=medium effort=medium format='{ "type": "text" }'
+      # Same reasoning as command mode: none is the fastest setting and avoids
+      # the reasoning spirals higher effort showed on one-off questions.
+      verbosity=medium effort=none format='{ "type": "text" }'
       extract='.text // empty'
       ;;
     *) return 2 ;;
