@@ -15,6 +15,7 @@ local window_actions  = require("window_actions").new(hl)
 local app_switchers   = require("app_switcher")
 local exposes         = require("expose")
 local group_actions   = require("group_actions").new(hl)
+local display_mirror  = require("display_mirror").new(hl)
 local spotlights      = require("spotlight")
 local startup_pairing = require("startup_pairing").new(hl, {
     browser_class = "google-chrome",
@@ -43,9 +44,8 @@ hl.monitor({ output = "DP-2", mode = "3440x1440@144", position = "0x1440", scale
 -- 3. Right 4K (DP-1) - Vertically Centered
 hl.monitor({ output = "DP-1", mode = "3840x2160@60", position = "3440x1296", scale = 1.25 })
 {{ else -}}
--- t14s: the catch-all above handles eDP-1 and any external at its native mode —
--- the desktop monitor fleet would force impossible modes and phantom-offset
--- geometry here.
+-- A runtime capability-based software mirror handles laptop panels and external
+-- outputs; keeping both outputs independent lets wlsunset transform both.
 {{ end }}
 
 -------------------------------

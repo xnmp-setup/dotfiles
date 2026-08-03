@@ -4,6 +4,7 @@
 package.path = (arg[0]:match("^(.*)/") or ".") .. "/?.lua;" .. package.path
 
 local app_switcher   = require("app_switcher")
+local display_mirrors = require("display_mirror")
 local exposes        = require("expose")
 local group_actions  = require("group_actions")
 local scratchpads    = require("scratchpad")
@@ -201,6 +202,65 @@ local function fake_runtime(spec)
     }
 
     return hl, control
+end
+
+--------------------------------------------------------------------------------
+-- Display mirroring
+--------------------------------------------------------------------------------
+
+do
+    equal("no display pair exists without monitors", display_mirrors.plan(nil), nil)
+    equal("a panel alone stays a normal output",
+        display_mirrors.plan({ { name = "eDP-1" } }), nil)
+    equal("an external alone stays a normal output",
+        display_mirrors.plan({ { name = "DP-2" } }), nil)
+    equal("malformed output names are ignored",
+        display_mirrors.plan({ { name = "eDP-1" }, { name = "DP-2; reboot" } }), nil)
+
+    local plan = display_mirrors.plan({
+        { name = "DP-2" },
+        { name = "eDP-1" },
+        { name = "HDMI-A-1" },
+    })
+    equal("the built-in panel is the mirror target", plan.target, "eDP-1")
+    equal("external selection is deterministic", plan.source, "DP-2")
+
+    local many = { { name = "eDP-1" } }
+    for index = 10000, 1, -1 do
+        many[#many + 1] = { name = ("DP-%05d"):format(index) }
+    end
+    equal("large output lists retain deterministic selection",
+        display_mirrors.plan(many).source, "DP-00001")
+end
+
+do
+    local hl, control = fake_runtime({ monitors = { { name = "DP-1" } } })
+    display_mirrors.new(hl)
+    control.emit("hyprland.start")
+    equal("desktop-only systems have no mirroring side effects", #control.executions, 0)
+end
+
+do
+    local outputs = { { name = "eDP-1" } }
+    local hl, control = fake_runtime({ monitors = outputs })
+    display_mirrors.new(hl)
+
+    equal("registration has no eager side effects", #control.executions, 0)
+    control.emit("hyprland.start")
+    check("startup without an external stops stale mirrors",
+        control.executions[1].cmd:match("systemctl %-%-user stop") ~= nil)
+
+    outputs[2] = { name = "HDMI-A-3" }
+    control.emit("monitor.added", outputs[2])
+    local command = control.executions[2].cmd
+    check("hotplug mirrors any external connector onto the panel",
+        command:match("%-%-fullscreen%-output eDP%-1") ~= nil
+        and command:match("laptop%-display%-mirror HDMI%-A%-3") ~= nil)
+
+    outputs[2] = nil
+    control.emit("monitor.removed", { name = "HDMI-A-3" })
+    check("unplug stops the software mirror",
+        control.executions[3].cmd:match("systemctl %-%-user stop") ~= nil)
 end
 
 --------------------------------------------------------------------------------

@@ -50,9 +50,8 @@ monitor = DP-1, 3840x2160@60, 3440x1296, 1.25
 
 
 {{ else -}}
-# t14s: the catchall `monitor=,preferred,auto,1` above handles eDP-1 and any
-# external at its native mode — the desktop monitor fleet would force
-# impossible modes and phantom-offset geometry here.
+# The Lua config provides capability-based software mirroring. This emergency
+# fallback leaves outputs extended rather than depending on wl-mirror.
 {{ end -}}
 
 
