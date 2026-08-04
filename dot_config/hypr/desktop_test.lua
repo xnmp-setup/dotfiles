@@ -41,8 +41,9 @@ local function window(id, class, workspace, history)
     }
 end
 
-local function group(...)
-    local members = { ... }
+-- Takes the members as a list, so the large-group case below does not have to
+-- unpack ten thousand of them onto the stack (LuaJIT refuses well before that).
+local function group_of(members)
     local value = {
         current = members[1],
         current_index = 1,
@@ -51,6 +52,10 @@ local function group(...)
     }
     for _, member in ipairs(members) do member.group = value end
     return value
+end
+
+local function group(...)
+    return group_of({ ... })
 end
 
 local function fake_runtime(spec)
@@ -77,7 +82,11 @@ local function fake_runtime(spec)
 
     local hl = {
         dsp = {
-            exec_cmd = command("exec"),
+            -- The only dispatcher taking a second argument: the window rules applied
+            -- to whatever the command opens.
+            exec_cmd = function(cmd, rules)
+                return { kind = "exec", args = cmd, rules = rules }
+            end,
             focus = command("focus"),
             group = {
                 active = command("group_active"),
@@ -228,13 +237,56 @@ do
         window_model.next_group_plan(window("plain", "plain", ws)), nil)
 end
 
+-- Going back is not the same as going forward: with three tabs the one after
+-- the focused window in strip order is rarely the one it replaced on screen.
+do
+    local ws = { id = 1 }
+    local terminal = window("terminal", "org.wezfurlong.wezterm", ws, 1)
+    local chrome = window("chrome", "google-chrome", ws, 0)
+    local obsidian = window("obsidian", "obsidian", ws, 2)
+    local tabs = group(terminal, chrome, obsidian)
+    tabs.current, tabs.current_index = chrome, 2
+    local windows = { terminal, chrome, obsidian }
+
+    equal("previous group plan returns to the last focused member",
+        window_model.previous_group_plan(chrome, windows).index, 1)
+    equal("next group plan would instead advance past it",
+        window_model.next_group_plan(chrome).index, 3)
+    equal("previous group plan anchors on the shown tab",
+        window_model.previous_group_plan(chrome, windows).window, chrome)
+
+    -- Focus moving on flips which tab each key goes back to.
+    terminal.focus_history_id, chrome.focus_history_id = 0, 1
+    tabs.current, tabs.current_index = terminal, 1
+    equal("previous group plan follows the updated focus history",
+        window_model.previous_group_plan(terminal, windows).index, 2)
+
+    equal("ungrouped windows have no previous-group plan",
+        window_model.previous_group_plan(window("plain", "plain", ws, 0), windows), nil)
+
+    -- Members carry their own history when no window list is supplied.
+    local left = window("left", "app", ws, 3)
+    local right = window("right", "app", ws, 0)
+    group(left, right)
+    equal("group members supply their own focus history",
+        window_model.previous_group_plan(right).index, 1)
+
+    -- A group nobody has focused yet has nothing to go back to; the caller
+    -- falls back to advancing a tab.
+    local fresh_a = window("fresh-a", "app", ws)
+    local fresh_b = window("fresh-b", "app", ws)
+    group(fresh_a, fresh_b)
+    equal("members without focus history have no previous-group plan",
+        window_model.previous_group_plan(fresh_a, { fresh_a, fresh_b }), nil)
+end
+
 do
     local ws = { id = 1 }
     local members = {}
     for index = 1, 10000 do
         members[index] = window(tostring(index), "test", ws)
     end
-    local tabs = group(table.unpack(members))
+    local tabs = group_of(members)
     tabs.current, tabs.current_index = members[#members], #members
     equal("large groups wrap without scanning past their bounds",
         window_model.next_group_plan(members[#members]).index, 1)
@@ -549,7 +601,7 @@ do
     })
 
     toggle()
-    equal("focused app shortcut advances within its own group",
+    equal("focused app shortcut goes back within its own group",
         control.active(), obsidian)
     equal("focused app shortcut does not launch", #control.executions, 0)
 
@@ -575,6 +627,66 @@ do
     equal("launched window is moved to the requested workspace",
         launched.workspace.id, 1)
     equal("launched window receives focus", control.active(), launched)
+end
+
+-- The reported sequence: from the terminal, obsidian's key and back, then
+-- chrome's key and back. Each "and back" has to land on the terminal.
+do
+    local ws = { id = 1 }
+    local terminal = window("terminal", "org.wezfurlong.wezterm", ws, 0)
+    local chrome = window("chrome", "google-chrome", ws, 1)
+    local obsidian = window("obsidian", "obsidian", ws, 2)
+    local tabs = group(terminal, chrome, obsidian)
+    local windows = { terminal, chrome, obsidian }
+    local hl, control = fake_runtime({
+        active = terminal,
+        windows = windows,
+        workspace = ws,
+    })
+    -- The fake runtime tracks which tab is shown, not focus recency, so keep
+    -- Hyprland's ordering in step with the focus the switcher asks for.
+    local function focus(window)
+        control.set_active(window)
+        local rank = 1
+        for _, candidate in ipairs(windows) do
+            if window_model.same(candidate, window) then
+                candidate.focus_history_id = 0
+            else
+                candidate.focus_history_id = rank
+                rank = rank + 1
+            end
+        end
+    end
+
+    local switcher = app_switcher.new(hl, window_actions.new(hl))
+    local to_obsidian = switcher.toggle({
+        name = "obsidian",
+        classes = { obsidian = true },
+        launch = "obsidian",
+    })
+    local to_chrome = switcher.toggle({
+        name = "chrome",
+        classes = { ["google-chrome"] = true },
+        launch = "chrome",
+    })
+
+    to_obsidian()
+    equal("notes key focuses notes", control.active(), obsidian)
+    focus(obsidian)
+
+    to_obsidian()
+    equal("notes key again returns to the terminal", control.active(), terminal)
+    focus(terminal)
+
+    to_chrome()
+    equal("browser key focuses the browser", control.active(), chrome)
+    focus(chrome)
+
+    to_chrome()
+    equal("browser key again returns to the terminal, not the notes tab",
+        control.active(), terminal)
+    equal("toggling back never launches anything", #control.executions, 0)
+    equal("the group's shown tab tracks the toggles", tabs.current, terminal)
 end
 
 do
@@ -920,6 +1032,169 @@ do
     scratchpad.toggle("ghostty-drop")
     equal("closed scratchpad return targets use a visible fallback",
         control.active(), obsidian)
+end
+
+-- Scratchpad geometry. The sizes below are shares of a monitor rather than pixel
+-- counts, so the same declaration has to land on screens of different sizes — the
+-- failure these replaced was a pad positioned entirely off a smaller display.
+local function last_dispatch(control, kind)
+    for index = #control.dispatches, 1, -1 do
+        if control.dispatches[index].kind == kind then
+            return control.dispatches[index].args
+        end
+    end
+end
+
+local function monitor(spec)
+    return {
+        id = spec.id,
+        name = spec.name,
+        x = spec.x or 0,
+        y = spec.y or 0,
+        width = spec.width,
+        height = spec.height,
+        scale = spec.scale or 1,
+        focused = spec.focused,
+        active_workspace = spec.workspace,
+    }
+end
+
+do
+    local ws = { id = 1, name = "1" }
+    local special = { id = -94, name = "special:ghostty-drop" }
+    local chrome = window("chrome", "google-chrome", ws)
+    local pad = window("pad", "com.mitchellh.ghostty", special)
+
+    local ultrawide = monitor({
+        id = 0, name = "DP-1", width = 3440, height = 1440,
+        focused = true, workspace = ws,
+    })
+    local panel = monitor({
+        id = 1, name = "eDP-1", y = 1440, width = 1920, height = 1200,
+        workspace = ws,
+    })
+
+    local hl, control = fake_runtime({
+        active = chrome,
+        active_monitor = ultrawide,
+        monitors = { ultrawide, panel },
+        windows = { chrome, pad },
+        workspace = ws,
+    })
+    local scratchpad = scratchpads.new(hl, window_actions.new(hl))
+    scratchpad.define("ghostty-drop", {
+        class = "com.mitchellh.ghostty",
+        cmd = "ghostty",
+        w = 0.8, h = 0.7,
+        anchor = "top", gap = 12,
+        monitor = "builtin",
+    })
+
+    scratchpad.toggle("ghostty-drop")
+    local size = last_dispatch(control, "resize")
+    local at = last_dispatch(control, "move")
+
+    equal("fractional width resolves against the built-in panel", size.x, 1536)
+    equal("fractional height resolves against the built-in panel", size.y, 840)
+    equal("a top-anchored pad is centred horizontally", at.x, 192)
+    equal("a top-anchored pad hangs from the top edge by its gap", at.y, 1452)
+    check("a pinned pad is placed on the panel, not the focused monitor",
+        at.y >= panel.y and at.y + size.y <= panel.y + panel.height)
+end
+
+do
+    -- Scaling: Hyprland reports monitors in physical pixels but places windows in
+    -- logical ones, so a HiDPI panel must not halve the share the pad occupies.
+    local ws = { id = 1, name = "1" }
+    local special = { id = -94, name = "special:ghostty-drop" }
+    local pad = window("pad", "com.mitchellh.ghostty", special)
+    local hidpi = monitor({
+        id = 0, name = "eDP-1", width = 3840, height = 2400, scale = 2,
+        focused = true, workspace = ws,
+    })
+
+    local hl, control = fake_runtime({
+        active_monitor = hidpi,
+        monitors = { hidpi },
+        windows = { pad },
+        workspace = ws,
+    })
+    local scratchpad = scratchpads.new(hl, window_actions.new(hl))
+    scratchpad.define("ghostty-drop", {
+        class = "com.mitchellh.ghostty",
+        cmd = "ghostty",
+        w = 0.8, h = 0.7,
+        anchor = "top",
+        monitor = "builtin",
+    })
+
+    scratchpad.toggle("ghostty-drop")
+    local size = last_dispatch(control, "resize")
+    equal("fractional sizes are logical, not physical, pixels", size.x, 1536)
+    equal("a pad with no gap sits flush against the top edge",
+        last_dispatch(control, "move").y, 0)
+end
+
+do
+    -- Absolute sizes and the default anchor still behave as they always did.
+    local ws = { id = 1, name = "1" }
+    local special = { id = -94, name = "special:chrome-drop" }
+    local pad = window("pad", "google-chrome", special)
+    local screen = monitor({
+        id = 0, name = "DP-1", width = 3440, height = 1440,
+        focused = true, workspace = ws,
+    })
+
+    local hl, control = fake_runtime({
+        active_monitor = screen,
+        monitors = { screen },
+        windows = { pad },
+        workspace = ws,
+    })
+    local scratchpad = scratchpads.new(hl, window_actions.new(hl))
+    scratchpad.define("chrome-drop", {
+        class = "google-chrome",
+        cmd = "google-chrome-stable",
+        w = 1800, h = 1100,
+    })
+
+    scratchpad.toggle("chrome-drop")
+    local size = last_dispatch(control, "resize")
+    local at = last_dispatch(control, "move")
+    equal("sizes above one are taken as pixels", size.x, 1800)
+    equal("an unanchored pad is centred horizontally", at.x, 820)
+    equal("an unanchored pad is centred vertically", at.y, 170)
+end
+
+do
+    -- The first press launches the app, and an exec rule cannot express a share of
+    -- a monitor, so the fraction has to be resolved before the window exists.
+    local ws = { id = 1, name = "1" }
+    local panel = monitor({
+        id = 0, name = "eDP-1", width = 1920, height = 1200,
+        focused = true, workspace = ws,
+    })
+
+    local hl, control = fake_runtime({
+        active_monitor = panel,
+        monitors = { panel },
+        windows = {},
+        workspace = ws,
+    })
+    local scratchpad = scratchpads.new(hl, window_actions.new(hl))
+    scratchpad.define("ghostty-drop", {
+        class = "com.mitchellh.ghostty",
+        cmd = "ghostty",
+        w = 0.8, h = 0.7,
+        anchor = "top",
+        monitor = "builtin",
+    })
+
+    scratchpad.toggle("ghostty-drop")
+    local launch = control.dispatches[#control.dispatches]
+    equal("the first press launches the app", launch.args, "ghostty")
+    equal("the launch rule sizes in resolved pixels", launch.rules.size[1], 1536)
+    equal("the launch rule height is resolved too", launch.rules.size[2], 840)
 end
 
 io.write(("%d checks, %d failures\n"):format(checks, failures))

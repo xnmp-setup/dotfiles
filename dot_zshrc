@@ -898,7 +898,18 @@ cc-glm() {
 alias ccr-glm="cc-glm --resume"
 # ---------------------------------------------------------------------------
 
-alias nix-rebuild="sudo nixos-rebuild switch --flake ~/Repos/nixos-t14s#t14s"
+nix-rebuild() {
+  local start_dir="$PWD"
+  local flake_dir="$HOME/Repos/nixos-t14s"
+
+  cd "$flake_dir" || return
+  {
+    nix flake update &&
+      sudo nixos-rebuild switch --flake .#t14s
+  } always {
+    cd "$start_dir"
+  }
+}
 
 # --- agent shells (Claude Code) ---------------------------------------------
 # `claude` exports CLAUDECODE=1 into every shell it spawns, including the one it
