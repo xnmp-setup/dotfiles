@@ -73,9 +73,25 @@ function M.apply(config)
   -- ---------- Renderer ----------
   -- The default OpenGL path on this build uses a generic GL adapter and is slow
   -- (laggy text selection / scrolling). Use WebGpu on the discrete GPU instead.
-  config.front_end = 'WebGpu'
-  config.webgpu_power_preference = 'HighPerformance'
+  --
+  -- Windows exception: WebGpu on Windows composites the window opaquely and
+  -- silently defeats window_background_opacity (verified by bisection: any
+  -- WebGpu front_end => opaque; OpenGL => transparency works; win32_system_backdrop
+  -- Acrylic/Mica also no-op under WebGpu). So use OpenGL on Windows to get the
+  -- transparent background, and keep the fast WebGpu+discrete-GPU path elsewhere.
   config.max_fps = 120
+  if wezterm.target_triple:find('windows') then
+    config.front_end = 'OpenGL'
+  else
+    config.front_end = 'WebGpu'
+    config.webgpu_power_preference = 'HighPerformance'
+    for _, gpu in ipairs(wezterm.gui.enumerate_gpus()) do
+      if gpu.backend == 'Vulkan' and gpu.device_type == 'DiscreteGpu' then
+        config.webgpu_preferred_adapter = gpu
+        break
+      end
+    end
+  end
   -- WezTerm otherwise changes its FreeType default at 100 DPI. Pinning
   -- unhinted rendering avoids uneven stem snapping when a window crosses
   -- between the 1x and 1.25x monitors.
@@ -87,12 +103,6 @@ function M.apply(config)
   config.animation_fps = 1
   config.cursor_blink_ease_in = 'Constant'
   config.cursor_blink_ease_out = 'Constant'
-  for _, gpu in ipairs(wezterm.gui.enumerate_gpus()) do
-    if gpu.backend == 'Vulkan' and gpu.device_type == 'DiscreteGpu' then
-      config.webgpu_preferred_adapter = gpu
-      break
-    end
-  end
 
   -- Disable macOS dead-key / IME composition so Option+key bindings work as raw keys.
   config.send_composed_key_when_left_alt_is_pressed = false
@@ -189,17 +199,26 @@ function M.apply(config)
   config.tab_max_width = 32
   config.status_update_interval = M.status_update_interval_ms
   local scheme = M.resolve_scheme(config, config.color_scheme)
+  -- Inter for the label text; fall back to Hack Nerd Font so the per-app tab
+  -- icons (editor/git/docker/… — see wezterm_tabbar.lua) have glyphs to render. Inter has
+  -- no Private Use Area glyphs, so without the fallback they'd show as tofu.
+  --
+  -- Adwaita Mono is a third fallback purely for the Claude status stars ❋ (U+274B)
+  -- and ✹ (U+2739): they exist in NO other installed font, so without this entry
+  -- wezterm can only reach them via its ASYNC system-wide font search. That search
+  -- can briefly gap across genuine config/theme reloads. Listing the font here
+  -- resolves the glyphs synchronously from the configured stack.
+  local window_frame_fonts = { { family = 'Inter', weight = 'Medium' }, 'Hack Nerd Font', 'Adwaita Mono' }
+  -- MesloLGS NF is a Windows-only fourth fallback: neither Hack Nerd Font nor
+  -- Adwaita Mono is installed there, so the marker glyphs used to miss the whole
+  -- stack and fall to mismatched-width Segoe fonts, jittering the tab width every
+  -- spinner frame. MesloLGS NF is installed on Windows and covers all the glyphs
+  -- at a uniform width. Appended, not inserted, so Mac/Linux resolve unchanged.
+  if wezterm.target_triple:find('windows') then
+    table.insert(window_frame_fonts, 'MesloLGS NF')
+  end
   config.window_frame = {
-    -- Inter for the label text; fall back to Hack Nerd Font so the per-app tab
-    -- icons (editor/git/docker/… — see wezterm_tabbar.lua) have glyphs to render. Inter has
-    -- no Private Use Area glyphs, so without the fallback they'd show as tofu.
-    --
-    -- Adwaita Mono is a third fallback purely for the Claude status stars ❋ (U+274B)
-    -- and ✹ (U+2739): they exist in NO other installed font, so without this entry
-    -- wezterm can only reach them via its ASYNC system-wide font search. That search
-    -- can briefly gap across genuine config/theme reloads. Listing the font here
-    -- resolves the glyphs synchronously from the configured stack.
-    font = wezterm.font_with_fallback({ { family = 'Inter', weight = 'Medium' }, 'Hack Nerd Font', 'Adwaita Mono' }),
+    font = wezterm.font_with_fallback(window_frame_fonts),
     font_size = 15,
     active_titlebar_bg = scheme.background,
     inactive_titlebar_bg = scheme.background,
