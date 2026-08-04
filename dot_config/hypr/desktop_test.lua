@@ -1196,6 +1196,40 @@ do
 end
 
 do
+    -- Fluid sizing should stop growing once a terminal reaches a readable width.
+    -- On a desktop with no built-in panel the first output is the target monitor.
+    local ws = { id = 1, name = "1" }
+    local special = { id = -94, name = "special:ghostty-drop" }
+    local pad = window("pad", "com.mitchellh.ghostty", special)
+    local ultrawide = monitor({
+        id = 0, name = "DP-1", width = 3440, height = 1440,
+        focused = true, workspace = ws,
+    })
+
+    local hl, control = fake_runtime({
+        active_monitor = ultrawide,
+        monitors = { ultrawide },
+        windows = { pad },
+        workspace = ws,
+    })
+    local scratchpad = scratchpads.new(hl, window_actions.new(hl))
+    scratchpad.define("ghostty-drop", {
+        class = "com.mitchellh.ghostty",
+        cmd = "ghostty",
+        w = 0.8, h = 0.7, max_w = 1600,
+        anchor = "top", gap = 12,
+        monitor = "builtin",
+    })
+
+    scratchpad.toggle("ghostty-drop")
+    local size = last_dispatch(control, "resize")
+    local at = last_dispatch(control, "move")
+    equal("fractional widths are capped on an ultrawide", size.x, 1600)
+    equal("a capped scratchpad remains horizontally centred", at.x, 920)
+    equal("the width cap does not alter fractional height", size.y, 1008)
+end
+
+do
     -- Absolute sizes and the default anchor still behave as they always did.
     local ws = { id = 1, name = "1" }
     local special = { id = -94, name = "special:chrome-drop" }

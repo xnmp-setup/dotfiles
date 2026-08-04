@@ -142,13 +142,12 @@ local function new(hl, window_actions)
     end
 
     -- Sizes and offsets are read as a share of the monitor when they are 0..1 and as
-    -- logical pixels above that. Declaring 0.8 instead of 1536 keeps one definition
-    -- correct on a 1920x1200 laptop panel and a 3440x1440 ultrawide alike, which
-    -- absolute coordinates did not: they placed a pad off-screen entirely on any
-    -- display smaller than the one they were measured against.
+    -- logical pixels above that. A max extent makes the sizing fluid on a laptop but
+    -- keeps a terminal at a readable width on an ultrawide. No extent may exceed the
+    -- monitor itself, including an oversized absolute declaration.
     local function extent(value, available)
         if not value then return nil end
-        if value <= 1 then return math.floor(available * value) end
+        if value <= 1 then return math.floor((available * value) + 0.5) end
         return math.floor(value)
     end
 
@@ -163,8 +162,14 @@ local function new(hl, window_actions)
         local screen_w = math.floor(mon.width / scale)
         local screen_h = math.floor(mon.height / scale)
 
-        local w = extent(pad.w, screen_w) or screen_w
-        local h = extent(pad.h, screen_h) or screen_h
+        local w = math.min(
+            extent(pad.w, screen_w) or screen_w,
+            extent(pad.max_w, screen_w) or screen_w
+        )
+        local h = math.min(
+            extent(pad.h, screen_h) or screen_h,
+            extent(pad.max_h, screen_h) or screen_h
+        )
         local gap = extent(pad.gap, screen_h) or 0
 
         local x = (mon.x or 0) + math.floor((screen_w - w) / 2)
@@ -303,10 +308,11 @@ local function new(hl, window_actions)
     --- Declare a scratchpad.
     ---
     --- `w`/`h`/`gap` are a share of the monitor at 0..1 and logical pixels above it.
+    --- Optional `max_w`/`max_h` cap the resolved size using the same units.
     --- `anchor` is "top" or, by default, centred. `monitor = "builtin"` pins the pad
     --- to the laptop panel instead of following focus.
     --- @param name string   also the special workspace it is parked in
-    --- @param spec table    { class, cmd, w, h, anchor?, gap?, monitor?, isolate? }
+    --- @param spec table    { class, cmd, w, h, max_w?, max_h?, anchor?, gap?, monitor?, isolate? }
     function M.define(name, spec)
         pads[name] = spec
     end
