@@ -479,6 +479,83 @@ hl.bind("F8",  function() scratchpad.toggle("chrome-drop") end)
 hl.bind("F9",  function() scratchpad.toggle("ghostty-drop") end)
 hl.bind("F11", function() scratchpad.toggle("lite-xl") end)
 
+-- Vicinae (Super+SPACE) gets the same treatment, without being a scratchpad: its
+-- server owns the window's lifetime, mapping one on toggle and destroying it on
+-- dismissal, so there is nothing to park between summons.
+--
+-- The point of the special workspace is the compositor path it unlocks. Only
+-- decoration:blur.special blurs a whole workspace at once; a plain window --
+-- floating, layer-shell or otherwise -- can only blur what is directly behind it,
+-- which reads as a see-through rectangle rather than a modal. Vicinae's own
+-- blur/dim_around settings are no help: they are installed through
+-- `hyprctl keyword layerrule`, which this config rejects outright because it
+-- parses as Lua, and they only apply when vicinae takes the layer-shell path,
+-- which it does not while XDG_CURRENT_DESKTOP says GNOME (set above, for portals).
+local VICINAE_SPECIAL = "vicinae"
+local VICINAE_WORKSPACE = "special:" .. VICINAE_SPECIAL
+
+-- The ordinary workspace the launcher was summoned over, and where anything it
+-- launches has to end up.
+local vicinae_host
+
+local function vicinae_special_shown()
+    for _, monitor in ipairs(hl.get_monitors() or {}) do
+        local special = monitor.active_special_workspace
+        if special and special.name == VICINAE_WORKSPACE then return true end
+    end
+    return false
+end
+
+local function visible_workspace()
+    local monitor = hl.get_active_monitor()
+    local workspace = monitor and monitor.active_workspace
+    if workspace and workspace.id then return workspace end
+    return hl.get_active_workspace()
+end
+
+hl.on("window.open", function(w)
+    if not (w and w.class) then return end
+
+    if w.class == "vicinae" then
+        vicinae_host = visible_workspace()
+        -- silent: the move must not pull the view along with it; the toggle below
+        -- is what puts the workspace on screen, over whatever was already there.
+        hl.dispatch(hl.dsp.window.move({
+            workspace = VICINAE_WORKSPACE,
+            silent    = true,
+            window    = w,
+        }))
+        if not vicinae_special_shown() then
+            hl.dispatch(hl.dsp.workspace.toggle_special(VICINAE_SPECIAL))
+        end
+        hl.dispatch(hl.dsp.focus({ window = w }))
+        return
+    end
+
+    -- Whatever the launcher starts inherits its workspace from Hyprland, which is
+    -- the special one for as long as it is up. Left there, an app would be dragged
+    -- out of sight the moment the launcher it was picked from went away.
+    local workspace = w.workspace
+    if not (workspace and workspace.name == VICINAE_WORKSPACE) then return end
+
+    local destination = vicinae_host or visible_workspace()
+    if destination and destination.id and destination.id > 0 then
+        hl.dispatch(hl.dsp.window.move({
+            workspace = tostring(destination.id),
+            follow    = true,
+            window    = w,
+        }))
+    end
+end)
+
+hl.on("window.close", function(w)
+    if not (w and w.class == "vicinae") then return end
+    vicinae_host = nil
+    if vicinae_special_shown() then
+        hl.dispatch(hl.dsp.workspace.toggle_special(VICINAE_SPECIAL))
+    end
+end)
+
 
 local spotlight = spotlights.new(hl, window_actions)
 hl.bind(mainMod .. " + CTRL + end", spotlight.toggle)
