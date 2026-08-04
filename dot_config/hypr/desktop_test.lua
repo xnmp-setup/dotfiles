@@ -8,6 +8,7 @@ local display_mirrors = require("display_mirror")
 local exposes        = require("expose")
 local group_actions  = require("group_actions")
 local host_capabilities = require("host_capabilities")
+local nightlights     = require("nightlight")
 local scratchpads    = require("scratchpad")
 local spotlights     = require("spotlight")
 local startup_pairing = require("startup_pairing")
@@ -224,6 +225,22 @@ do
         not host_capabilities.has_battery(function() return "Mains" end))
     check("missing power supplies identify a desktop",
         not host_capabilities.has_battery(function() return nil end))
+end
+
+--------------------------------------------------------------------------------
+-- Night light
+--------------------------------------------------------------------------------
+
+do
+    local laptop = nightlights.command(true)
+    check("laptops use the pre-clone shader", laptop:match("hyprshade auto") ~= nil)
+    check("laptop shader exports its Hyprland instance",
+        laptop:match("HYPRLAND_INSTANCE_SIGNATURE") ~= nil)
+    check("laptop shader does not start wlsunset", laptop:match("wlsunset") == nil)
+
+    local desktop = nightlights.command(false)
+    check("desktops retain solar-time wlsunset", desktop:match("^wlsunset") ~= nil)
+    check("desktops do not start hyprshade", desktop:match("hyprshade") == nil)
 end
 
 --------------------------------------------------------------------------------

@@ -18,6 +18,7 @@ local app_switchers   = require("app_switcher")
 local exposes         = require("expose")
 local group_actions   = require("group_actions").new(hl)
 local display_mirror  = require("display_mirror").new(hl, { enabled = is_laptop })
+local nightlight      = require("nightlight")
 local spotlights      = require("spotlight")
 local startup_pairing = require("startup_pairing").new(hl, {
     browser_class = "google-chrome",
@@ -184,10 +185,11 @@ hl.animation({ leaf = "specialWorkspace", enabled = true, speed = 3, bezier = "f
 -------------------
 
 hl.on("hyprland.start", function()
-    -- Parramatta, Australia (Lat -33.8, Lon 151.0); 6500K day -> 3500K night.
     hl.exec_cmd("hyprpaper")
     hl.exec_cmd("vicinae server")
-    hl.exec_cmd("wlsunset -l -33.87 -L 151.21 -t 3500 -T 6500")
+    -- A shader runs before native output cloning, so both laptop mirror outputs
+    -- receive the same 3500K night tint. Desktops retain solar-time wlsunset.
+    nightlight.start(hl, is_laptop)
     hl.exec_cmd("dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP")
     hl.exec_cmd("gnome-keyring-daemon --start --components=secrets")
     -- Idle dimming, blanking and locking (see hypridle.conf) are things a
