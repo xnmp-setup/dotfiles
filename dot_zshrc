@@ -317,6 +317,7 @@ alias ccr="claude --resume --permission-mode auto"
 alias ccw="claude --permission-mode auto --worktree"
 alias ccc="claude --continue --permission-mode auto"
 alias cx="codex"
+alias cxr="codex resume"
 alias cc-dsp='docker sandbox run claude . --dangerously-skip-permissions'
 alias m="micro"
 alias cc-box='~/Repos/claude-docker-base/run_cc-box.sh'
