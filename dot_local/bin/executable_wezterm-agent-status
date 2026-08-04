@@ -151,14 +151,13 @@ fi
 
 # Other terminals have no renderer configured by this script.
 [ "$TERM_PROGRAM" = "WezTerm" ] || exit 0
-[ -n "$WEZTERM_PANE" ] || exit 0
 
 # Mirror the GUI-local user variable into a tiny runtime record consumed by the
 # status bar. Pane ids are only unique inside one GUI, so the socket basename is
 # part of the key. Stale files are harmless: the collector consults them only
 # while a matching live agent process still owns that pane's TTY.
 state_cachefile=""
-if [ -n "${WEZTERM_UNIX_SOCKET:-}" ]; then
+if [ -n "${WEZTERM_UNIX_SOCKET:-}" ] && [ -n "${WEZTERM_PANE:-}" ]; then
   state_cache_key="${WEZTERM_UNIX_SOCKET##*/}.$WEZTERM_PANE.$agent_kind"
   case "$state_cache_key" in
     ""|*[!A-Za-z0-9._-]*) : ;;
@@ -192,7 +191,10 @@ case "$agent_kind" in
   claude) session_identity=${CLAUDE_PID:-} ;;
   codex)  session_identity=${CODEX_THREAD_ID:-} ;;
 esac
-if [ -n "${WEZTERM_UNIX_SOCKET:-}" ] && [ -n "$session_identity" ]; then
+if [ -n "${WEZTERM_UNIX_SOCKET:-}" ] \
+  && [ -n "${WEZTERM_PANE:-}" ] \
+  && [ -n "$session_identity" ]
+then
   session_cache_key="${WEZTERM_UNIX_SOCKET##*/}.$WEZTERM_PANE.$agent_kind.$session_identity"
   case "$session_cache_key" in
     ""|*[!A-Za-z0-9._-]*) : ;;
@@ -275,7 +277,7 @@ fi
 # the gui pid, which pins the entry to one instance. Without it there is nothing
 # to distinguish instances by, so we simply don't cache.
 cachefile=""
-if [ -n "${WEZTERM_UNIX_SOCKET:-}" ]; then
+if [ -n "${WEZTERM_UNIX_SOCKET:-}" ] && [ -n "${WEZTERM_PANE:-}" ]; then
   cache_key="${WEZTERM_UNIX_SOCKET##*/}.$WEZTERM_PANE"
   # The key becomes a filename. Rather than fold unexpected characters to a
   # placeholder — which would let two distinct instances share one entry and
@@ -305,18 +307,38 @@ if [ -n "$cachefile" ]; then
   rm -f "$cachefile"
 fi
 
-# Map this pane id to its tty via the wezterm CLI, which lives next to the gui
-# binary that launched us.
-wt="${WEZTERM_EXECUTABLE%-gui}"
-[ -x "$wt" ] || wt="$(command -v wezterm 2>/dev/null)"
-[ -n "$wt" ] && [ -x "$wt" ] || exit 0
-# A wedged GUI also wedges its embedded mux. Never let a synchronous agent hook
-# wait indefinitely behind it; dropping a cosmetic status update is preferable.
-command -v timeout >/dev/null 2>&1 || exit 0
+# Map this pane id to its tty via the wezterm CLI when the pane id crossed into
+# the hook environment.
+tty_dev=""
+if [ -n "$WEZTERM_PANE" ]; then
+  wt="${WEZTERM_EXECUTABLE%-gui}"
+  [ -x "$wt" ] || wt="$(command -v wezterm 2>/dev/null)"
+  # A wedged GUI also wedges its embedded mux. Never let a synchronous agent hook
+  # wait indefinitely behind it; dropping a cosmetic status update is preferable.
+  if [ -n "$wt" ] && [ -x "$wt" ] && command -v timeout >/dev/null 2>&1; then
+    tty_dev=$(timeout 2 "$wt" cli list --format json 2>/dev/null \
+      | jq -r --argjson p "$WEZTERM_PANE" \
+          '.[] | select(.pane_id == $p) | .tty_name // empty' 2>/dev/null)
+  fi
+fi
 
-tty_dev=$(timeout 2 "$wt" cli list --format json 2>/dev/null \
-  | jq -r --argjson p "$WEZTERM_PANE" \
-      '.[] | select(.pane_id == $p) | .tty_name // empty' 2>/dev/null)
+# WSL fallback: WEZTERM_PANE is not propagated across the WSL boundary and the
+# wezterm CLI is Windows-side and unreachable from here, so the two attempts
+# above can never resolve a pane. Instead walk up the process tree from this
+# hook to the first real pty; under WSL that pty is bridged to the WezTerm pane,
+# the same path the shell's own OSC-7 output takes. The walk is bounded by pid
+# reaching 1 (init), so it can't loop forever even if a ppid lookup fails.
+if [ -z "$tty_dev" ]; then
+  pid=$PPID
+  while [ -n "$pid" ] && [ "$pid" -gt 1 ]; do
+    t=$(ps -o tty= -p "$pid" 2>/dev/null | tr -d ' ')
+    case "$t" in
+      pts/*|tty*) tty_dev="/dev/$t"; break ;;
+    esac
+    pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
+  done
+fi
+
 [ -n "$tty_dev" ] && [ -w "$tty_dev" ] || exit 0
 
 # Concurrent hooks race here, but they all write the same correct value, so the
