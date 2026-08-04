@@ -9,13 +9,15 @@
 -- can be equal peers rather than dwindle's forced binary nesting.
 
 local nary = require("nary")
+local host_capabilities = require("host_capabilities")
+local is_laptop = host_capabilities.has_battery()
 
 local theme           = require("theme")
 local window_actions  = require("window_actions").new(hl)
 local app_switchers   = require("app_switcher")
 local exposes         = require("expose")
 local group_actions   = require("group_actions").new(hl)
-local display_mirror  = require("display_mirror").new(hl)
+local display_mirror  = require("display_mirror").new(hl, { enabled = is_laptop })
 local spotlights      = require("spotlight")
 local startup_pairing = require("startup_pairing").new(hl, {
     browser_class = "google-chrome",
@@ -34,7 +36,7 @@ local scratchpad      = require("scratchpad").new(hl, window_actions)
 -- catch-all
 hl.monitor({ output = "", mode = "preferred", position = "auto", scale = 1 })
 
-{{ if ne .chezmoi.hostname "t14s" -}}
+if not is_laptop then
 -- 1. Top Monitor (HDMI-A-1)
 hl.monitor({ output = "HDMI-A-1", mode = "2560x1440@60", position = "300x0", scale = 1 })
 
@@ -43,10 +45,7 @@ hl.monitor({ output = "DP-2", mode = "3440x1440@144", position = "0x1440", scale
 
 -- 3. Right 4K (DP-1) - Vertically Centered
 hl.monitor({ output = "DP-1", mode = "3840x2160@60", position = "3440x1296", scale = 1.25 })
-{{ else -}}
--- A runtime capability-based software mirror handles laptop panels and external
--- outputs; keeping both outputs independent lets wlsunset transform both.
-{{ end }}
+end
 
 -------------------------------
 ---- ENVIRONMENT VARIABLES ----
@@ -60,15 +59,13 @@ hl.env("XDG_CURRENT_DESKTOP", "GNOME")
 ---- WORKSPACE RULES ----
 -------------------------
 
-{{ if ne .chezmoi.hostname "t14s" -}}
+if not is_laptop then
 hl.workspace_rule({ workspace = "1", monitor = "DP-2", default = true })
 hl.workspace_rule({ workspace = "2", monitor = "DP-2" })
 hl.workspace_rule({ workspace = "3", monitor = "DP-2" })
 hl.workspace_rule({ workspace = "4", monitor = "DP-2" })
 hl.workspace_rule({ workspace = "5", monitor = "DP-2" })
-{{ else -}}
--- t14s: single display, no per-monitor pinning.
-{{ end }}
+end
 
 -----------------------
 ---- LOOK AND FEEL ----

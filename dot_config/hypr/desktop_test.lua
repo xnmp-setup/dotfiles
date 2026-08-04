@@ -7,6 +7,7 @@ local app_switcher   = require("app_switcher")
 local display_mirrors = require("display_mirror")
 local exposes        = require("expose")
 local group_actions  = require("group_actions")
+local host_capabilities = require("host_capabilities")
 local scratchpads    = require("scratchpad")
 local spotlights     = require("spotlight")
 local startup_pairing = require("startup_pairing")
@@ -65,7 +66,7 @@ local function fake_runtime(spec)
     local windows = spec.windows or {}
     local normal_workspace = spec.workspace or { id = 1, name = "1" }
     local special_workspace
-    local callbacks, timers, dispatches, executions, configs = {}, {}, {}, {}, {}
+    local callbacks, timers, dispatches, executions, configs, monitors = {}, {}, {}, {}, {}, {}
     local bindings = {}
     local active_monitor = spec.active_monitor or {
         id = 0,
@@ -118,6 +119,7 @@ local function fake_runtime(spec)
             return spec.monitors or { active_monitor }
         end,
         get_windows = function() return windows end,
+        monitor = function(value) monitors[#monitors + 1] = value end,
         on = function(event, callback)
             callbacks[event] = callbacks[event] or {}
             callbacks[event][#callbacks[event] + 1] = callback
@@ -182,6 +184,7 @@ local function fake_runtime(spec)
             for _, callback in ipairs(callbacks[event] or {}) do callback(argument) end
         end,
         executions = executions,
+        monitors = monitors,
         remove_window = function(target)
             for index = #windows, 1, -1 do
                 if windows[index] == target then table.remove(windows, index) end
@@ -202,6 +205,25 @@ local function fake_runtime(spec)
     }
 
     return hl, control
+end
+
+--------------------------------------------------------------------------------
+-- Host capabilities
+--------------------------------------------------------------------------------
+
+do
+    check("a BAT power supply identifies a laptop",
+        host_capabilities.has_battery(function(path)
+            if path:match("/BAT3/type$") then return "Battery" end
+        end))
+    check("a CMB power supply identifies a laptop",
+        host_capabilities.has_battery(function(path)
+            if path:match("/CMB1/type$") then return "Battery" end
+        end))
+    check("mains power is not a battery",
+        not host_capabilities.has_battery(function() return "Mains" end))
+    check("missing power supplies identify a desktop",
+        not host_capabilities.has_battery(function() return nil end))
 end
 
 --------------------------------------------------------------------------------
@@ -237,7 +259,17 @@ do
     local hl, control = fake_runtime({ monitors = { { name = "DP-1" } } })
     display_mirrors.new(hl)
     control.emit("hyprland.start")
-    equal("desktop-only systems have no mirroring side effects", #control.executions, 0)
+    equal("desktop-only systems have no mirroring side effects", #control.monitors, 0)
+end
+
+do
+    local hl, control = fake_runtime({ monitors = {
+        { name = "eDP-1" },
+        { name = "DP-2" },
+    } })
+    display_mirrors.new(hl, { enabled = false })
+    control.emit("hyprland.start")
+    equal("battery capability gates laptop mirroring", #control.monitors, 0)
 end
 
 do
@@ -247,20 +279,22 @@ do
 
     equal("registration has no eager side effects", #control.executions, 0)
     control.emit("hyprland.start")
-    check("startup without an external stops stale mirrors",
-        control.executions[1].cmd:match("systemctl %-%-user stop") ~= nil)
+    equal("panel-alone startup configures one output", #control.monitors, 1)
+    equal("panel-alone startup targets the panel", control.monitors[1].output, "eDP-1")
+    equal("panel-alone startup has no mirror", control.monitors[1].mirror, nil)
 
     outputs[2] = { name = "HDMI-A-3" }
     control.emit("monitor.added", outputs[2])
-    local command = control.executions[2].cmd
-    check("hotplug mirrors any external connector onto the panel",
-        command:match("%-%-fullscreen%-output eDP%-1") ~= nil
-        and command:match("laptop%-display%-mirror HDMI%-A%-3") ~= nil)
+    equal("hotplug configures source and follower", #control.monitors, 3)
+    equal("external owns the source canvas", control.monitors[2].output, "HDMI-A-3")
+    equal("built-in panel is the follower", control.monitors[3].output, "eDP-1")
+    equal("built-in panel mirrors the external", control.monitors[3].mirror, "HDMI-A-3")
 
     outputs[2] = nil
     control.emit("monitor.removed", { name = "HDMI-A-3" })
-    check("unplug stops the software mirror",
-        control.executions[3].cmd:match("systemctl %-%-user stop") ~= nil)
+    equal("unplug restores one standalone panel spec", #control.monitors, 4)
+    equal("unplug restores the built-in panel", control.monitors[4].output, "eDP-1")
+    equal("unplug removes the mirror source", control.monitors[4].mirror, nil)
 end
 
 --------------------------------------------------------------------------------
