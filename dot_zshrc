@@ -289,6 +289,9 @@ _anthropic_haiku() {
 [[ -r ~/.config/zsh/quick-question.zsh ]] && source ~/.config/zsh/quick-question.zsh
 
 _cc_launch_claude() {
+  # Tell WezTerm this tab is claude (a function is opaque to the preexec hook
+  # that publishes WEZTERM_PROG); no-op outside WezTerm+WSL.
+  __wezterm_set_prog claude
   if [[ $TERM_PROGRAM == ghostty ]] \
     && (( ${+functions[__ghostty_run_agent]} ))
   then
@@ -891,11 +894,36 @@ typeset -gU path PATH
 
 
 # WezTerm: report cwd via OSC 7 so new tabs/panes inherit the working directory.
-if [[ -n "$WEZTERM_PANE" ]]; then
+# Guard on TERM_PROGRAM, not WEZTERM_PANE: WezTerm does not propagate WEZTERM_PANE
+# across the WSL boundary (only WSLENV vars cross), so under WSL it is empty and
+# this block would never run. TERM_PROGRAM crosses via WSLENV.
+# Publish the foreground command as the WEZTERM_PROG user var. WezTerm can't see
+# processes running inside WSL (foreground_process_name only reports the
+# wslhost.exe proxy), so format-tab-title reads this instead to label tabs and
+# detect claude. WSL-only: on mac/native Linux foreground_process_name works, and
+# the lua falls back to it when WEZTERM_PROG is unset, so gate on WSL_DISTRO_NAME
+# to avoid changing tab behavior there. Defined unconditionally and self-guarded
+# so launchers like cc() can call it directly; no-op outside WSL+WezTerm.
+# base64-encoded per the OSC 1337 SetUserVar spec.
+__wezterm_set_prog() {
+  [[ "$TERM_PROGRAM" == "WezTerm" && -n "$WSL_DISTRO_NAME" ]] || return
+  printf '\033]1337;SetUserVar=WEZTERM_PROG=%s\a' "$(printf '%s' "$1" | base64 | tr -d '\n')"
+}
+
+if [[ "$TERM_PROGRAM" == "WezTerm" ]]; then
   __wezterm_osc7() { printf '\033]7;file://%s%s\a' "$HOST" "$PWD"; }
   autoload -Uz add-zsh-hook
   add-zsh-hook -Uz chpwd __wezterm_osc7
   __wezterm_osc7
+
+  # preexec sets the running command; precmd reports the shell at the prompt.
+  # $2 is the alias-expanded form, so aliases like `ccr`->`claude` resolve. The
+  # cc() function is opaque to preexec, so cc() calls __wezterm_set_prog itself.
+  __wezterm_preexec() { __wezterm_set_prog "$2"; }
+  __wezterm_precmd()  { __wezterm_set_prog zsh; }
+  add-zsh-hook -Uz preexec __wezterm_preexec
+  add-zsh-hook -Uz precmd  __wezterm_precmd
+  __wezterm_precmd
 fi
 
 # --- Claude Code against Z.ai GLM Coding Plan -------------------------------
