@@ -28,6 +28,11 @@ input {
     follow_mouse = 0
     float_switch_override_focus = 0
     sensitivity = 0 # Raw input, like turning off mouse accel in StarCraft
+    touchpad {
+        # Remove the bottom-centre middle-button area. MMB then requires an
+        # intentional simultaneous LMB + RMB press.
+        middle_button_emulation = true
+    }
 }
 
 cursor {
@@ -47,8 +52,6 @@ monitor = DP-2, 3440x1440@144, 0x1440, 1
 
 # 3. Right 4K (DP-1) - Vertically Centered
 monitor = DP-1, 3840x2160@60, 3440x1296, 1.25
-
-
 {{ else -}}
 # The Lua config provides capability-based software mirroring. This emergency
 # fallback leaves outputs extended rather than depending on wl-mirror.
