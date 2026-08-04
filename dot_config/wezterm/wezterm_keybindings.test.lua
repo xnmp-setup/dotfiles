@@ -11,6 +11,7 @@ package.preload.wezterm = function()
   return {
     action = action,
     action_callback = function(callback) return callback end,
+    target_triple = 'x86_64-pc-windows-msvc',
   }
 end
 package.preload.wezterm_clipboard = function()
@@ -81,6 +82,25 @@ eq('ctrl-pageup/moves left', previous_tab and previous_tab.action.value, -1)
 local next_tab = find_binding('PageDown', 'CTRL')
 eq('ctrl-pagedown/wraps to next tab', next_tab and next_tab.action.kind, 'ActivateTabRelative')
 eq('ctrl-pagedown/moves right', next_tab and next_tab.action.value, 1)
+
+local performed = {}
+local window = {
+  get_selection_text_for_pane = function() return '' end,
+  perform_action = function(_, performed_action)
+    performed[#performed + 1] = performed_action
+  end,
+}
+
+local enter = find_binding('Enter', 'NONE')
+enter.action(window, {})
+eq('windows/enter uses raw bytes', performed[#performed].kind, 'SendString')
+eq('windows/enter sends carriage return', performed[#performed].value, '\r')
+
+local ctrl_c = find_binding('c', 'CTRL')
+ctrl_c.action(window, {})
+eq('windows/ctrl-c uses raw bytes', performed[#performed].kind, 'SendString')
+eq('windows/ctrl-c sends interrupt', performed[#performed].value, '\x03')
+eq('windows/escape callback is omitted', find_binding('Escape', 'NONE'), nil)
 
 io.write(string.format('\n%d passed, %d failed\n', passed, failed))
 os.exit(failed == 0 and 0 or 1)

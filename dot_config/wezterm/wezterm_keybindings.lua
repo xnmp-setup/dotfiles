@@ -5,6 +5,13 @@ local clipboard = require 'wezterm_clipboard'
 
 local M = {}
 
+-- Empirically, binding Escape (mods=NONE) to ANY Lua callback on this
+-- wezterm/Windows build wedges key dispatch — it kills Esc itself AND cascades
+-- to break other custom binds. SendKey actions inside a callback re-enter
+-- dispatch too (same class of bug), so on Windows we forward raw bytes instead
+-- of calling act.SendKey. See the individual notes below.
+local is_windows = (wezterm.target_triple or ''):find('windows') ~= nil
+
 function M.apply(config, deps)
   local spawn_tab_next = deps.navigation.spawn_tab_next
   local move_tab_to_window = deps.windowing.move_tab_to_window
@@ -35,24 +42,16 @@ function M.apply(config, deps)
     { key = 'w', mods = 'SUPER', action = close_tab() },
     -- Enter: the close-confirmation overlay natively accepts only y/n; while
     -- it is up, translate Enter to y so Enter confirms too. Every other Enter
-    -- is forwarded as a real Enter keypress (same pattern as Esc below).
+    -- is forwarded as a real Enter keypress. Windows uses the raw carriage-return
+    -- byte so the synthetic key cannot re-enter this binding.
     { key = 'Enter', mods = 'NONE', action = wezterm.action_callback(function(window, pane)
       if confirmation_active(window, pane) then
         window:perform_action(act.SendKey { key = 'y' }, pane)
+      elseif is_windows then
+        window:perform_action(act.SendString '\r', pane)
       else
         window:perform_action(act.SendKey { key = 'Enter' }, pane)
       end
-    end) },
-    -- Esc: interrupt handling. A user interrupt (Esc mid-response) fires no hook in
-    -- either agent, so the agent_status var stays stuck on 'working' and the tab
-    -- keeps spinning. Intercept Esc here: if the pane is running an agent, mark it
-    -- 'done' in pane_status (the tab bar's source of truth) so it drops to idle
-    -- immediately. This intentionally includes non-interrupt uses such as dismissing
-    -- a /btw overlay. Always forward the Esc to the app afterwards, so the agent
-    -- still receives it. A fresh prompt's 'working' var write overrides 'done'.
-    { key = 'Escape', mods = 'NONE', action = wezterm.action_callback(function(window, pane)
-      deps.agent.mark_done(pane)
-      window:perform_action(act.SendKey { key = 'Escape' }, pane)
     end) },
     { key = 't', mods = 'CTRL', action = spawn_tab_next('CurrentPaneDomain') },
     -- Browser-style LIFO restore: layout/cwds always, recognized coding agents
@@ -79,8 +78,8 @@ function M.apply(config, deps)
     { key = 'PageUp', mods = 'CTRL', action = act.ActivateTabRelative(-1) },
     { key = 'PageDown', mods = 'CTRL', action = act.ActivateTabRelative(1) },
 
-    -- Text is pasted by WezTerm. For an image clipboard, forward ^V so TUI
-    -- applications such as Claude Code and Codex can attach the image directly.
+    -- Text is pasted by WezTerm. On Linux/macOS, image clipboards instead forward
+    -- ^V so TUI applications can attach them; Windows skips its blocking probe.
     { key = 'v', mods = 'CTRL', action = clipboard.paste_action() },
     { key = 'Insert', mods = 'SHIFT', action = act.PasteFrom 'Clipboard' },
     -- performable ctrl+c: copy if there's a selection, else send SIGINT (^C)
@@ -91,6 +90,11 @@ function M.apply(config, deps)
         local sel = window:get_selection_text_for_pane(pane)
         if sel and sel ~= '' then
           window:perform_action(act.CopyTo 'Clipboard', pane)
+        elseif is_windows then
+          -- Raw ^C (\x03), not act.SendKey{c,CTRL}: on Windows SendKey re-enters
+          -- this same ctrl+c binding instead of delivering SIGINT to the app (same
+          -- dispatch-wedging class as the Escape note above).
+          window:perform_action(act.SendString '\x03', pane)
         else
           window:perform_action(act.SendKey { key = 'c', mods = 'CTRL' }, pane)
         end
@@ -151,6 +155,25 @@ function M.apply(config, deps)
     { key = 'Home', mods = 'SHIFT', action = act.SendString '\x1b[1;2H' },
     { key = 'End', mods = 'SHIFT', action = act.SendString '\x1b[1;2F' },
   }
+
+  -- Esc: interrupt handling. A user interrupt (Esc mid-response) fires no hook in
+  -- either agent, so the agent_status var stays stuck on 'working' and the tab
+  -- keeps spinning. Intercept Esc here: if the pane is running an agent, mark it
+  -- 'done' in pane_status (the tab bar's source of truth) so it drops to idle
+  -- immediately. This intentionally includes non-interrupt uses such as dismissing
+  -- a /btw overlay. Always forward the Esc to the app afterwards, so the agent
+  -- still receives it. A fresh prompt's 'working' var write overrides 'done'.
+  --
+  -- NOT registered on Windows: see the is_windows note at the top of this file —
+  -- binding Escape to any Lua callback wedges dispatch there. Trade-off (fine): a
+  -- stuck 'working' spinner after a manual interrupt isn't auto-cleared on Esc; it
+  -- self-heals on the next prompt's working→done transition.
+  if not is_windows then
+    table.insert(config.keys, { key = 'Escape', mods = 'NONE', action = wezterm.action_callback(function(window, pane)
+      deps.agent.mark_done(pane)
+      window:perform_action(act.SendKey { key = 'Escape' }, pane)
+    end) })
+  end
 end
 
 return M

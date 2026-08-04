@@ -5,6 +5,7 @@ package.path = (arg[0]:match('(.*/)') or './') .. '?.lua;' .. package.path
 local actions = {
   PasteFrom = function(source) return { kind = 'paste', source = source } end,
   SendKey = function(key) return { kind = 'send-key', key = key } end,
+  SendString = function(s) return { kind = 'send-string', str = s } end,
 }
 
 package.preload.wezterm = function()
@@ -105,6 +106,20 @@ clipboard.paste_action {
 }(window, {})
 eq('action/timeout falls back to text paste', performed[#performed].kind, 'paste')
 eq('action/timeout pastes from the clipboard', performed[#performed].source, 'Clipboard')
+
+-- Windows never runs the synchronous PowerShell probe: Get-Clipboard can block
+-- behind another clipboard owner and freeze the GUI before text paste executes.
+local windows_probe_calls = 0
+clipboard.paste_action {
+  run_child_process = function()
+    windows_probe_calls = windows_probe_calls + 1
+    return true, 'image/png', ''
+  end,
+  target_triple = 'x86_64-pc-windows-msvc',
+}(window, {})
+eq('action/windows skips blocking probe', windows_probe_calls, 0)
+eq('action/windows uses native paste', performed[#performed].kind, 'paste')
+eq('action/windows pastes from clipboard', performed[#performed].source, 'Clipboard')
 
 io.write(string.format('\n%d passed, %d failed\n', passed, failed))
 os.exit(failed == 0 and 0 or 1)

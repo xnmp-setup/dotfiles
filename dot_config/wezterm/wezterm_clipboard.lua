@@ -81,6 +81,16 @@ function M.paste_action(options)
   local run_child_process = options.run_child_process or wezterm.run_child_process
   local target_triple = options.target_triple or wezterm.target_triple
 
+  -- Get-Clipboard can block indefinitely while another Windows process owns the
+  -- clipboard. wezterm.run_child_process is synchronous, so probing here freezes
+  -- the GUI and prevents even ordinary text paste. Keep Ctrl+V reliable on
+  -- Windows by going straight through WezTerm's native clipboard action.
+  if (target_triple or ''):find('windows') then
+    return wezterm.action_callback(function(window, pane)
+      window:perform_action(act.PasteFrom 'Clipboard', pane)
+    end)
+  end
+
   return wezterm.action_callback(function(window, pane)
     if M.clipboard_has_image(run_child_process, target_triple) then
       window:perform_action(act.SendKey { key = 'v', mods = 'CTRL' }, pane)
