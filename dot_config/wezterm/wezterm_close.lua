@@ -72,6 +72,23 @@ local function process_name(info)
   return info.name
 end
 
+-- WEZTERM_PROG (published by the zsh hooks inside WSL) names the real foreground
+-- command line — "zsh" at the prompt, the command while it runs. On Windows
+-- get_foreground_process_info only sees the wslhost.exe proxy, which reads as a
+-- stateful process and would prompt to kill every idle WSL shell. When the var
+-- is set it is authoritative: its first word (basenamed) decides statefulness.
+-- Returns (process|nil, resolved): `resolved` is true whenever the var supplied
+-- an answer, so the caller must NOT fall back to the lying proxy. Off Windows the
+-- var is unset, so this returns (nil, false) and the OS-process path runs as
+-- before.
+function M.user_var_process(user_vars)
+  local prog = (user_vars or {}).WEZTERM_PROG
+  if not prog or prog == '' then return nil, false end
+  local name = M.process_basename(prog:match('^%S+') or prog)
+  if M.is_stateful_process(name) then return name, true end
+  return nil, true
+end
+
 function M.find_stateful_process(info)
   if not info then return nil end
   local name = process_name(info)
@@ -83,6 +100,14 @@ function M.find_stateful_process(info)
 end
 
 local function pane_stateful_process(pane)
+  -- WEZTERM_PROG wins when present (WSL panes); it authoritatively answers idle
+  -- vs. running, so short-circuit before consulting the wslhost.exe proxy.
+  local got_vars, vars = pcall(function() return pane:get_user_vars() end)
+  if got_vars then
+    local process, resolved = M.user_var_process(vars)
+    if resolved then return process end
+  end
+
   local got_info, info = pcall(function() return pane:get_foreground_process_info() end)
   if got_info and info then return M.find_stateful_process(info) end
 

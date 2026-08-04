@@ -82,5 +82,32 @@ do
   eq('wide-marker', out, ('Change WezTerm tab title format'):sub(1, 18) .. '…')  -- 18 + '…'
 end
 
+-- ---------- resolve_foreground: WEZTERM_PROG preference ----------
+local resolve = require('tabtitle').resolve_foreground
+
+-- No user var (macOS/Linux, or the pwsh domain): returns foreground_process_name
+-- verbatim — the exact old inline behavior.
+eq('resolve/no-var falls back', resolve(nil, '/usr/bin/claude'), '/usr/bin/claude')
+eq('resolve/nil fg → empty', resolve(nil, nil), '')
+eq('resolve/empty var falls back', resolve({ WEZTERM_PROG = '' }, '/x/pwsh.exe'), '/x/pwsh.exe')
+-- WEZTERM_PROG wins and yields its first word (the executable) over the proxy.
+eq('resolve/var wins over proxy', resolve({ WEZTERM_PROG = 'zsh' }, 'C:\\wslhost.exe'), 'zsh')
+eq('resolve/var first word', resolve({ WEZTERM_PROG = 'git status' }, 'C:\\wslhost.exe'), 'git')
+eq('resolve/var claude cmdline', resolve({ WEZTERM_PROG = 'claude --resume' }, 'wslhost.exe'), 'claude')
+
+-- ---------- plain_tab_title ----------
+local plain = require('tabtitle').plain_tab_title
+local ICONS = { micro = 'M', git = 'G' }
+
+eq('plain/shell → bare cwd', plain('zsh', 'chezmoi', 'zsh', ICONS), 'chezmoi')
+eq('plain/empty → bare cwd', plain('', 'chezmoi', nil, ICONS), 'chezmoi')
+eq('plain/known app → bare cwd', plain('micro', 'chezmoi', 'micro file.lua', ICONS), 'chezmoi')
+eq('plain/unknown cmd → cwd: cmd', plain('htop', 'chezmoi', 'htop', ICONS), 'chezmoi: htop')
+eq('plain/unknown no title → cwd: proc', plain('foo', 'chezmoi', nil, ICONS), 'chezmoi: foo')
+-- pwsh idle labels (Windows-only; proc_name arrives already .exe-stripped).
+eq('plain/pwsh idle', plain('pwsh', 'chezmoi', 'pwsh.exe', ICONS), 'pwsh: chezmoi')
+eq('plain/powershell idle', plain('powershell', 'proj', 'powershell.exe', ICONS), 'pwsh: proj')
+eq('plain/pwsh no cwd', plain('pwsh', '', 'pwsh.exe', ICONS), 'pwsh')
+
 io.write(string.format('\n%d passed, %d failed\n', passed, failed))
 os.exit(failed == 0 and 0 or 1)

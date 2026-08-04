@@ -45,13 +45,14 @@ local function proc(executable, children)
   return { executable = executable, name = executable, children = children or {} }
 end
 
-local function pane(info, fallback_name)
+local function pane(info, fallback_name, user_vars)
   return {
     get_foreground_process_info = function()
       if info == false then error('process info unavailable') end
       return info
     end,
     get_foreground_process_name = function() return fallback_name end,
+    get_user_vars = function() return user_vars end,
   }
 end
 
@@ -188,6 +189,32 @@ confirmation = last().action
 confirmation.value.action(window, claude)
 eq('pane/final process accept closes pane', last().action.kind, 'CloseCurrentPane')
 eq('pane/final process accept remembers tab', remembered_tabs, 4)
+
+-- WEZTERM_PROG resolution (pure): the var is authoritative for WSL panes.
+do
+  local p, resolved = close_module.user_var_process({ WEZTERM_PROG = 'zsh' })
+  eq('uservar/idle zsh → nil', p, nil)
+  eq('uservar/idle zsh resolved', resolved, true)
+  p, resolved = close_module.user_var_process({ WEZTERM_PROG = 'git status' })
+  eq('uservar/running cmd → basename', p, 'git')
+  eq('uservar/running cmd resolved', resolved, true)
+  p, resolved = close_module.user_var_process({})
+  eq('uservar/absent → nil', p, nil)
+  eq('uservar/absent not resolved', resolved, false)
+end
+
+-- Integration: a WSL pane whose OS process is the wslhost.exe proxy (stateful-
+-- looking) but WEZTERM_PROG says "zsh" must close WITHOUT a confirmation.
+local wsl_idle = pane(proc('C:\\Windows\\wslhost.exe'), nil, { WEZTERM_PROG = 'zsh' })
+close.close_pane()(window, wsl_idle)
+eq('pane/WSL idle shell skips confirmation via user var',
+   performed[#performed].action.kind, 'CloseCurrentPane')
+
+-- Same proxy, but a real command is running per WEZTERM_PROG → confirm.
+local wsl_busy = pane(proc('C:\\Windows\\wslhost.exe'), nil, { WEZTERM_PROG = 'bun run dev' })
+close.close_pane()(window, wsl_busy)
+eq('pane/WSL running cmd prompts via user var', performed[#performed].action.kind, 'Confirmation')
+contains('pane/WSL running cmd named', performed[#performed].action.value.message, 'bun')
 
 io.write(string.format('\n%d passed, %d failed\n', passed, failed))
 os.exit(failed == 0 and 0 or 1)

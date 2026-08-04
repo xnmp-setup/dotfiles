@@ -39,4 +39,43 @@ function M.compute_tab_title(opts)
   return title
 end
 
+-- Resolve the foreground command for tab styling. Under WSL,
+-- foreground_process_name only ever sees the wslhost.exe proxy, never the real
+-- process, so prefer the WEZTERM_PROG user var the zsh hooks publish from inside
+-- WSL (precmd sets it to "zsh" at the prompt, preexec to the running command
+-- line). Fall back to the OS process name for panes without the hook — every
+-- macOS/Linux pane, and the Windows-local pwsh domain — where the var is unset
+-- and this returns `foreground_process_name` verbatim (identical to the old
+-- inline behavior). Returns the command's first word; callers basename it and
+-- strip any trailing .exe.
+function M.resolve_foreground(user_vars, foreground_process_name)
+  local prog = (user_vars or {}).WEZTERM_PROG
+  if prog and prog ~= '' then
+    return prog:match('^%S+') or prog
+  end
+  return foreground_process_name or ''
+end
+
+-- Body of a non-agent ("plain") tab title. `proc_name` is the resolved
+-- foreground process, already basenamed with any trailing .exe stripped.
+--   - shell / empty proc          → bare cwd basename
+--   - idle PowerShell (Windows)    → "pwsh: cwd" (distinct from bare-cwd WSL
+--                                    shells; only reachable when proc_name is
+--                                    pwsh/powershell, i.e. never on macOS/Linux)
+--   - known app (in app_icons)     → bare cwd (its marker glyph already names it)
+--   - any other command            → "cwd: command" (from the raw pane title)
+function M.plain_tab_title(proc_name, basename, pane_title, app_icons)
+  local shells = { bash=1, sh=1, zsh=1, fish=1, nu=1, login=1 }
+  if proc_name == 'pwsh' or proc_name == 'powershell' then
+    return basename ~= '' and ('pwsh: ' .. basename) or 'pwsh'
+  end
+  if proc_name ~= '' and not shells[proc_name] then
+    if app_icons[proc_name] then
+      return basename
+    end
+    return basename .. ': ' .. (pane_title or proc_name)
+  end
+  return basename
+end
+
 return M

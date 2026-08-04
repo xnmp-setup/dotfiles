@@ -1,6 +1,9 @@
 -- Tab titles, application markers, agent animation and focus-aware repainting.
 local wezterm = require 'wezterm'
-local compute_tab_title = require('tabtitle').compute_tab_title
+local tabtitle = require 'tabtitle'
+local compute_tab_title = tabtitle.compute_tab_title
+local resolve_foreground = tabtitle.resolve_foreground
+local plain_tab_title = tabtitle.plain_tab_title
 
 local M = {}
 
@@ -214,7 +217,10 @@ function M.setup(deps)
   wezterm.on('format-tab-title', function(tab, tabs, panes, cfg, hover, max_width)
     local pane_info = tab.active_pane
     local title = pane_info.title or ''
-    local proc = pane_info.foreground_process_name or ''
+    -- Prefer the WEZTERM_PROG user var over foreground_process_name so WSL panes
+    -- resolve to the real command, not the wslhost.exe proxy. Off Windows the var
+    -- is unset and this is exactly `foreground_process_name or ''`.
+    local proc = resolve_foreground(pane_info.user_vars, pane_info.foreground_process_name)
 
     -- Window focus controls emphasis such as the underline and marker animation.
     -- It must not control the title palette: WezTerm keeps the selected button's
@@ -280,21 +286,13 @@ function M.setup(deps)
     if not agent_owns_title then
       local basename = cwd_basename(pane_info.current_working_dir)
 
-      if proc_name ~= '' and not SHELLS[proc_name] then
-        if APP_ICONS[proc_name] then
-          -- Known app: its marker icon (set below) already names the app, so show
-          -- just the cwd — no redundant "cwd: micro". Reading an editor's argv to
-          -- recover its filename is intentionally avoided in this GUI-thread hook.
-          title = basename
-        else
-          -- Unknown command — show "cwd: command args" from pane title.
-          -- pane title is usually set to the running command by the shell.
-          local cmd = pane_info.title or proc_name
-          title = basename .. ': ' .. cmd
-        end
-      else
-        title = basename
-      end
+      -- Resolve the label from the foreground process: a known app (APP_ICONS)
+      -- shows just the cwd since its marker icon already names it; an idle
+      -- PowerShell pane (Windows-local domain only) shows "pwsh: cwd" to stand
+      -- apart from bare-cwd WSL shells; any other command shows "cwd: command"
+      -- from the pane title. Reading an editor's argv to recover its filename is
+      -- intentionally avoided in this GUI-thread hook.
+      title = plain_tab_title(proc_name, basename, pane_info.title, APP_ICONS)
     end
 
     -- Append pane count if more than one
