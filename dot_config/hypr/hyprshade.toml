@@ -1,3 +1,6 @@
+# Fallback schedule only. hyprshade_solar.py normally drives the shader from
+# the actual sunset and sunrise (see nightlight.lua); these fixed hours are
+# what `hyprshade auto` falls back to where python3 is unavailable.
 [[shades]]
 name = "nightlight"
 start_time = 19:00:00

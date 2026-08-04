@@ -255,14 +255,28 @@ end
 
 do
     local laptop = nightlights.command(true)
-    check("laptops use the pre-clone shader", laptop:match("hyprshade auto") ~= nil)
+    check("laptops use the pre-clone shader",
+        laptop:match("hyprshade_solar%.py") ~= nil)
+    check("laptop shader follows the sun rather than fixed hours",
+        laptop:match("%-%-lat") ~= nil and laptop:match("%-%-lon") ~= nil)
     check("laptop shader exports its Hyprland instance",
         laptop:match("HYPRLAND_INSTANCE_SIGNATURE") ~= nil)
+    check("laptop shader falls back to fixed hours without python3",
+        laptop:match("command %-v python3") ~= nil
+        and laptop:match("hyprshade auto") ~= nil)
     check("laptop shader does not start wlsunset", laptop:match("wlsunset") == nil)
 
     local desktop = nightlights.command(false)
     check("desktops retain solar-time wlsunset", desktop:match("^wlsunset") ~= nil)
     check("desktops do not start hyprshade", desktop:match("hyprshade") == nil)
+
+    -- Both backends must warm the screen at the same moments, so they have to
+    -- be reading the same coordinates.
+    local lat, lon = laptop:match("%-%-lat ([%-%d%.]+) %-%-lon ([%-%d%.]+)")
+    check("both night lights share one latitude",
+        lat ~= nil and desktop:find("-l " .. lat .. " ", 1, true) ~= nil)
+    check("both night lights share one longitude",
+        lon ~= nil and desktop:find("-L " .. lon .. " ", 1, true) ~= nil)
 end
 
 --------------------------------------------------------------------------------
