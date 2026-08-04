@@ -531,6 +531,71 @@ do
         control.dispatches[#control.dispatches].kind, "group_toggle")
 end
 
+do
+    -- A tabbed window sent to another workspace must travel on its own: the
+    -- native dispatcher would drag every sibling tab along with it.
+    local ws = { id = 1 }
+    local tabbed_a = window("tabbed-a", "app", ws)
+    local tabbed_b = window("tabbed-b", "app", ws)
+    group(tabbed_a, tabbed_b)
+
+    local hl, control = fake_runtime({
+        active = tabbed_a,
+        windows = { tabbed_a, tabbed_b },
+        workspace = ws,
+    })
+    local actions = group_actions.new(hl)
+
+    check("moving a tabbed window reports that it left its group",
+        actions.move_to_workspace(3))
+    equal("a tabbed window leaves its group before travelling",
+        control.dispatches[1].args.out_of_group, true)
+    equal("only the focused tab is sent to the target workspace",
+        control.dispatches[2].args.workspace, 3)
+    equal("the departing tab is not carried along by its siblings",
+        control.dispatches[2].args.window, nil)
+end
+
+do
+    local ws = { id = 1 }
+    local solo = window("solo", "app", ws)
+    local hl, control = fake_runtime({ active = solo, windows = { solo }, workspace = ws })
+    local actions = group_actions.new(hl)
+
+    check("moving an ungrouped window reports no group departure",
+        not actions.move_to_workspace(2))
+    equal("an ungrouped window is moved with a single dispatch", #control.dispatches, 1)
+    equal("an ungrouped window is never asked to leave a group",
+        control.dispatches[1].args.workspace, 2)
+end
+
+do
+    -- A group whittled down to one member is a tab strip with a single tab, so
+    -- the last window out has to leave the group intact rather than escape it.
+    local ws = { id = 1 }
+    local last = window("last", "app", ws)
+    group(last)
+
+    local hl, control = fake_runtime({ active = last, windows = { last }, workspace = ws })
+    local actions = group_actions.new(hl)
+
+    check("the sole member of a group needs no detaching",
+        not actions.move_to_workspace(4))
+    equal("a lone group member moves with a single dispatch", #control.dispatches, 1)
+    equal("a lone group member still reaches the target workspace",
+        control.dispatches[1].args.workspace, 4)
+end
+
+do
+    local hl, control = fake_runtime({ active = nil, windows = {} })
+    local actions = group_actions.new(hl)
+
+    check("an empty workspace reports no group departure",
+        not actions.move_to_workspace(2))
+    equal("moving with no focused window dispatches only the move",
+        #control.dispatches, 1)
+end
+
 --------------------------------------------------------------------------------
 -- Window navigation
 --------------------------------------------------------------------------------
