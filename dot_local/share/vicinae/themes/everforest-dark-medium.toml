@@ -1,0 +1,32 @@
+# Everforest Dark Medium
+# Warm, earthy dark green theme with medium contrast
+
+[meta]
+version = 1
+name = "Everforest Dark Medium"
+description = "Warm, earthy dark green theme with medium contrast"
+variant = "dark"
+
+[colors.core]
+background = "#2d353b"
+foreground = "#d3c6aa"
+secondary_background = "#343f44"
+border = "#475258"
+accent = "#a7c080"
+
+[colors.accents]
+blue = "#7fbbb3"
+green = "#a7c080"
+magenta = "#d699b6"
+orange = "#e69875"
+purple = "#d699b6"
+red = "#e67e80"
+yellow = "#dbbc7f"
+cyan = "#83c092"
+
+[colors.list.item.selection]
+background = { name = "#475258", opacity = 0.55 }
+secondary_background = "#3d484d"
+
+[colors.list.item.hover]
+background = { name = "#475258", opacity = 0.35 }
