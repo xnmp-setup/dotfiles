@@ -254,10 +254,12 @@ fi
 # Chrome keeps exactly one theme installed at a time and offers no way to
 # reload an unpacked theme from disk, so "switching" the theme really means
 # installing a different extension. The only silent, scriptable install path
-# is the per-user *external extension* mechanism: pack the theme directory
-# into a .crx signed with a per-machine key, then drop a descriptor into
-# <profile>/External Extensions/<id>.json. Chrome reads that at startup and
-# installs (or updates) the extension without any UI.
+# is the *external extension* mechanism: pack the theme directory into a
+# .crx signed with a per-machine key, then drop a descriptor where the
+# browser scans for external extensions (per-user "External Extensions" on
+# macOS and Chromium-branded builds; /usr/share/google-chrome/extensions for
+# branded Chrome on Linux). The browser reads that at startup and installs
+# (or updates) the extension without any UI.
 #
 # The signing key is generated once per machine and reused, which keeps the
 # extension ID stable — that is what makes every later switch an *update* of
@@ -347,11 +349,41 @@ else
   else
     mv -f "$chrome_staging.crx" "$chrome_crx"
 
-    # Browser profile roots, Linux (XDG) then macOS. Only existing dirs are
-    # touched, which is also how we avoid branching on the OS.
+    chrome_descriptor() {
+      cat > "$1" <<EOF
+{
+  "external_crx": "$chrome_crx",
+  "external_version": "$chrome_version"
+}
+EOF
+    }
+
     chrome_installed=()
-    for browser_dir in "$HOME/.config/google-chrome" \
-                       "$HOME/.config/chromium" \
+
+    # Google Chrome on Linux is the odd one out: chromium's chrome_paths.cc
+    # gates the per-user "External Extensions" dir to macOS and
+    # Chromium-branded builds, so branded Chrome only scans two root-owned
+    # dirs; /usr/share/google-chrome/extensions is the documented one. Chrome
+    # does not verify the owner (that check is compiled in on macOS only), so
+    # a one-time
+    #   sudo mkdir -p /usr/share/google-chrome/extensions
+    #   sudo chown $USER /usr/share/google-chrome/extensions
+    # makes every later switch here work without privileges.
+    chrome_sudo_hint=""
+    if [[ -d "$HOME/.config/google-chrome" ]]; then
+      gc_sys="/usr/share/google-chrome/extensions"
+      if [[ -w "$gc_sys" ]] || { [[ -e "$gc_sys/$chrome_id.json" && -w "$gc_sys/$chrome_id.json" ]]; }; then
+        chrome_descriptor "$gc_sys/$chrome_id.json"
+        chrome_installed+=("google-chrome")
+      else
+        chrome_sudo_hint="$gc_sys"
+      fi
+    fi
+
+    # Per-user profile roots that DO scan "External Extensions": every browser
+    # on macOS, and Chromium-branded builds on Linux. Only existing dirs are
+    # touched, which is also how we avoid branching on the OS.
+    for browser_dir in "$HOME/.config/chromium" \
                        "$HOME/.config/vivaldi" \
                        "$HOME/.config/microsoft-edge" \
                        "$HOME/.config/BraveSoftware/Brave-Browser" \
@@ -362,18 +394,18 @@ else
                        "$HOME/Library/Application Support/BraveSoftware/Brave-Browser"; do
       [[ -d "$browser_dir" ]] || continue
       mkdir -p "$browser_dir/External Extensions"
-      cat > "$browser_dir/External Extensions/$chrome_id.json" <<EOF
-{
-  "external_crx": "$chrome_crx",
-  "external_version": "$chrome_version"
-}
-EOF
+      chrome_descriptor "$browser_dir/External Extensions/$chrome_id.json"
       chrome_installed+=("$(basename "$browser_dir")")
     done
 
     echo "  ✓ Chrome → $title (applies at next browser launch)"
     reload+=("Chrome: applies at next launch (or via the restart prompt)")
-    if (( ${#chrome_installed[@]} == 0 )); then
+    if [[ -n "$chrome_sudo_hint" ]]; then
+      echo "    Google Chrome needs a ONE-TIME setup before it sees theme switches:"
+      echo "      sudo mkdir -p $chrome_sudo_hint && sudo chown $USER $chrome_sudo_hint"
+      echo "    then re-run set-theme $slug."
+    fi
+    if (( ${#chrome_installed[@]} == 0 )) && [[ -z "$chrome_sudo_hint" ]]; then
       echo "    (no Chromium-family browser profile found; .crx written anyway)"
     fi
     ((changed++))
