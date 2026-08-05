@@ -50,4 +50,19 @@ function M.active_gradient(angle)
     }
 end
 
+--- The groupbar's active-tab fill: a flat surface pill with a thin accent
+--- strip along its bottom edge, in the same accent the focused window border
+--- carries. The groupbar renders its fill as a vertical cairo ramp that
+--- ignores the angle and places the FIRST colour at the bottom, stops evenly
+--- spaced — so one accent stop under a run of surface stops reads as a flat
+--- pill with an accent bottom edge. The stop count sets the thickness: with
+--- N stops the pure-accent band is 1/(N+1) of the bar, so fifteen stops on a
+--- 24px bar is a ~1.5px strip with an equally short fade above it.
+--- @param alpha string|nil  alpha for the surface body of the pill
+function M.tab_active_fill(alpha)
+    local stops = { M.rgba(M.colors.accent) }
+    for _ = 1, 14 do stops[#stops + 1] = M.rgba(M.colors.surface, alpha) end
+    return { colors = stops, angle = 0 }
+end
+
 return M

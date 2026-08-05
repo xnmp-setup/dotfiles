@@ -149,17 +149,40 @@ hl.config({
         --
         -- height has to lead font_size: the strip does not grow to fit its text,
         -- so a font raised on its own is clipped top and bottom.
+        --
+        -- `gradients` is the tab FILL, not the colour wash it sounds like: off,
+        -- Hyprland paints no tab background at all, and the titles float on the
+        -- window's own blurred, translucent surface — unreadable over a bright
+        -- wallpaper. On, it paints the colours below, and since each is a
+        -- single stop the fill comes out flat.
+        --
+        -- Shape: floating translucent pills — gaps let the wallpaper breathe
+        -- between tabs, every corner rounded (round_only_edges would square
+        -- the corners where pills meet). The focused pill is near-opaque,
+        -- bold, and carries a thin accent strip along its bottom edge (see
+        -- theme.tab_active_fill); the indicator is off because it can only
+        -- draw a line BELOW the bar, under focused and unfocused tabs alike.
         groupbar = {
             enabled       = true,
-            font_size     = 14,
-            height        = 22,
+            font_size     = 12,
+            font_weight_active = "bold",
+            height        = 24,
             render_titles = true,
-            gradients     = false,
+            gradients     = true,
+            rounding          = 8,
+            gradient_rounding = 8,
+            gradient_round_only_edges = false,
+            round_only_edges = false,
+            gaps_in        = 6,
+            gaps_out       = 4,
+            keep_upper_gap = true,
+            indicator_height = 0,
+            indicator_gap    = 0,
             col = {
-                active          = theme.rgba(theme.colors.surface),
-                inactive        = theme.rgba(theme.colors.background, "ee"),
+                active          = theme.tab_active_fill("bb"),
+                inactive        = theme.rgba(theme.colors.background, "88"),
                 locked_active   = theme.rgba(theme.colors.accent, "55"),
-                locked_inactive = theme.rgba(theme.colors.background, "ee"),
+                locked_inactive = theme.rgba(theme.colors.background, "88"),
             },
             text_color                 = theme.rgba(theme.colors.text),
             text_color_inactive        = theme.rgba(theme.colors.text_dim),
