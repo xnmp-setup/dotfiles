@@ -1,0 +1,107 @@
+/**
+ * Nord Theme - Arctic, north-bluish clean palette
+ *
+ * Polar-night backgrounds, snow-storm text, frost accents, aurora status colors.
+ * All background values are opaque hex (no alpha) per operational rules.
+ *
+ * Key palette:
+ *   bg: #2e3440   panel: #3b4252   surface: #434c5e   border: #4c566a
+ *   accent: #88c0d0   frost: #8fbcbb #81a1c1 #5e81ac
+ *   aurora: red #bf616a, orange #d08770, yellow #ebcb8b, green #a3be8c, purple #b48ead
+ */
+
+[data-theme="nord"] {
+  color-scheme: dark;
+
+  /* Theme metadata */
+  --theme-name: "Nord";
+  --theme-description: "Arctic, north-bluish clean palette with frost accents";
+  --theme-order: 13;
+
+  /* Accent colors - frost cyan */
+  --accent: #88c0d0;
+  --accent-light: #a3d4dc;
+  --accent-dark: #5e81ac;
+
+  /* Text colors */
+  --text-primary: #eceff4;
+  --text-secondary: #d8dee9;
+  --text-tertiary: #616e88;
+  --text-on-accent: #2e3440;
+
+  /* Background colors - polar night.
+     Mapped like cosmic-dusk (not literal palette values): base is ~12%
+     darker than the canonical #2e3440 and cards are translucent nord1
+     overlays, so the rendered result under Hyprland's opacity-0.9
+     window rule matches the other Nord apps instead of reading lighter. */
+  --background-solid: #292e39;
+  --background-mica: #292e39;
+  --background-acrylic: rgba(46, 52, 64, 0.94);
+  --background-card: rgba(59, 66, 82, 0.5);
+  --background-card-secondary: rgba(52, 59, 74, 0.4);
+  --miller-bg: rgba(46, 52, 64, 0.5);
+  --content-bg: #292e39;
+
+  /* Surface/border colors - slate border */
+  --surface-stroke: rgba(76, 86, 106, 0.5);
+  --surface-stroke-flyout: rgba(76, 86, 106, 0.6);
+  --divider: rgba(76, 86, 106, 0.35);
+
+  /* Control/input backgrounds - frost cyan tint */
+  --control-fill: rgba(136, 192, 208, 0.08);
+  --control-fill-secondary: rgba(136, 192, 208, 0.12);
+  --control-fill-tertiary: rgba(136, 192, 208, 0.05);
+  --control-fill-disabled: rgba(136, 192, 208, 0.03);
+
+  /* Subtle hover/active fills - frost cyan */
+  --subtle-fill: transparent;
+  --subtle-fill-secondary: rgba(136, 192, 208, 0.12);
+  --subtle-fill-tertiary: rgba(136, 192, 208, 0.06);
+
+  /* Control borders - slate */
+  --control-stroke: rgba(76, 86, 106, 0.55);
+  --control-stroke-secondary: rgba(76, 86, 106, 0.35);
+
+  /* Address bar - frost cyan tint */
+  --address-bar-bg: rgba(136, 192, 208, 0.08);
+  --address-bar-stroke: rgba(76, 86, 106, 0.5);
+  --address-bar-highlight: rgba(136, 192, 208, 0.04);
+  --address-bar-bg-hover: rgba(136, 192, 208, 0.12);
+  --address-bar-stroke-hover: rgba(76, 86, 106, 0.65);
+
+  /* Focus indicators */
+  --focus-stroke-outer: #88c0d0;
+  --focus-stroke-inner: #2e3440;
+
+  /* System status colors - aurora */
+  --system-critical: #bf616a;
+  --system-success: #a3be8c;
+  --system-caution: #ebcb8b;
+
+  /* Shadows - near-black, deeper than polar night */
+  --shadow-flyout: 0 8px 24px rgba(20, 23, 28, 0.65), 0 2px 8px rgba(20, 23, 28, 0.4), 0 0 12px rgba(136, 192, 208, 0.04);
+  --shadow-dialog: 0 32px 64px rgba(20, 23, 28, 0.75), 0 4px 24px rgba(20, 23, 28, 0.45);
+  --shadow-tooltip: 0 4px 12px rgba(20, 23, 28, 0.55);
+  --shadow-card: 0 1px 4px rgba(20, 23, 28, 0.35), 0 0 1px rgba(20, 23, 28, 0.25), 0 0 8px rgba(136, 192, 208, 0.03);
+  --shadow-subtle: 0 1px 2px rgba(20, 23, 28, 0.25);
+
+  /* Mica overlay - frost/aurora wash */
+  --mica-overlay: linear-gradient(
+    170deg,
+    rgba(136, 192, 208, 0.03) 0%,
+    rgba(94, 129, 172, 0.03) 25%,
+    transparent 45%,
+    rgba(163, 190, 140, 0.02) 80%,
+    transparent 100%
+  );
+
+  /* Per-section opacity */
+  --sidebar-opacity: 1;
+  --toolbar-opacity: 1;
+  --content-opacity: 1;
+  --titlebar-opacity: 1;
+  --statusbar-opacity: 1;
+
+  /* Icon colors - frost blue folders */
+  --icon-folder: #5e81ac;
+}
