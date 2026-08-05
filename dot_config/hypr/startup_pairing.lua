@@ -42,8 +42,13 @@ function M.new(hl, options)
             state = "waiting-notes"
             hl.exec_cmd(notes_command, { workspace = workspace })
         elseif state == "waiting-notes" and opened.class == notes_class then
-            state = nil
-            hl.timer(function() merge(opened) end, {
+            -- Stay "in flight" until the merge fires: is_waiting() is how other
+            -- features (terminal grouping) know not to adopt these windows.
+            state = "merging"
+            hl.timer(function()
+                state = nil
+                merge(opened)
+            end, {
                 timeout = merge_delay,
                 type = "oneshot",
             })

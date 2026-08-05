@@ -458,6 +458,8 @@ do
         control.executions[1].options.workspace, "1")
 
     control.emit("window.open", notes)
+    check("startup pairing stays in flight until the merge fires",
+        pairing.is_waiting())
     check("startup merge waits for layout placement", control.run_timer(120))
     equal("startup pairing moves notes toward browser",
         control.dispatches[1].args.into_or_create_group, "left")
@@ -1116,6 +1118,29 @@ do
         not control.run_timer(80))
     equal("excluded terminal sources never group their child",
         #control.dispatches, 0)
+end
+
+do
+    local ws = { id = 1 }
+    local terminal = window("terminal", "org.wezfurlong.wezterm", ws, 0)
+    terminal.pid = 10
+    local chrome = window("chrome", "google-chrome", ws, 1)
+    chrome.pid = 99
+    local hl, control = fake_runtime({
+        active = terminal,
+        windows = { terminal, chrome },
+        workspace = ws,
+    })
+
+    terminal_groups.new(hl, {
+        suppress = function() return true end,
+        direction_towards = function() return "right" end,
+        parent_pid = function() return nil end,
+    })
+    control.emit("window.open", chrome)
+    check("suppressed windows do not schedule grouping",
+        not control.run_timer(80))
+    equal("suppressed windows are never grouped", #control.dispatches, 0)
 end
 
 --------------------------------------------------------------------------------

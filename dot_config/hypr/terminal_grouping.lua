@@ -37,6 +37,11 @@ function M.new(hl, options)
         or function() return false end
     local exclude_source = options.exclude_source
         or function() return false end
+    -- While true for an opening window, no grouping is attempted at all. The
+    -- startup sequence launches browser and notes itself and pairs them; the
+    -- focus fallback would otherwise adopt them into the startup terminal.
+    local suppress = options.suppress
+        or function() return false end
 
     local function is_terminal(window)
         return window and TERMINAL_CLASSES[window.class] == true
@@ -103,6 +108,7 @@ function M.new(hl, options)
 
     hl.on("window.open", function(window)
         if not (window and window.mapped) then return end
+        if suppress(window) then return end
         local source = launch_source(window)
         if not source then return end
 

@@ -254,6 +254,10 @@ local app_switcher = app_switchers.new(hl, window_actions, {
 terminal_groups.new(hl, {
     consume_managed_launch = app_switcher.consume_managed_launch,
     exclude_source = scratchpad.is_scratchpad,
+    -- At startup wezterm is the focused terminal when Chrome opens, so the
+    -- focus fallback would pull Chrome (and then Obsidian) into wezterm's
+    -- tile. The pairing sequence owns those windows; leave wezterm alone.
+    suppress = startup_pairing.is_waiting,
 })
 
 ---------------------
