@@ -1,6 +1,6 @@
 # Fast one-off shell questions. Commands are only prefilled for review; this
-# module never executes model-suggested commands. A bare `q` replays the
-# session's recent failed commands and asks for a corrected one.
+# module never executes model-suggested commands. A bare `q` sends the current
+# failure streak — commands, exit statuses, captured stderr — and prefills a fix.
 
 typeset -g Q_MODEL="${Q_MODEL:-gpt-5.6-luna}"
 
@@ -493,8 +493,66 @@ typeset -ga _Q_FAILURES
 typeset -gi _Q_MAX_FAILURES="${Q_MAX_FAILURES:-5}"
 typeset -g _q_last_command=''
 
+# Error output can only be captured while the command runs, so stderr is
+# mirrored through tee into a per-session file. Cost: for the command's
+# lifetime stderr is a pipe, not a tty, so tools that gate progress bars on
+# isatty(stderr) (git clone, curl) go quiet. Q_CAPTURE_STDERR=0 turns the
+# mirror off; the streak then records commands and exit statuses only.
+typeset -g Q_CAPTURE_STDERR="${Q_CAPTURE_STDERR:-1}"
+typeset -g _Q_STDERR_FILE="${XDG_CACHE_HOME:-$HOME/.cache}/quick-question/stderr-$$"
+typeset -gi _q_stderr_fd=0
+
+# For sub-second sleeps in the flush wait; degrades to `command sleep` below.
+zmodload zsh/zselect 2>/dev/null
+
 _q_capture_command() {
   _q_last_command="$1"
+
+  [[ "$Q_CAPTURE_STDERR" == 1 ]] && (( $+commands[tee] )) || return 0
+  [[ -d "${_Q_STDERR_FILE:h}" ]] || command mkdir -p -- "${_Q_STDERR_FILE:h}" 2>/dev/null || return 0
+  command rm -f -- "$_Q_STDERR_FILE.done" 2>/dev/null
+
+  # Two statements: the tee redirection references the fd the first one opens.
+  # The .done flag marks tee's flush as complete; zsh does not put the process
+  # substitution's pid in $!, so completion is signalled through the filesystem.
+  exec {_q_stderr_fd}>&2 || return 0
+  exec 2> >(command tee -- "$_Q_STDERR_FILE" >&$_q_stderr_fd; : >| "$_Q_STDERR_FILE.done")
+}
+
+_q_restore_stderr() {
+  (( _q_stderr_fd )) || return 0
+  exec 2>&$_q_stderr_fd {_q_stderr_fd}>&-
+  _q_stderr_fd=0
+}
+
+# Tail of the captured stderr, ANSI escapes stripped, empty when nothing was
+# captured (mirror off, tee missing, or the command wrote nothing). Runs only
+# on the failure path, after _q_restore_stderr has closed the shell's end of
+# the pipe, so tee normally exits within a scheduling quantum. The wait is
+# bounded because a background job holding the mirrored fd keeps tee alive
+# indefinitely, and this must never hang the prompt.
+_q_failure_output() {
+  emulate -L zsh
+  setopt extended_glob
+
+  local -i tries=5
+  while (( tries-- )) && [[ ! -e "$_Q_STDERR_FILE.done" ]]; do
+    if (( $+builtins[zselect] )); then
+      zselect -t 1   # centiseconds
+    else
+      command sleep 0.01
+    fi
+  done
+
+  [[ -s "$_Q_STDERR_FILE" ]] || return 0
+  local out="$(command tail -c 2048 -- "$_Q_STDERR_FILE" 2>/dev/null)"
+  out="${out//$'\e'\[[0-9;]#[[:alpha:]]/}"
+  out="${out//$'\r'/}"
+  print -r -- "$out"
+}
+
+_q_cleanup_stderr_file() {
+  command rm -f -- "$_Q_STDERR_FILE" "$_Q_STDERR_FILE.done" 2>/dev/null
 }
 
 # Runs first in precmd (prepended below) so $? is still the command's own
@@ -504,6 +562,7 @@ _q_record_failure() {
   local -i code=$?
   local cmd="$_q_last_command"
   _q_last_command=''
+  _q_restore_stderr
 
   # Only the streak of failures leading up to the current prompt is kept: any
   # successful command resets the buffer. 130/148 are Ctrl-C and Ctrl-Z — user
@@ -515,7 +574,10 @@ _q_record_failure() {
     if (( code == 0 )); then
       _Q_FAILURES=()
     elif (( code != 130 && code != 148 )); then
-      _Q_FAILURES+=("exit $code: $cmd")
+      local entry="\$ $cmd"$'\n'"exit $code"
+      local output="$(_q_failure_output)"
+      [[ -n "$output" ]] && entry+=$'\n'"$output"
+      _Q_FAILURES+=("$entry")
       (( $#_Q_FAILURES > _Q_MAX_FAILURES )) && shift _Q_FAILURES
     fi
   fi
@@ -531,15 +593,10 @@ _q_fix_last_failure() {
     return 1
   fi
 
-  print -u2 -- "q: failures since the last success (oldest first):"
-  local entry
-  for entry in "${_Q_FAILURES[@]}"; do
-    print -u2 -- "  $entry"
-  done
+  # No replay: the failures are already on the user's screen just above.
+  local query="These Zsh commands all failed in a row, oldest first — my consecutive attempts at the same goal. Each entry is the command (after \$), its exit status, and the error output it printed, when captured:
 
-  local query="These Zsh commands all failed in a row, oldest first, each prefixed with its exit status. They are my consecutive attempts at the same goal:
-
-${(F)_Q_FAILURES}
+${(pj:\n\n:)_Q_FAILURES}
 
 Return a corrected version of the most recent failed command that should succeed. Use the earlier failures only as context for what I am trying to do."
 
@@ -581,4 +638,5 @@ alias qq='_quick_answer'
 # $? (p10k is sourced earlier and appends), so prepend rather than add-zsh-hook.
 autoload -Uz add-zsh-hook
 add-zsh-hook preexec _q_capture_command
+add-zsh-hook zshexit _q_cleanup_stderr_file
 precmd_functions=(_q_record_failure ${precmd_functions:#_q_record_failure})
