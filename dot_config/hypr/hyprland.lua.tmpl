@@ -288,6 +288,10 @@ hl.bind(mainMod .. " + down",  hl.dsp.focus({ direction = "down" }))
 -- pressing right walks: swap with sibling -> pop out of the group -> cross the
 -- row -> join the next neighbour -> swap inside it -> pop out again -> off the
 -- edge onto the next monitor.
+-- A lone window has no slots, so the same keys work a half-screen ladder
+-- instead: half-left <- full -> half-right (top/bottom vertically), the empty
+-- half showing wallpaper; pressing into the side it already occupies steps off
+-- the edge onto the next monitor, same as above.
 hl.bind(mainMod .. " + CTRL + left",  navigation.untab_or_step("left"))
 hl.bind(mainMod .. " + CTRL + right", navigation.untab_or_step("right"))
 hl.bind(mainMod .. " + CTRL + up",    navigation.untab_or_step("up"))

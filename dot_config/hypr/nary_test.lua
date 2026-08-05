@@ -903,6 +903,104 @@ do
 end
 
 --------------------------------------------------------------------------------
+-- Half-screen: a lone tile shoved to one side, the other half left empty
+--------------------------------------------------------------------------------
+
+local function box_of(boxes, id)
+    local b = boxes[id]
+    if not b then return "?" end
+    return string.format("%d,%d %dx%d",
+        math.floor(b.x + 0.5), math.floor(b.y + 0.5),
+        math.floor(b.w + 0.5), math.floor(b.h + 0.5))
+end
+
+do
+    nary.state.trees[KEY]  = nil
+    nary.state.halves[KEY] = nil
+    local ctx, boxes = geometry({ "1" }, "1")
+    nary.recalculate(ctx)
+    check("a lone window starts full-screen", box_of(boxes, "1"), "0,0 1000x400")
+
+    nary.dispatch(ctx, "move l")
+    nary.recalculate(ctx)
+    check("move shoves a lone window into that half", box_of(boxes, "1"), "0,0 500x400")
+
+    local shoved = nary.shape(KEY)
+    nary.dispatch(ctx, "move l")
+    nary.recalculate(ctx)
+    check("pressing into the occupied side changes neither the geometry...",
+        box_of(boxes, "1"), "0,0 500x400")
+    check("...nor the shape, so the config crosses monitors",
+        nary.shape(KEY), shoved)
+
+    nary.dispatch(ctx, "move r")
+    nary.recalculate(ctx)
+    check("the opposite direction restores full-screen", box_of(boxes, "1"), "0,0 1000x400")
+
+    nary.dispatch(ctx, "move r")
+    nary.recalculate(ctx)
+    check("and past full-screen lands in the far half", box_of(boxes, "1"), "500,0 500x400")
+
+    nary.dispatch(ctx, "move u")
+    nary.recalculate(ctx)
+    check("a perpendicular press slides it to that side", box_of(boxes, "1"), "0,0 1000x200")
+end
+
+do
+    -- A half step must read as a change of shape, not as "no room left":
+    -- otherwise the config would both shove the window AND cross monitors.
+    nary.state.trees[KEY]  = nil
+    nary.state.halves[KEY] = nil
+    local ctx = geometry({ "1" }, "1")
+    nary.recalculate(ctx)
+    local before = nary.shape(KEY)
+    nary.dispatch(ctx, "move l")
+    check("a half step changes the shape", nary.shape(KEY) ~= before, true)
+end
+
+do
+    -- A tabbed group is one tile, so a lone strip is shoved the same way.
+    nary.state.trees[KEY]  = nil
+    nary.state.halves[KEY] = nil
+    local ctx, boxes = geometry({ { "1", "9" } }, "1")
+    nary.recalculate(ctx)
+    nary.dispatch(ctx, "move r")
+    nary.recalculate(ctx)
+    check("a lone tab strip is shoved as one tile", box_of(boxes, "1"), "500,0 500x400")
+end
+
+do
+    -- A second window arriving dissolves the half: both tile the full area.
+    nary.state.trees[KEY]  = nil
+    nary.state.halves[KEY] = nil
+    local ctx = geometry({ "1" }, "1")
+    nary.recalculate(ctx)
+    nary.dispatch(ctx, "move l")
+    local ctx2, boxes2 = geometry({ "1", "2" }, "1")
+    nary.recalculate(ctx2)
+    check("a second window dissolves the half", widths(boxes2, "1", "2"), "500 500")
+    check("and both span the full height", heights(boxes2, "1", "2"), "400 400")
+
+    -- ...and the state is gone for good: back to one window is full-screen.
+    local ctx3, boxes3 = geometry({ "1" }, "1")
+    nary.recalculate(ctx3)
+    check("closing back to one window is full-screen again", box_of(boxes3, "1"), "0,0 1000x400")
+end
+
+do
+    -- The state is tied to the window it was set for, not to the workspace: a
+    -- different window opening on a workspace left in a half must not inherit it.
+    nary.state.trees[KEY]  = nil
+    nary.state.halves[KEY] = nil
+    local ctx = geometry({ "1" }, "1")
+    nary.recalculate(ctx)
+    nary.dispatch(ctx, "move l")
+    local ctx2, boxes2 = geometry({ "2" }, "2")
+    nary.recalculate(ctx2)
+    check("a stale half does not ambush the next window", box_of(boxes2, "2"), "0,0 1000x400")
+end
+
+--------------------------------------------------------------------------------
 
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)

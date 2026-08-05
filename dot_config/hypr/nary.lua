@@ -108,7 +108,13 @@
 --
 -- Registered as "nary"; activate with general.layout = "lua:nary".
 -- Commands (via hl.dsp.layout("<cmd>")):
---   move l|r|u|d    step the focused window one insertion slot along an axis
+--   move l|r|u|d    step the focused window one insertion slot along an axis.
+--                   A LONE tile has no slots to step through, so move shoves it
+--                   to that half of the workspace instead, the other half left
+--                   empty: half-left <- full -> half-right (and top/bottom
+--                   vertically). Pressing into a side it already occupies
+--                   changes nothing, which the config reads as "no room left"
+--                   and spends on crossing to the next monitor.
 --   undo            walk back the last move on this workspace
 --   hold            photograph this workspace, before a window leaves the
 --                   tiling altogether (floated to be spotlit, say)
@@ -136,7 +142,10 @@
 -- held is one photograph per workspace, taken before a window is pulled out of
 -- the tiling entirely (floated for a spotlight) so it can be put back where it
 -- was rather than wherever an arrival lands. See `hold`.
-local state = { trees = {}, pending = {}, history = {}, held = {} }
+-- halves is the half-screen state of a workspace whose layout is a single
+-- tile: which side that tile is shoved to, and which window it was — so the
+-- state dies with the window instead of ambushing whatever opens there next.
+local state = { trees = {}, pending = {}, history = {}, held = {}, halves = {} }
 
 -- history is the undo trail, one stack per workspace: the layout as it stood
 -- before each move, newest last. Deep enough to walk back a whole session's
@@ -810,6 +819,48 @@ end
 local AXIS  = { l = "h", r = "h", u = "v", d = "v" }
 local DELTA = { l = -1,  r = 1,   u = -1,  d = 1 }
 
+--------------------------------------------------------------------------------
+-- Half-screen: a lone tile shoved to one side, the other side bare wallpaper
+--------------------------------------------------------------------------------
+
+local OPPOSITE  = { l = "r", r = "l", u = "d", d = "u" }
+local HALF_SIDE = { l = "left", r = "right", u = "top", d = "bottom" }
+
+-- The tile this state can apply to: the tree is exactly one leaf (a tabbed
+-- group still counts — it is one tile). Anything else has real slots to step
+-- through and no empty half to speak of.
+local function lone_tile(root)
+    local child = root.children[1]
+    return (#root.children == 1 and is_leaf(child)) and child or nil
+end
+
+-- The workspace's half state, if it still describes what is on screen. The
+-- state names the window it was set for; a second window arriving, or the
+-- window being replaced by another, invalidates it — checked (and cleared)
+-- here rather than on every event that could change the tree.
+local function half_for(key, root)
+    local half = state.halves[key]
+    if not half then return nil end
+    local tile = lone_tile(root)
+    if tile and leaf_holds(tile, half.id) then return half end
+    state.halves[key] = nil
+    return nil
+end
+
+-- One step of the half ladder: half-left <- full -> half-right (top/bottom
+-- vertically). A press into the side already occupied changes nothing, and a
+-- perpendicular press slides the tile to that side directly.
+local function step_half(key, root, dir)
+    local tile = lone_tile(root)
+    local half = half_for(key, root)
+    if half and half.dir == dir then return end
+    if half and half.dir == OPPOSITE[dir] then
+        state.halves[key] = nil
+    else
+        state.halves[key] = { dir = dir, id = tile.id }
+    end
+end
+
 local function history_for(key)
     local hist = state.history[key]
     if not hist then
@@ -853,6 +904,14 @@ local function cmd_move(root, key, ctx, dir)
 
     local id = active_id(ctx)
     if not id then return true end
+
+    -- A lone tile has no slots to step through; the move works the half-screen
+    -- ladder instead. Its state changes shape() (see below), which is how the
+    -- config tells a half step from "no room left, cross to the next monitor".
+    if lone_tile(root) then
+        step_half(key, root, dir)
+        return true
+    end
 
     local current = canon(root)
     local hist    = history_for(key)
@@ -1239,8 +1298,11 @@ local function end_move()
 end
 
 local function recalculate(ctx)
-    local root, place = reconcile(ctx, true)
-    layout_node(ctx, root, ctx.area, place)
+    local root, place, key = reconcile(ctx, true)
+    local area = ctx.area
+    local half = half_for(key, root)
+    if half then area = ctx:split(area, HALF_SIDE[half.dir], 0.5) end
+    layout_node(ctx, root, area, place)
 end
 
 -- Exposed for the offline test harness, plus the two the config itself uses:
@@ -1256,7 +1318,12 @@ local M = {
     end_move    = end_move,
     shape       = function(key)
         local root = state.trees[key]
-        return root and canon(root) or ""
+        if not root then return "" end
+        -- The half state is part of the rendered layout, so it is part of the
+        -- shape: a half step must not read as "nothing changed, cross
+        -- monitors" to the config.
+        local half = state.halves[key]
+        return canon(root) .. (half and (" half:" .. half.dir) or "")
     end,
     -- The full pass, so tests can assert on the geometry windows are given
     -- rather than on the shape of the tree behind it.
