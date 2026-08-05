@@ -158,31 +158,40 @@ hl.config({
         --
         -- Shape: floating translucent pills — gaps let the wallpaper breathe
         -- between tabs, every corner rounded (round_only_edges would square
-        -- the corners where pills meet). The focused pill is near-opaque,
-        -- bold, and carries a thin accent strip along its bottom edge (see
-        -- theme.tab_active_fill); the indicator is off because it can only
-        -- draw a line BELOW the bar, under focused and unfocused tabs alike.
+        -- the corners where pills meet). The focused pill is opaque, bold,
+        -- and extends down to touch the window; unfocused pills float.
+        -- gaps_out can't do that per-tab, so it is 0 (bar flush with the
+        -- window) and theme.tab_fill carves the float gap back into each
+        -- unfocused fill with transparent gradient stops.
+        --
+        -- A carved edge is square and a real edge is rounded, so the focused
+        -- pill's real bottom corners leave round notches against the window.
+        -- The indicator patches them: it draws BENEATH each tab's gradient in
+        -- that fill's FIRST gradient stop, and the negative indicator_gap
+        -- pulls the gradient down over it, so it only shows through the
+        -- notches — squaring them off. Detached fills start transparent, so
+        -- their strip is invisible. The focused body must be opaque ("ff"):
+        -- anything less double-blends with its own strip into a darker band.
         groupbar = {
             enabled       = true,
             font_size     = 12,
             font_weight_active = "bold",
-            height        = 24,
+            height        = 28,
             render_titles = true,
             gradients     = true,
-            rounding          = 8,
+            rounding          = 0,
             gradient_rounding = 8,
             gradient_round_only_edges = false,
             round_only_edges = false,
             gaps_in        = 6,
-            gaps_out       = 4,
-            keep_upper_gap = true,
-            indicator_height = 0,
-            indicator_gap    = 0,
+            gaps_out       = 0,
+            indicator_height = 8,
+            indicator_gap    = -8,
             col = {
-                active          = theme.tab_active_fill("bb"),
-                inactive        = theme.rgba(theme.colors.background, "88"),
-                locked_active   = theme.rgba(theme.colors.accent, "55"),
-                locked_inactive = theme.rgba(theme.colors.background, "88"),
+                active          = theme.tab_fill(theme.colors.surface, "ff", false),
+                inactive        = theme.tab_fill(theme.colors.background, "88", true),
+                locked_active   = theme.tab_fill(theme.colors.accent, "ff", false),
+                locked_inactive = theme.tab_fill(theme.colors.background, "88", true),
             },
             text_color                 = theme.rgba(theme.colors.text),
             text_color_inactive        = theme.rgba(theme.colors.text_dim),
@@ -438,6 +447,8 @@ hl.bind(mainMod .. " + CTRL + Prior", hl.dsp.group.prev())
 hl.bind(mainMod .. " + CTRL + Next",  hl.dsp.group.next())
 hl.bind(mainMod .. " + ALT + Prior",  hl.dsp.group.prev())
 hl.bind(mainMod .. " + ALT + Next",   hl.dsp.group.next())
+hl.bind("CTRL + SHIFT + Prior",       hl.dsp.group.prev())
+hl.bind("CTRL + SHIFT + Next",        hl.dsp.group.next())
 
 -- Unfold every tab strip on the workspace into panes; selecting a pane folds
 -- them back with that one showing.

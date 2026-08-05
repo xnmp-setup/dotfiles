@@ -50,18 +50,28 @@ function M.active_gradient(angle)
     }
 end
 
---- The groupbar's active-tab fill: a flat surface pill with a thin accent
---- strip along its bottom edge, in the same accent the focused window border
---- carries. The groupbar renders its fill as a vertical cairo ramp that
---- ignores the angle and places the FIRST colour at the bottom, stops evenly
---- spaced — so one accent stop under a run of surface stops reads as a flat
---- pill with an accent bottom edge. The stop count sets the thickness: with
---- N stops the pure-accent band is 1/(N+1) of the bar, so fifteen stops on a
---- 24px bar is a ~1.5px strip with an equally short fade above it.
---- @param alpha string|nil  alpha for the surface body of the pill
-function M.tab_active_fill(alpha)
-    local stops = { M.rgba(M.colors.accent) }
-    for _ = 1, 14 do stops[#stops + 1] = M.rgba(M.colors.surface, alpha) end
+--- A groupbar tab fill. The groupbar renders its fill as a vertical cairo
+--- ramp stretched over the tab rect: the angle is ignored, the FIRST colour
+--- lands at the bottom, stops are evenly spaced, and the ramp pads past its
+--- end stops. Transparent stops carve gaps into the fill — the only per-tab
+--- shaping there is, since gaps_out is global to the bar — but a carved edge
+--- is always square; only the rect's real edges get gradient_rounding. So
+--- pills keep their real (rounded) top, and only the bottom is ever carved:
+--- a `detached` tab gets transparent bottom stops (~4px of the bar) so its
+--- pill floats above the window, while the focused tab keeps its body all
+--- the way down and touches it. The FIRST stop doubles as the colour of the
+--- indicator strip tucked under the pill (see the groupbar comment in
+--- hyprland.lua): opaque there it squares the focused pill's bottom
+--- corners; transparent here it vanishes under detached pills.
+--- @param hex string        body colour of the pill
+--- @param alpha string|nil  alpha for the body of the pill
+--- @param detached boolean  lift the pill off the window's top edge
+function M.tab_fill(hex, alpha, detached)
+    local clear, body = M.rgba(hex, "00"), M.rgba(hex, alpha)
+    local stops = {}
+    for i = 1, 16 do
+        stops[i] = (detached and i <= 2) and clear or body
+    end
     return { colors = stops, angle = 0 }
 end
 
