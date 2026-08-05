@@ -82,6 +82,9 @@ theme_is_light() {
 title=$(title_case "$slug")
 changed=0
 skipped=()
+# Reload hints, appended only by sections that actually changed something, so
+# the summary reflects what happened rather than listing every known app.
+reload=()
 
 echo "Switching all apps to: $title ($slug)"
 
@@ -91,10 +94,12 @@ if [[ -f "$config" ]]; then
   if grep -q "^theme = " "$config"; then
     sed -i "s/^theme = .*/theme = $title/" "$config"
     echo "  ✓ Ghostty → $title"
+    reload+=("Ghostty: Ctrl+Shift+,")
     ((changed++))
   else
     echo "theme = $title" >> "$config"
     echo "  ✓ Ghostty → $title (appended)"
+    reload+=("Ghostty: Ctrl+Shift+,")
     ((changed++))
   fi
 else
@@ -102,25 +107,56 @@ else
 fi
 
 # --- WezTerm ---
-# Schemes are defined inline in config.color_schemes — historically in
-# wezterm.lua, now in wezterm_appearance.lua — so check both and only switch
-# when the requested theme actually exists in the file that holds the
-# color_scheme line. The sed keeps the line's indentation: inside the
-# appearance module the assignment is indented.
+# Schemes come from two places: inline entries in config.color_schemes —
+# historically in wezterm.lua, now in wezterm_appearance.lua — and WezTerm's
+# builtin scheme collection. Check the inline table first, then ask wezterm
+# itself for a builtin matching "$title" (builtin names vary per wezterm
+# version, so probe rather than hardcode). The comparison ignores case and
+# punctuation, and tolerates a source-collection suffix, so "Everforest Dark
+# Medium" finds "Everforest Dark Medium (Gogh)". The match is smuggled out
+# through the Lua error message because show-keys has no other output channel.
+# Prints the builtin's real name on success. The sed keeps the line's
+# indentation: inside the appearance module the assignment is indented.
+wez_builtin_scheme() {
+  command -v wezterm &>/dev/null || return 1
+  local want
+  want=$(echo "$1" | tr '[:upper:]' '[:lower:]' | tr -cs '[:alnum:]' ' ' | sed 's/^ *//; s/ *$//')
+  # wezterm exits non-zero because the probe's error() "fails" the config
+  # override — that is expected, so mask it under pipefail; grep's status
+  # (match found or not) is the function's result.
+  { wezterm --config-file /dev/null --config "status_update_interval=(function()
+    local schemes = wezterm.color.get_builtin_schemes()
+    local function norm(s) return (s:lower():gsub('%W+',' '):gsub('^ +',''):gsub(' +$','')) end
+    for _, suffix in ipairs({'', ' gogh', ' base16', ' terminal sexy'}) do
+      for k in pairs(schemes) do
+        if norm(k) == '$want'..suffix then error('WEZMATCH<'..k..'>') end
+      end
+    end
+    error('WEZNOMATCH')
+  end)()" show-keys 2>&1 || true; } | grep -m1 -oP 'WEZMATCH<\K[^>]+'
+}
 wez_done=0
 for config in "$HOME/.config/wezterm/wezterm_appearance.lua" \
               "$HOME/.config/wezterm/wezterm.lua"; do
   [[ -f "$config" ]] || continue
-  if grep -qF "['$title']" "$config" && grep -q "config\.color_scheme = " "$config"; then
-    sed -i "s|^\(\s*\)config\.color_scheme = .*|\1config.color_scheme = '$title'|" "$config"
-    echo "  ✓ WezTerm → $title ($(basename "$config"))"
+  grep -q "config\.color_scheme = " "$config" || continue
+  wez_scheme=""
+  if grep -qF "['$title']" "$config"; then
+    wez_scheme="$title"
+  else
+    wez_scheme=$(wez_builtin_scheme "$title") || wez_scheme=""
+  fi
+  if [[ -n "$wez_scheme" ]]; then
+    sed -i "s|^\(\s*\)config\.color_scheme = .*|\1config.color_scheme = '$wez_scheme'|" "$config"
+    echo "  ✓ WezTerm → $wez_scheme ($(basename "$config"))"
+    reload+=("WezTerm: Ctrl+Shift+, (reloads config)")
     ((changed++))
     wez_done=1
-    break
   fi
+  break
 done
 if (( ! wez_done )); then
-  skipped+=("WezTerm (no '$title' scheme defined in wezterm config)")
+  skipped+=("WezTerm (no '$title' scheme inline in wezterm config or in wezterm's builtins)")
 fi
 
 # --- Lite XL ---
@@ -129,12 +165,14 @@ if [[ -f "$config" ]]; then
   if grep -q 'core.reload_module("colors\.' "$config"; then
     sed -i "s|core.reload_module(\"colors\.[^\"]*\")|core.reload_module(\"colors.$slug\")|" "$config"
     echo "  ✓ Lite XL → colors.$slug"
+    reload+=("Lite XL: relaunch")
     ((changed++))
   elif grep -q 'load_first_theme {' "$config"; then
     # init.lua now loads themes through a fallback list; the requested theme
     # goes first and the existing fallbacks keep a missing file from aborting.
     sed -i "s|load_first_theme { \"[^\"]*\"|load_first_theme { \"$slug\"|" "$config"
     echo "  ✓ Lite XL → $slug (load_first_theme)"
+    reload+=("Lite XL: relaunch")
     ((changed++))
   else
     skipped+=("Lite XL (no colors.* line in init.lua)")
@@ -149,6 +187,7 @@ if [[ -f "$config" ]]; then
   if grep -q '"colorscheme"' "$config"; then
     sed -i "s|\"colorscheme\": \"[^\"]*\"|\"colorscheme\": \"$slug\"|" "$config"
     echo "  ✓ Micro → $slug"
+    reload+=("Micro: relaunch")
     ((changed++))
   else
     skipped+=("Micro (no colorscheme key in settings.json)")
@@ -163,6 +202,7 @@ if [[ -f "$config" ]]; then
   if grep -q '"workbench.colorTheme"' "$config"; then
     sed -i "s|\"workbench.colorTheme\": \"[^\"]*\"|\"workbench.colorTheme\": \"$title\"|" "$config"
     echo "  ✓ VS Code → $title"
+    reload+=("VS Code: restart (new extensions need full restart)")
     ((changed++))
   else
     skipped+=("VS Code (no workbench.colorTheme in settings.json)")
@@ -182,6 +222,7 @@ if [[ -f "$config" ]]; then
     sed -i "s|\"cssTheme\": \"[^\"]*\"|\"cssTheme\": \"$title\"|" "$config"
     sed -i "s|\"theme\": \"[^\"]*\"|\"theme\": \"$obs_mode\"|" "$config"
     echo "  ✓ Obsidian → $title ($obs_mode)"
+    reload+=("Obsidian: restart or toggle in Appearance")
     ((changed++))
   else
     skipped+=("Obsidian (no cssTheme key in appearance.json)")
@@ -197,6 +238,7 @@ if [[ -f "$config" ]] && command -v jq &>/dev/null; then
   if jq --arg t "$slug" '.theme = $t' "$config" > "$tmp" 2>/dev/null; then
     mv "$tmp" "$config"
     echo "  ✓ Tauri Explorer → $slug"
+    reload+=("Tauri Explorer: relaunch")
     ((changed++))
   else
     rm -f "$tmp"
@@ -209,75 +251,161 @@ else
 fi
 
 # --- Chrome ---
-# Chrome has no CLI for themes, so the switch goes through a helper extension
-# (~/.local/share/chrome-themes/theme-switcher) that talks to a native
-# messaging host (~/.local/bin/chrome-theme-switcher-host, both shipped by
-# chezmoi). All this section does is install the host manifest for whichever
-# Chromium-family browsers are present and write the state file the host
-# watches; the extension then enables the theme whose name matches $title.
-# Everything here degrades to a no-op if the browser or the extension is not
-# installed — the files are just left on disk.
+# Chrome keeps exactly one theme installed at a time and offers no way to
+# reload an unpacked theme from disk, so "switching" the theme really means
+# installing a different extension. The only silent, scriptable install path
+# is the per-user *external extension* mechanism: pack the theme directory
+# into a .crx signed with a per-machine key, then drop a descriptor into
+# <profile>/External Extensions/<id>.json. Chrome reads that at startup and
+# installs (or updates) the extension without any UI.
+#
+# The signing key is generated once per machine and reused, which keeps the
+# extension ID stable — that is what makes every later switch an *update* of
+# the same extension rather than a fresh install.
+#
+# Two constraints follow from the mechanism and cannot be worked around:
+#   1. a theme change only lands when the browser next launches (hence the
+#      optional restart prompt at the end of this section);
+#   2. the very first install on a machine is a genuinely new extension, so
+#      Chrome may show a one-time consent/"added to Chrome" bubble. Every
+#      switch after that is silent, because it is an update.
 chrome_theme_dir="$HOME/chrome-themes-$slug"
 # Also check alternate location
 [[ ! -d "$chrome_theme_dir" ]] && chrome_theme_dir="$HOME/.local/share/chrome-themes/$slug"
-if [[ -d "$chrome_theme_dir" ]]; then
-  # Fixed ID of the helper extension: it is derived from the "key" embedded in
-  # its manifest.json, so it is the same on every machine. Changing that key
-  # changes this ID.
-  chrome_ext_id="fnicgaoklanobahpnhaadhhedpaibnoo"
-  chrome_host_bin="$HOME/.local/bin/chrome-theme-switcher-host"
-  chrome_host_json=$(cat <<EOF
+
+# First Chromium-family binary on PATH. It is both the packer (--pack-extension
+# is a short-lived mode that works alongside a running browser) and, if the
+# restart prompt is accepted, the browser we relaunch.
+chrome_bin=""
+for c in google-chrome-stable google-chrome chromium chromium-browser \
+         vivaldi microsoft-edge brave; do
+  chrome_bin=$(command -v "$c" 2>/dev/null) && break
+  chrome_bin=""
+done
+
+if [[ ! -d "$chrome_theme_dir" ]]; then
+  skipped+=("Chrome (no theme dir found for $slug)")
+elif [[ -z "$chrome_bin" ]]; then
+  skipped+=("Chrome (no Chromium-family browser on PATH to pack the theme)")
+elif ! command -v openssl &>/dev/null; then
+  skipped+=("Chrome (openssl not installed; needed to sign the .crx)")
+else
+  chrome_state="${XDG_STATE_HOME:-$HOME/.local/state}/chrome-theme"
+  chrome_staging="$chrome_state/staging"
+  chrome_key="$chrome_state/key.pem"
+  chrome_crx="$chrome_state/current.crx"
+  mkdir -p "$chrome_state"
+
+  # Fresh staging copy every run. "Cached Theme.pak" is a Chrome-side artefact
+  # that ends up in the source dir once a theme has been installed; a stale one
+  # inside the .crx would win over the manifest's colours.
+  rm -rf "$chrome_staging" "$chrome_staging.crx"
+  cp -r "$chrome_theme_dir" "$chrome_staging"
+  rm -f "$chrome_staging/Cached Theme.pak"
+
+  # Chrome only installs an external extension whose version is newer than the
+  # installed one, so the version has to climb on every switch. Each dotted
+  # component must be an integer 0-65535: the date parts are reduced to plain
+  # integers (0805 -> 805, so no leading zeros) and the counter wraps far below
+  # the limit while still breaking ties within the same minute.
+  chrome_seq=$(( ( $(cat "$chrome_state/seq" 2>/dev/null || echo 0) + 1 ) % 65536 ))
+  printf '%s\n' "$chrome_seq" > "$chrome_state/seq"
+  chrome_version="$(date +%Y).$((10#$(date +%m%d))).$((10#$(date +%H%M))).$chrome_seq"
+
+  chrome_manifest="$chrome_staging/manifest.json"
+  if command -v jq &>/dev/null; then
+    tmp=$(mktemp)
+    jq --arg v "$chrome_version" '.version = $v' "$chrome_manifest" > "$tmp" \
+      && mv "$tmp" "$chrome_manifest" || rm -f "$tmp"
+  else
+    sed -i "s|\"version\"\s*:\s*\"[^\"]*\"|\"version\": \"$chrome_version\"|" "$chrome_manifest"
+  fi
+  # Read the version back out: the descriptor's external_version must match the
+  # packed manifest exactly or Chrome silently ignores the descriptor.
+  chrome_version=$(grep -oP '"version"\s*:\s*"\K[^"]+' "$chrome_manifest" | head -1)
+
+  # One RSA key per machine, never rotated — rotating it changes the extension
+  # ID and turns the next switch back into a first install.
+  if [[ ! -f "$chrome_key" ]]; then
+    (umask 077; openssl genrsa -out "$chrome_key" 2048 &>/dev/null)
+    chmod 600 "$chrome_key"
+  fi
+
+  # Extension ID: SHA-256 of the DER-encoded public key, first 16 bytes, hex
+  # digits remapped 0-f -> a-p (Chrome's mpdecimal-ish alphabet).
+  chrome_id=$(openssl rsa -in "$chrome_key" -pubout -outform DER 2>/dev/null \
+    | openssl dgst -sha256 -binary \
+    | head -c 16 | od -An -vtx1 | tr -d ' \n' | tr '0-9a-f' 'a-p')
+
+  # --pack-extension runs headless and exits; it does not contend with a
+  # running browser's profile singleton.
+  chrome_pack_out=$("$chrome_bin" --pack-extension="$chrome_staging" \
+    --pack-extension-key="$chrome_key" --no-message-box 2>&1)
+
+  if [[ ! -s "$chrome_staging.crx" || ${#chrome_id} -ne 32 ]]; then
+    skipped+=("Chrome (packing failed: ${chrome_pack_out:-no .crx produced})")
+  else
+    mv -f "$chrome_staging.crx" "$chrome_crx"
+
+    # Browser profile roots, Linux (XDG) then macOS. Only existing dirs are
+    # touched, which is also how we avoid branching on the OS.
+    chrome_installed=()
+    for browser_dir in "$HOME/.config/google-chrome" \
+                       "$HOME/.config/chromium" \
+                       "$HOME/.config/vivaldi" \
+                       "$HOME/.config/microsoft-edge" \
+                       "$HOME/.config/BraveSoftware/Brave-Browser" \
+                       "$HOME/Library/Application Support/Google/Chrome" \
+                       "$HOME/Library/Application Support/Chromium" \
+                       "$HOME/Library/Application Support/Vivaldi" \
+                       "$HOME/Library/Application Support/Microsoft Edge" \
+                       "$HOME/Library/Application Support/BraveSoftware/Brave-Browser"; do
+      [[ -d "$browser_dir" ]] || continue
+      mkdir -p "$browser_dir/External Extensions"
+      cat > "$browser_dir/External Extensions/$chrome_id.json" <<EOF
 {
-  "name": "com.chong.theme_switcher",
-  "description": "Desktop theme switcher host for set-theme",
-  "path": "$chrome_host_bin",
-  "type": "stdio",
-  "allowed_origins": ["chrome-extension://$chrome_ext_id/"]
+  "external_crx": "$chrome_crx",
+  "external_version": "$chrome_version"
 }
 EOF
-)
+      chrome_installed+=("$(basename "$browser_dir")")
+    done
 
-  # Browser profile roots, Linux (XDG) then macOS. Only existing dirs are
-  # touched, which is also how we avoid branching on the OS.
-  chrome_installed=()
-  for browser_dir in "$HOME/.config/google-chrome" \
-                     "$HOME/.config/chromium" \
-                     "$HOME/.config/vivaldi" \
-                     "$HOME/.config/microsoft-edge" \
-                     "$HOME/.config/BraveSoftware/Brave-Browser" \
-                     "$HOME/Library/Application Support/Google/Chrome" \
-                     "$HOME/Library/Application Support/Chromium" \
-                     "$HOME/Library/Application Support/Vivaldi" \
-                     "$HOME/Library/Application Support/Microsoft Edge" \
-                     "$HOME/Library/Application Support/BraveSoftware/Brave-Browser"; do
-    [[ -d "$browser_dir" ]] || continue
-    host_file="$browser_dir/NativeMessagingHosts/com.chong.theme_switcher.json"
-    # Idempotent: only write when the content would actually change, so a
-    # browser that is running does not see a pointless file event.
-    if [[ ! -f "$host_file" ]] || [[ "$(cat "$host_file")" != "$chrome_host_json" ]]; then
-      mkdir -p "$(dirname "$host_file")"
-      printf '%s\n' "$chrome_host_json" > "$host_file"
+    echo "  ✓ Chrome → $title (applies at next browser launch)"
+    reload+=("Chrome: applies at next launch (or via the restart prompt)")
+    if (( ${#chrome_installed[@]} == 0 )); then
+      echo "    (no Chromium-family browser profile found; .crx written anyway)"
     fi
-    chrome_installed+=("$(basename "$browser_dir")")
-  done
+    ((changed++))
 
-  # The state file the host polls: title on line 1 (matches the theme
-  # extension's manifest "name"), slug on line 2.
-  chrome_state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/chrome-theme-switcher"
-  mkdir -p "$chrome_state_dir"
-  printf '%s\n%s\n' "$title" "$slug" > "$chrome_state_dir/current"
-
-  echo "  ✓ Chrome → $title"
-  if (( ${#chrome_installed[@]} == 0 )); then
-    echo "    (no Chromium-family browser profile found; state file written anyway)"
+    # Offer the restart only when a human is watching and the browser is
+    # actually up; scripted runs (chezmoi hooks, ssh) must never block or kill
+    # a browser. Session restore brings the tabs back.
+    case "$(basename "$chrome_bin")" in
+      google-chrome*|chrome) chrome_proc="chrome" ;;
+      chromium*)             chrome_proc="chromium" ;;
+      vivaldi*)              chrome_proc="vivaldi-bin" ;;
+      microsoft-edge*)       chrome_proc="msedge" ;;
+      brave*)                chrome_proc="brave" ;;
+      *)                     chrome_proc="$(basename "$chrome_bin")" ;;
+    esac
+    if [[ -t 0 ]] && pgrep -x "$chrome_proc" &>/dev/null; then
+      read -r -p "    Restart Chrome now to apply? [y/N] " chrome_answer
+      if [[ "$chrome_answer" =~ ^[Yy]$ ]]; then
+        pkill -TERM -x "$chrome_proc"
+        for _ in $(seq 20); do
+          pgrep -x "$chrome_proc" &>/dev/null || break
+          sleep 0.5
+        done
+        if command -v setsid &>/dev/null; then
+          setsid -f "$chrome_bin" &>/dev/null
+        else
+          nohup "$chrome_bin" &>/dev/null &
+        fi
+        echo "    restarted"
+      fi
+    fi
   fi
-  echo "    First run per machine: chrome://extensions/ → Developer mode →"
-  echo "    Load unpacked → $HOME/.local/share/chrome-themes/theme-switcher"
-  echo "    and once per theme → $chrome_theme_dir"
-  echo "    (Ctrl+H in the file picker to show hidden folders)"
-  ((changed++))
-else
-  skipped+=("Chrome (no theme dir found for $slug)")
 fi
 
 # --- Dark Reader (browser extension) ---
@@ -325,6 +453,7 @@ if [[ -f "$dr_css" ]] && command -v jq &>/dev/null; then
     echo "  ✓ Dark Reader → $slug (bg $bg, fg $fg)"
     echo "    Import once: Dark Reader → Settings (gear) → Manage settings"
     echo "    → Import Settings → $dr_file"
+    reload+=("Dark Reader: import the generated JSON (see above)")
     ((changed++))
   else
     skipped+=("Dark Reader (could not read colours from $dr_css)")
@@ -402,6 +531,9 @@ EOF
     # Only reload a compositor that is actually up; set-theme also runs over ssh.
     if [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]] && command -v hyprctl &>/dev/null; then
       hyprctl reload &>/dev/null && echo "    reloaded"
+      reload+=("Hyprland: reloaded automatically")
+    else
+      reload+=("Hyprland: hyprctl reload (next session picks it up otherwise)")
     fi
     ((changed++))
   else
@@ -424,6 +556,7 @@ if [[ -f "$config" ]]; then
     sed -i '/\"theme\": {/,/}/ s|"light": "[^"]*"|"light": "'"$title"'"|' "$config"
     sed -i '/\"theme\": {/,/}/ s|"dark": "[^"]*"|"dark": "'"$title"'"|' "$config"
     echo "  ✓ Zed → $title ($zed_mode)"
+    reload+=("Zed: applied immediately (if running)")
     ((changed++))
   else
     skipped+=("Zed (no theme key in settings.json)")
@@ -436,6 +569,7 @@ fi
 if command -v vicinae &>/dev/null; then
   vicinae theme set "$slug" &>/dev/null
   echo "  ✓ Vicinae → $slug"
+  reload+=("Vicinae: applied immediately")
   ((changed++))
 else
   skipped+=("Vicinae (not installed)")
@@ -447,6 +581,7 @@ theme_file="$theme_dir/$slug.zsh"
 if [[ -f "$theme_file" ]]; then
   ln -sf "$theme_file" "$theme_dir/current.zsh"
   echo "  ✓ Powerlevel10k → $slug (restart shell or: source ~/.zshrc)"
+  reload+=("Powerlevel10k: applied (if called via set-theme shell function)")
   ((changed++))
 elif [[ -d "$theme_dir" ]]; then
   skipped+=("Powerlevel10k (no theme file at $theme_file)")
@@ -458,17 +593,9 @@ fi
 echo ""
 if (( changed > 0 )); then
   echo "Updated $changed app(s). Reload to see changes:"
-  echo "  Ghostty: Ctrl+Shift+,"
-  echo "  WezTerm: Ctrl+Shift+, (reloads config)"
-  echo "  Lite XL / Micro: relaunch"
-  echo "  VS Code: restart (new extensions need full restart)"
-  echo "  Obsidian: restart or toggle in Appearance"
-  echo "  Tauri Explorer: relaunch"
-  echo "  Chrome: applied immediately (once the switcher extension is loaded)"
-  echo "  Dark Reader: import the generated JSON (see above)"
-  echo "  Zed: applied immediately (if running)"
-  echo "  Vicinae: applied immediately"
-  echo "  Powerlevel10k: applied (if called via set-theme shell function)"
+  for r in "${reload[@]}"; do
+    echo "  $r"
+  done
 else
   echo "No apps were updated."
 fi
