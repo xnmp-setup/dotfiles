@@ -54,12 +54,24 @@ local function pane(info, fallback_name)
   }
 end
 
+-- The overlay pane runs no process, which is how confirmation_active spots it.
+local overlay_pane = { get_foreground_process_name = function() return nil end }
+
 eq('basename/unix', close_module.process_basename('/usr/bin/bun'), 'bun')
 eq('basename/windows', close_module.process_basename('C:\\Tools\\pwsh.exe'), 'pwsh.exe')
 eq('basename/nil', close_module.process_basename(nil), nil)
 eq('stateful/shell', close_module.is_stateful_process('/usr/bin/zsh'), false)
 eq('stateful/gitstatus helper', close_module.is_stateful_process('/tmp/gitstatusd-linux-x86_64'), false)
 eq('stateful/dev server', close_module.is_stateful_process('/usr/bin/bun'), true)
+
+-- Versioned binaries get a readable name from the path, not the version.
+eq('display/plain basename', close_module.display_name('/usr/bin/bun'), 'bun')
+eq('display/version resolves app dir',
+  close_module.display_name('/home/x/.local/share/claude/versions/2.1.222'), 'claude')
+eq('display/v-prefixed version', close_module.display_name('/opt/tool/versions/v1.2'), 'tool')
+eq('display/versioned dir keeps real basename',
+  close_module.display_name('/opt/foo-1.2.3/bin/app'), 'app')
+eq('display/nil', close_module.display_name(nil), nil)
 
 local nested = proc('/usr/bin/zsh', {
   [12] = proc('/tmp/gitstatusd-linux-x86_64'),
@@ -71,48 +83,77 @@ eq('tree/all stateless', close_module.find_stateful_process(proc('/usr/bin/zsh')
 local close = close_module.setup()
 local performed = {}
 local active_panes = {}
+local active_tab_id = 7
 local window = {
+  window_id = function() return 1 end,
   perform_action = function(_, wezterm_action, target)
     performed[#performed + 1] = { action = wezterm_action, target = target }
   end,
   active_tab = function()
-    return { panes = function() return active_panes end }
+    return {
+      tab_id = function() return active_tab_id end,
+      panes = function() return active_panes end,
+    }
   end,
 }
+local function last() return performed[#performed] end
 
+-- Idle shells close immediately, no prompt.
 local idle_shell = pane(proc('/usr/bin/zsh'))
 close.close_pane()(window, idle_shell)
-eq('pane/idle shell closes immediately', performed[#performed].action.kind, 'CloseCurrentPane')
-eq('pane/idle shell skips confirmation', performed[#performed].action.value.confirm, false)
+eq('pane/idle shell closes immediately', last().action.kind, 'CloseCurrentPane')
+eq('pane/idle shell skips confirmation', last().action.value.confirm, false)
+eq('pane/idle shell leaves enter alone', close.confirmation_active(window, overlay_pane), false)
 
-local codex = pane(proc('/usr/bin/codex'))
-close.close_pane()(window, codex)
-local confirmation = performed[#performed].action
+-- Stateful pane: centered Confirmation overlay; Enter maps to y while it is up.
+local claude = pane(proc('/home/x/.local/share/claude/versions/2.1.222'),
+  '/home/x/.local/share/claude/versions/2.1.222')
+close.close_pane()(window, claude)
+local confirmation = last().action
 eq('pane/stateful uses confirmation overlay', confirmation.kind, 'Confirmation')
 contains('pane/message names scope', confirmation.value.message, 'Close this pane?')
-contains('pane/message names process', confirmation.value.message, 'codex')
-confirmation.value.action(window, codex)
-eq('pane/accept closes pane', performed[#performed].action.kind, 'CloseCurrentPane')
+contains('pane/message names process', confirmation.value.message, 'claude')
+eq('pane/enter maps to y on the overlay', close.confirmation_active(window, overlay_pane), true)
+eq('pane/enter stays normal in a process pane', close.confirmation_active(window, claude), false)
+active_tab_id = 8
+eq('pane/enter stays normal in another tab', close.confirmation_active(window, overlay_pane), false)
+active_tab_id = 7
 
+-- Accepting closes the pane and releases the Enter mapping.
+confirmation.value.action(window, claude)
+eq('pane/accept closes pane', last().action.kind, 'CloseCurrentPane')
+eq('pane/accept releases enter', close.confirmation_active(window, overlay_pane), false)
+
+-- Cancelling (n/Esc/mouse) releases the Enter mapping without closing.
+close.close_pane()(window, claude)
+local before_cancel = #performed
+last().action.value.cancel(window)
+eq('pane/cancel closes nothing', #performed, before_cancel)
+eq('pane/cancel releases enter', close.confirmation_active(window, overlay_pane), false)
+
+-- Tab close sees hidden stateful panes.
 local hidden_terminal = pane(nested)
 active_panes = { idle_shell, hidden_terminal }
 close.close_tab()(window, idle_shell)
-confirmation = performed[#performed].action
+confirmation = last().action
 eq('tab/hidden daemon prompts', confirmation.kind, 'Confirmation')
 contains('tab/message names scope', confirmation.value.message, 'Close this tab?')
 contains('tab/message names hidden process', confirmation.value.message, 'bun')
-contains('tab/message explains consequence', confirmation.value.message, 'All panes in this tab will be terminated.')
+contains('tab/message explains consequence', confirmation.value.message,
+  'All panes in this tab will be terminated.')
 confirmation.value.action(window, idle_shell)
-eq('tab/accept closes whole tab', performed[#performed].action.kind, 'CloseCurrentTab')
+eq('tab/accept closes whole tab', last().action.kind, 'CloseCurrentTab')
 
+-- Process info unavailable: fall back to the foreground process name.
 local remote_process = pane(false, '/usr/bin/ssh')
 close.close_pane()(window, remote_process)
-eq('pane/fallback process name prompts', performed[#performed].action.kind, 'Confirmation')
-contains('pane/fallback process shown', performed[#performed].action.value.message, 'ssh')
+eq('pane/fallback process name prompts', last().action.kind, 'Confirmation')
+contains('pane/fallback process shown', last().action.value.message, 'ssh')
+last().action.value.cancel(window)
 
 active_panes = { idle_shell, pane(proc('/usr/bin/bash')) }
 close.close_tab()(window, idle_shell)
-eq('tab/all shells closes immediately', performed[#performed].action.kind, 'CloseCurrentTab')
+eq('tab/all shells closes immediately', last().action.kind, 'CloseCurrentTab')
 
 io.write(string.format('\n%d passed, %d failed\n', passed, failed))
 os.exit(failed == 0 and 0 or 1)

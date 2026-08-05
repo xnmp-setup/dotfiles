@@ -16,6 +16,7 @@ function M.apply(config, deps)
   local activate_utility_chord = deps.utilities.activate_chord
   local close_pane = deps.close.close_pane
   local close_tab = deps.close.close_tab
+  local confirmation_active = deps.close.confirmation_active
   local copy_previous_command = deps.output.copy_previous_command
 
   -- ---------- Keybinds ----------
@@ -28,9 +29,20 @@ function M.apply(config, deps)
 
     -- tabs / windows / panes
     -- Process-aware close actions: idle shells close immediately; attached jobs
-    -- get a styled confirmation. Tab close sees hidden persistent panes too.
+    -- get the centered confirmation overlay. Tab close sees hidden persistent
+    -- panes too.
     { key = 'w', mods = 'CTRL', action = close_pane() },
     { key = 'w', mods = 'SUPER', action = close_tab() },
+    -- Enter: the close-confirmation overlay natively accepts only y/n; while
+    -- it is up, translate Enter to y so Enter confirms too. Every other Enter
+    -- is forwarded as a real Enter keypress (same pattern as Esc below).
+    { key = 'Enter', mods = 'NONE', action = wezterm.action_callback(function(window, pane)
+      if confirmation_active(window, pane) then
+        window:perform_action(act.SendKey { key = 'y' }, pane)
+      else
+        window:perform_action(act.SendKey { key = 'Enter' }, pane)
+      end
+    end) },
     -- Esc: interrupt handling. A user interrupt (Esc mid-response) fires no hook in
     -- either agent, so the agent_status var stays stuck on 'working' and the tab
     -- keeps spinning. Intercept Esc here: if the pane is running an agent, mark it
