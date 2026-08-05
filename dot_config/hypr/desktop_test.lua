@@ -556,6 +556,8 @@ do
         control.dispatches[2].args.workspace, 3)
     equal("the departing tab is not carried along by its siblings",
         control.dispatches[2].args.window, nil)
+    equal("the user does not follow the departing tab",
+        control.dispatches[2].args.follow, false)
 end
 
 do
@@ -569,6 +571,8 @@ do
     equal("an ungrouped window is moved with a single dispatch", #control.dispatches, 1)
     equal("an ungrouped window is never asked to leave a group",
         control.dispatches[1].args.workspace, 2)
+    equal("the user does not follow the moved window",
+        control.dispatches[1].args.follow, false)
 end
 
 do

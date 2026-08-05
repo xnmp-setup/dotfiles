@@ -63,7 +63,8 @@ function M.new(hl)
     end
 
     -- Hyprland's move-to-workspace dispatcher relocates every member of a group,
-    -- so a tabbed window has to leave its group before it travels alone.
+    -- so a tabbed window has to leave its group before it travels alone. The
+    -- move never follows: the user stays on their current workspace.
     local function move_to_workspace(workspace)
         local active = hl.get_active_window()
         local tabbed = active and active.group and active.group.size > 1
@@ -71,7 +72,7 @@ function M.new(hl)
         if tabbed then
             hl.dispatch(hl.dsp.window.move({ out_of_group = true }))
         end
-        hl.dispatch(hl.dsp.window.move({ workspace = workspace }))
+        hl.dispatch(hl.dsp.window.move({ workspace = workspace, follow = false }))
         if tabbed then dissolve_lone_groups() end
         return tabbed or false
     end
