@@ -1,5 +1,6 @@
 # Fast one-off shell questions. Commands are only prefilled for review; this
-# module never executes model-suggested commands.
+# module never executes model-suggested commands. A bare `q` replays the
+# session's recent failed commands and asks for a corrected one.
 
 typeset -g Q_MODEL="${Q_MODEL:-gpt-5.6-luna}"
 
@@ -484,13 +485,76 @@ _q_prefill_command() {
   print -z -- "$cmd"
 }
 
+# --- Failed-command tracking (powers a bare `q`) ---
+# Holds the consecutive failures immediately before the current prompt — a
+# success empties it. Session-local, never persisted. Declared without an
+# initializer so re-sourcing this file keeps the recorded streak.
+typeset -ga _Q_FAILURES
+typeset -gi _Q_MAX_FAILURES="${Q_MAX_FAILURES:-5}"
+typeset -g _q_last_command=''
+
+_q_capture_command() {
+  _q_last_command="$1"
+}
+
+# Runs first in precmd (prepended below) so $? is still the command's own
+# status, and returns that status unchanged so later hooks (p10k's status
+# segment) still see it.
+_q_record_failure() {
+  local -i code=$?
+  local cmd="$_q_last_command"
+  _q_last_command=''
+
+  # Only the streak of failures leading up to the current prompt is kept: any
+  # successful command resets the buffer. 130/148 are Ctrl-C and Ctrl-Z — user
+  # interruptions, neither failure nor success. `q`/`qq` are meta and skipped:
+  # they succeed (the answer arrives as a prefilled command), and that success
+  # must not erase the streak `q` exists to fix before the fix has been run.
+  if [[ -n "$cmd" ]] \
+    && [[ "$cmd" != (q|qq) && "$cmd" != (q|qq)[[:space:]]* ]]; then
+    if (( code == 0 )); then
+      _Q_FAILURES=()
+    elif (( code != 130 && code != 148 )); then
+      _Q_FAILURES+=("exit $code: $cmd")
+      (( $#_Q_FAILURES > _Q_MAX_FAILURES )) && shift _Q_FAILURES
+    fi
+  fi
+
+  return code
+}
+
+_q_fix_last_failure() {
+  emulate -L zsh
+
+  if (( ! $#_Q_FAILURES )); then
+    print -u2 -- "q: no failed commands since the last success"
+    return 1
+  fi
+
+  print -u2 -- "q: failures since the last success (oldest first):"
+  local entry
+  for entry in "${_Q_FAILURES[@]}"; do
+    print -u2 -- "  $entry"
+  done
+
+  local query="These Zsh commands all failed in a row, oldest first, each prefixed with its exit status. They are my consecutive attempts at the same goal:
+
+${(F)_Q_FAILURES}
+
+Return a corrected version of the most recent failed command that should succeed. Use the earlier failures only as context for what I am trying to do."
+
+  local response
+  response="$(_q_ask command "$query")" || return
+  _q_prefill_command "$response"
+}
+
 _quick_command() {
   emulate -L zsh
 
   local query="$*"
   if [[ -z "$query" ]]; then
-    print -u2 -- "usage: q <question>"
-    return 2
+    _q_fix_last_failure
+    return
   fi
 
   local response
@@ -512,3 +576,9 @@ _quick_answer() {
 
 alias q='_quick_command'
 alias qq='_quick_answer'
+
+# preexec order doesn't matter; precmd must run before anything that clobbers
+# $? (p10k is sourced earlier and appends), so prepend rather than add-zsh-hook.
+autoload -Uz add-zsh-hook
+add-zsh-hook preexec _q_capture_command
+precmd_functions=(_q_record_failure ${precmd_functions:#_q_record_failure})

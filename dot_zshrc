@@ -271,6 +271,7 @@ _anthropic_haiku() {
 }
 
 # Fast one-off questions: `q` prefills one command; `qq` prints a full answer.
+# A bare `q` replays the failed commands since the last success and prefills a fix.
 # Backed by GPT-5.6 Luna with a Haiku fallback.
 [[ -r ~/.config/zsh/quick-question.zsh ]] && source ~/.config/zsh/quick-question.zsh
 
