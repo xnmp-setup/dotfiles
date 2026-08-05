@@ -13,6 +13,9 @@
 monitor=,preferred,auto,1
 env = ELECTRON_OZONE_PLATFORM_HINT,auto
 env = XDG_CURRENT_DESKTOP,GNOME
+# XDG_CURRENT_DESKTOP is deliberately GNOME (for portals); silence the
+# "managed externally" startup banner about it.
+misc:disable_xdg_env_checks = true
 {{ if ne .chezmoi.hostname "t14s" -}}
 workspace = 1, monitor:DP-2, default:true
 workspace = 2, monitor:DP-2

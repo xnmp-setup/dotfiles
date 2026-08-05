@@ -111,6 +111,10 @@ hl.config({
         -- (render:expand_undersized_textures, which stretches the stale buffer
         -- rather than exposing this at all, is already on by default.)
         background_color = "rgb(" .. theme.colors.background .. ")",
+
+        -- XDG_CURRENT_DESKTOP is deliberately GNOME (set below, for portals);
+        -- silence the "managed externally" banner Hyprland shows about it.
+        disable_xdg_env_checks = true,
     },
 
     input = {
