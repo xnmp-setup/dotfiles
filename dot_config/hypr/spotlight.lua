@@ -29,7 +29,8 @@ function M.new(hl, window_actions, options)
         return false
     end
 
-    local function hide()
+    local function hide(hide_options)
+        hide_options = hide_options or {}
         local held = spotlit
         spotlit = nil
         hl.config({ decoration = { dim_special = default_dim } })
@@ -65,7 +66,9 @@ function M.new(hl, window_actions, options)
                         window = window,
                     }))
                 end
-                window_actions.focus_exact(window)
+                if hide_options.refocus ~= false then
+                    window_actions.focus_exact(window)
+                end
                 return true
             end
         end
@@ -79,14 +82,20 @@ function M.new(hl, window_actions, options)
         local home = window.workspace and window.workspace.id
         if not home then return false end
 
-        local floated = not window.floating
+        -- tile_on_hide: treat the window as tiled even if it is already
+        -- floating. Auto-spotlit windows (imv) are floated by window rules
+        -- before this handler sees them; without the override, hide() would
+        -- "restore" them to that rule-made floating state instead of tiling.
+        local floated = show_options.tile_on_hide or not window.floating
         local geometry
         if floated then
             hl.dispatch(hl.dsp.layout("hold"))
-            hl.dispatch(hl.dsp.window.float({
-                action = "on",
-                window = window,
-            }))
+            if not window.floating then
+                hl.dispatch(hl.dsp.window.float({
+                    action = "on",
+                    window = window,
+                }))
+            end
         else
             geometry = { at = window.at, size = window.size }
         end
@@ -137,14 +146,32 @@ function M.new(hl, window_actions, options)
 
     hl.on("window.open", function(window)
         if window and window.class == (options.auto_class or "imv") then
-            show(window)
+            show(window, { tile_on_hide = true })
         end
     end)
 
     hl.on("window.active", function()
         if not spotlit or spotlit.transitioning then return end
         local active = hl.get_active_window()
-        if not active or active.address ~= spotlit.address then hide() end
+        if not active or active.address ~= spotlit.address then
+            -- The window the user just focused keeps focus; don't let the
+            -- restore pull it back to the spotlit window.
+            local keep = active
+            hide({ refocus = false })
+            if keep then window_actions.focus_exact(keep) end
+        end
+    end)
+
+    -- A special workspace renders above every workspace, so without this the
+    -- spotlit window would follow the user around; send it home instead.
+    hl.on("workspace.active", function(target)
+        if not spotlit or spotlit.transitioning then return end
+        hide({ refocus = false })
+        -- Un-floating the hidden window focuses it, which would drag the view
+        -- back to its home workspace; re-assert the workspace being switched to.
+        if target and target.id then
+            hl.dispatch(hl.dsp.focus({ workspace = target.id }))
+        end
     end)
 
     hl.on("window.close", function(window)
