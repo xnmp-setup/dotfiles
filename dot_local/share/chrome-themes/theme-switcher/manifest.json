@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Desktop Theme Switcher",
+  "version": "1.0.0",
+  "description": "Follows the desktop theme: enables the matching Chrome theme extension when set-theme runs.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtAW6ObPFsJwQlRcY2d6FPca3wTZzbq+R3l7Rln2Z4omr3MxLvprtAwvBJ1OyuRGeTB7M5cwzC9ur0KCjZUP+S/uJrhXuKa5tfZavV7/HFR62+Sbtk1Nd1iSrSvXx+fA+8sMNnD6K/HohWLxfR+s6Ct4EI199vdGYVg/uXs0CSIoDyjQno31nTsHpXVyqp9f4w63y42wbtn+LPv0p85Xbkt/wmaa7X3UCvgBfP8t18mXEJf5uVPD/nr9sPxUTjFXp+/l/JkIPHsBS8z69Z5LHeeihk0lFjkOIIM+eXqHIPz6uVxOjTMxKC4DzgzRLCSsfjaBGE0o/bHR2gYifvMS1oQIDAQAB",
+  "permissions": ["management", "nativeMessaging"],
+  "background": {
+    "service_worker": "sw.js"
+  }
+}

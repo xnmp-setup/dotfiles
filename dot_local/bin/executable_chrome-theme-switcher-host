@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+"""Native messaging host for the Desktop Theme Switcher extension.
+
+Spawned by the browser (never by hand) once the extension connects. Watches the
+state file that set-theme.sh writes and pushes the current theme title to the
+extension, which enables the matching installed Chrome theme.
+
+Requirements: python3 (stdlib only). Outside this repo it depends on nothing:
+if the state file is absent it simply sends nothing and waits for it to appear,
+so a machine that has never run set-theme behaves as if the host were not there.
+
+State file: ~/.local/state/chrome-theme-switcher/current
+    line 1: Title Case theme name, matching the Chrome theme extension's
+            manifest "name" (e.g. "Golden Hour Light")
+    line 2: theme slug (e.g. "golden-hour-light") — informational, unused here
+
+Protocol (Chrome native messaging): each message is a 4-byte little-endian
+length prefix followed by that many bytes of UTF-8 JSON, on stdout. Messages
+from the browser arrive the same way on stdin; we read them only to notice the
+port closing. EOF or a broken pipe means the browser went away: exit 0.
+"""
+
+import json
+import os
+import struct
+import sys
+import threading
+import time
+
+STATE = os.path.join(
+    os.environ.get("XDG_STATE_HOME", os.path.expanduser("~/.local/state")),
+    "chrome-theme-switcher",
+    "current",
+)
+
+POLL_SECONDS = 1.0
+# The extension's service worker is torn down when idle. A message on the port
+# resets that timer, so ping well inside the shutdown window to keep the pair
+# alive; the extension ignores pings.
+PING_SECONDS = 20.0
+
+_stop = threading.Event()
+
+
+def send(obj):
+    """Write one length-prefixed JSON frame to stdout."""
+    data = json.dumps(obj, separators=(",", ":")).encode("utf-8")
+    out = sys.stdout.buffer
+    out.write(struct.pack("<I", len(data)))
+    out.write(data)
+    out.flush()
+
+
+def read_state():
+    """(title, mtime) from the state file, or (None, None) if unreadable."""
+    try:
+        mtime = os.stat(STATE).st_mtime
+        with open(STATE, "r", encoding="utf-8") as fh:
+            title = fh.readline().strip()
+    except OSError:
+        return None, None
+    return (title or None), mtime
+
+
+def watch_stdin():
+    """Drain incoming frames; signal stop on EOF (browser closed the port)."""
+    stdin = sys.stdin.buffer
+    while True:
+        header = stdin.read(4)
+        if len(header) < 4:
+            break
+        (length,) = struct.unpack("<I", header)
+        if len(stdin.read(length)) < length:
+            break
+    _stop.set()
+
+
+def main():
+    threading.Thread(target=watch_stdin, daemon=True).start()
+
+    last_title, last_mtime = read_state()
+    if last_title:
+        send({"title": last_title})
+
+    last_ping = time.monotonic()
+    while not _stop.wait(POLL_SECONDS):
+        title, mtime = read_state()
+        # mtime alone can miss a same-second rewrite, so compare the title too.
+        if title and (mtime != last_mtime or title != last_title):
+            send({"title": title})
+            last_title, last_mtime = title, mtime
+            last_ping = time.monotonic()
+            continue
+        if mtime is None:
+            last_mtime = None
+        now = time.monotonic()
+        if now - last_ping >= PING_SECONDS:
+            send({"ping": True})
+            last_ping = now
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (BrokenPipeError, KeyboardInterrupt):
+        pass
+    except OSError as exc:  # EPIPE surfaces as OSError on some platforms
+        import errno
+
+        if exc.errno not in (errno.EPIPE, errno.EBADF):
+            raise
+    sys.exit(0)

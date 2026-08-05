@@ -66,6 +66,19 @@ css_var() {
   grep -oP -- "--$2:\s*\K#[0-9a-fA-F]{3,8}" "$1" 2>/dev/null | head -1
 }
 
+# Whether the theme is a light theme. The theme's own files are the authority —
+# a slug like "yosemite-glow" carries no hint, so a name test alone misfiles
+# light themes as dark. Vicinae's TOML declares the variant explicitly; fall
+# back to the "-light" naming convention for themes that predate a TOML.
+theme_is_light() {
+  local toml="$HOME/.local/share/vicinae/themes/$slug.toml"
+  if [[ -f "$toml" ]]; then
+    grep -qE '^\s*variant\s*=\s*"light"' "$toml"
+    return
+  fi
+  [[ "$slug" =~ light ]]
+}
+
 title=$(title_case "$slug")
 changed=0
 skipped=()
@@ -89,19 +102,25 @@ else
 fi
 
 # --- WezTerm ---
-# Schemes are defined inline in wezterm.lua (config.color_schemes), so only
-# switch when the requested theme actually exists there.
-config="$HOME/.config/wezterm/wezterm.lua"
-if [[ -f "$config" ]]; then
-  if grep -qF "['$title']" "$config"; then
-    sed -i "s|^config.color_scheme = .*|config.color_scheme = '$title'|" "$config"
-    echo "  ✓ WezTerm → $title"
+# Schemes are defined inline in config.color_schemes — historically in
+# wezterm.lua, now in wezterm_appearance.lua — so check both and only switch
+# when the requested theme actually exists in the file that holds the
+# color_scheme line. The sed keeps the line's indentation: inside the
+# appearance module the assignment is indented.
+wez_done=0
+for config in "$HOME/.config/wezterm/wezterm_appearance.lua" \
+              "$HOME/.config/wezterm/wezterm.lua"; do
+  [[ -f "$config" ]] || continue
+  if grep -qF "['$title']" "$config" && grep -q "config\.color_scheme = " "$config"; then
+    sed -i "s|^\(\s*\)config\.color_scheme = .*|\1config.color_scheme = '$title'|" "$config"
+    echo "  ✓ WezTerm → $title ($(basename "$config"))"
     ((changed++))
-  else
-    skipped+=("WezTerm (no '$title' scheme defined in wezterm.lua)")
+    wez_done=1
+    break
   fi
-else
-  skipped+=("WezTerm (no config at $config)")
+done
+if (( ! wez_done )); then
+  skipped+=("WezTerm (no '$title' scheme defined in wezterm config)")
 fi
 
 # --- Lite XL ---
@@ -110,6 +129,12 @@ if [[ -f "$config" ]]; then
   if grep -q 'core.reload_module("colors\.' "$config"; then
     sed -i "s|core.reload_module(\"colors\.[^\"]*\")|core.reload_module(\"colors.$slug\")|" "$config"
     echo "  ✓ Lite XL → colors.$slug"
+    ((changed++))
+  elif grep -q 'load_first_theme {' "$config"; then
+    # init.lua now loads themes through a fallback list; the requested theme
+    # goes first and the existing fallbacks keep a missing file from aborting.
+    sed -i "s|load_first_theme { \"[^\"]*\"|load_first_theme { \"$slug\"|" "$config"
+    echo "  ✓ Lite XL → $slug (load_first_theme)"
     ((changed++))
   else
     skipped+=("Lite XL (no colors.* line in init.lua)")
@@ -149,9 +174,9 @@ fi
 # --- Obsidian ---
 config="$HOME/Vaults/Technical Vault/.obsidian/appearance.json"
 if [[ -f "$config" ]]; then
-  # Determine light/dark: slugs containing "light" get moonstone, else obsidian
+  # Light themes get moonstone, dark ones obsidian
   obs_mode="obsidian"
-  [[ "$slug" =~ light ]] && obs_mode="moonstone"
+  theme_is_light && obs_mode="moonstone"
 
   if grep -q '"cssTheme"' "$config"; then
     sed -i "s|\"cssTheme\": \"[^\"]*\"|\"cssTheme\": \"$title\"|" "$config"
@@ -184,12 +209,71 @@ else
 fi
 
 # --- Chrome ---
+# Chrome has no CLI for themes, so the switch goes through a helper extension
+# (~/.local/share/chrome-themes/theme-switcher) that talks to a native
+# messaging host (~/.local/bin/chrome-theme-switcher-host, both shipped by
+# chezmoi). All this section does is install the host manifest for whichever
+# Chromium-family browsers are present and write the state file the host
+# watches; the extension then enables the theme whose name matches $title.
+# Everything here degrades to a no-op if the browser or the extension is not
+# installed — the files are just left on disk.
 chrome_theme_dir="$HOME/chrome-themes-$slug"
 # Also check alternate location
 [[ ! -d "$chrome_theme_dir" ]] && chrome_theme_dir="$HOME/.local/share/chrome-themes/$slug"
 if [[ -d "$chrome_theme_dir" ]]; then
-  echo "  ✓ Chrome → $slug"
-  echo "    Load unpacked: chrome://extensions/ → Developer mode → Load unpacked → $chrome_theme_dir"
+  # Fixed ID of the helper extension: it is derived from the "key" embedded in
+  # its manifest.json, so it is the same on every machine. Changing that key
+  # changes this ID.
+  chrome_ext_id="fnicgaoklanobahpnhaadhhedpaibnoo"
+  chrome_host_bin="$HOME/.local/bin/chrome-theme-switcher-host"
+  chrome_host_json=$(cat <<EOF
+{
+  "name": "com.chong.theme_switcher",
+  "description": "Desktop theme switcher host for set-theme",
+  "path": "$chrome_host_bin",
+  "type": "stdio",
+  "allowed_origins": ["chrome-extension://$chrome_ext_id/"]
+}
+EOF
+)
+
+  # Browser profile roots, Linux (XDG) then macOS. Only existing dirs are
+  # touched, which is also how we avoid branching on the OS.
+  chrome_installed=()
+  for browser_dir in "$HOME/.config/google-chrome" \
+                     "$HOME/.config/chromium" \
+                     "$HOME/.config/vivaldi" \
+                     "$HOME/.config/microsoft-edge" \
+                     "$HOME/.config/BraveSoftware/Brave-Browser" \
+                     "$HOME/Library/Application Support/Google/Chrome" \
+                     "$HOME/Library/Application Support/Chromium" \
+                     "$HOME/Library/Application Support/Vivaldi" \
+                     "$HOME/Library/Application Support/Microsoft Edge" \
+                     "$HOME/Library/Application Support/BraveSoftware/Brave-Browser"; do
+    [[ -d "$browser_dir" ]] || continue
+    host_file="$browser_dir/NativeMessagingHosts/com.chong.theme_switcher.json"
+    # Idempotent: only write when the content would actually change, so a
+    # browser that is running does not see a pointless file event.
+    if [[ ! -f "$host_file" ]] || [[ "$(cat "$host_file")" != "$chrome_host_json" ]]; then
+      mkdir -p "$(dirname "$host_file")"
+      printf '%s\n' "$chrome_host_json" > "$host_file"
+    fi
+    chrome_installed+=("$(basename "$browser_dir")")
+  done
+
+  # The state file the host polls: title on line 1 (matches the theme
+  # extension's manifest "name"), slug on line 2.
+  chrome_state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/chrome-theme-switcher"
+  mkdir -p "$chrome_state_dir"
+  printf '%s\n%s\n' "$title" "$slug" > "$chrome_state_dir/current"
+
+  echo "  ✓ Chrome → $title"
+  if (( ${#chrome_installed[@]} == 0 )); then
+    echo "    (no Chromium-family browser profile found; state file written anyway)"
+  fi
+  echo "    First run per machine: chrome://extensions/ → Developer mode →"
+  echo "    Load unpacked → $HOME/.local/share/chrome-themes/theme-switcher"
+  echo "    and once per theme → $chrome_theme_dir"
   echo "    (Ctrl+H in the file picker to show hidden folders)"
   ((changed++))
 else
@@ -207,9 +291,9 @@ if [[ -f "$dr_css" ]] && command -v jq &>/dev/null; then
   fg=$(css_var "$dr_css" text-primary)
   accent=$(css_var "$dr_css" accent)
   if [[ -n "$bg" && -n "$fg" ]]; then
-    # Light slugs drive the light scheme; everything else is a dark scheme.
+    # Light themes drive the light scheme; everything else is a dark scheme.
     dr_mode=1
-    [[ "$slug" =~ light ]] && dr_mode=0
+    theme_is_light && dr_mode=0
 
     dr_dir="$HOME/.local/share/darkreader-themes"
     mkdir -p "$dr_dir"
@@ -332,9 +416,8 @@ fi
 # --- Zed ---
 config="$HOME/.config/zed/settings.json"
 if [[ -f "$config" ]]; then
-  # Determine light/dark from slug
   zed_mode="dark"
-  [[ "$slug" =~ light ]] && zed_mode="light"
+  theme_is_light && zed_mode="light"
 
   if grep -q '"theme"' "$config"; then
     sed -i '/\"theme\": {/,/}/ s|"mode": "[^"]*"|"mode": "'"$zed_mode"'"|' "$config"
@@ -381,7 +464,7 @@ if (( changed > 0 )); then
   echo "  VS Code: restart (new extensions need full restart)"
   echo "  Obsidian: restart or toggle in Appearance"
   echo "  Tauri Explorer: relaunch"
-  echo "  Chrome: reload extension at chrome://extensions/"
+  echo "  Chrome: applied immediately (once the switcher extension is loaded)"
   echo "  Dark Reader: import the generated JSON (see above)"
   echo "  Zed: applied immediately (if running)"
   echo "  Vicinae: applied immediately"
