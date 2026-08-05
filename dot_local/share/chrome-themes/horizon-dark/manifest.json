@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "Horizon Dark",
+  "version": "1.0.0",
+  "description": "Cinematic sunset-noir dark theme with warm rose accents",
+  "theme": {
+    "colors": {
+      "frame": [35, 37, 48],
+      "frame_inactive": [28, 30, 38],
+      "frame_incognito": [24, 25, 32],
+      "frame_incognito_inactive": [18, 19, 25],
+      "toolbar": [28, 30, 38, 0.95],
+      "tab_text": [213, 216, 218],
+      "tab_background_text": [108, 111, 147],
+      "background_tab": [35, 37, 48, 0.95],
+      "bookmark_text": [213, 216, 218],
+      "ntp_background": [28, 30, 38],
+      "ntp_text": [213, 216, 218],
+      "ntp_link": [233, 86, 120],
+      "ntp_header": [46, 48, 62],
+      "omnibox_background": [35, 37, 48],
+      "omnibox_text": [213, 216, 218],
+      "toolbar_button_icon": [108, 111, 147],
+      "button_background": [233, 86, 120]
+    },
+    "tints": {
+      "buttons": [-1, -1, -1],
+      "frame_incognito": [-1, 0.2, 0.15],
+      "frame_incognito_inactive": [-1, 0.15, 0.1]
+    },
+    "properties": {
+      "ntp_background_alignment": "center",
+      "ntp_background_repeat": "no-repeat"
+    }
+  }
+}

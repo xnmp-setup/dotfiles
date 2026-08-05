@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "Night Owl",
+  "version": "1.0.0",
+  "description": "Deep-blue night coding theme by Sarah Drasner",
+  "theme": {
+    "colors": {
+      "frame": [11, 41, 66],
+      "frame_inactive": [1, 22, 39],
+      "frame_incognito": [8, 30, 51],
+      "frame_incognito_inactive": [5, 16, 28],
+      "toolbar": [1, 22, 39, 0.95],
+      "tab_text": [214, 222, 235],
+      "tab_background_text": [99, 119, 119],
+      "background_tab": [11, 41, 66, 0.95],
+      "bookmark_text": [214, 222, 235],
+      "ntp_background": [1, 22, 39],
+      "ntp_text": [214, 222, 235],
+      "ntp_link": [130, 170, 255],
+      "ntp_header": [29, 59, 83],
+      "omnibox_background": [11, 41, 66],
+      "omnibox_text": [214, 222, 235],
+      "toolbar_button_icon": [99, 119, 119],
+      "button_background": [130, 170, 255]
+    },
+    "tints": {
+      "buttons": [-1, -1, -1],
+      "frame_incognito": [-1, 0.2, 0.15],
+      "frame_incognito_inactive": [-1, 0.15, 0.1]
+    },
+    "properties": {
+      "ntp_background_alignment": "center",
+      "ntp_background_repeat": "no-repeat"
+    }
+  }
+}

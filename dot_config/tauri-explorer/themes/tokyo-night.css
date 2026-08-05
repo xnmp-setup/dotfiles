@@ -1,0 +1,102 @@
+/**
+ * Tokyo Night Theme - Cool, low-contrast night-city palette
+ *
+ * Deep blue-purple backgrounds, cool lavender text, vivid blue primary accent.
+ * All background values are opaque hex (no alpha) per operational rules.
+ *
+ * Key palette:
+ *   bg: #1a1b26   panel: #24283b   surface: #1f2335   border: #414868
+ *   accent: #7aa2f7   spectrum: red #f7768e, orange #ff9e64, yellow #e0af68, green #9ece6a, cyan #7dcfff, purple #bb9af7
+ */
+
+[data-theme="tokyo-night"] {
+  color-scheme: dark;
+
+  /* Theme metadata */
+  --theme-name: "Tokyo Night";
+  --theme-description: "Cool, low-contrast night-city palette with vivid blue accents";
+  --theme-order: 15;
+
+  /* Accent colors - vivid blue */
+  --accent: #7aa2f7;
+  --accent-light: #97b8f8;
+  --accent-dark: #6183d8;
+
+  /* Text colors */
+  --text-primary: #c0caf5;
+  --text-secondary: #a9b1d6;
+  --text-tertiary: #565f89;
+  --text-on-accent: #1a1b26;
+
+  /* Background colors - dim/main/selection, opaque hex */
+  --background-solid: #16161e;
+  --background-mica: #16161e;
+  --background-acrylic: #1a1b26;
+  --background-card: #1a1b26;
+  --background-card-secondary: #24283b;
+  --miller-bg: #1f2335;
+  --content-bg: #16161e;
+
+  /* Surface/border colors - blue-purple border */
+  --surface-stroke: rgba(65, 72, 104, 0.5);
+  --surface-stroke-flyout: rgba(65, 72, 104, 0.6);
+  --divider: rgba(65, 72, 104, 0.35);
+
+  /* Control/input backgrounds - blue tint */
+  --control-fill: rgba(122, 162, 247, 0.08);
+  --control-fill-secondary: rgba(122, 162, 247, 0.12);
+  --control-fill-tertiary: rgba(122, 162, 247, 0.05);
+  --control-fill-disabled: rgba(122, 162, 247, 0.03);
+
+  /* Subtle hover/active fills - blue */
+  --subtle-fill: transparent;
+  --subtle-fill-secondary: rgba(122, 162, 247, 0.12);
+  --subtle-fill-tertiary: rgba(122, 162, 247, 0.06);
+
+  /* Control borders - blue-purple */
+  --control-stroke: rgba(65, 72, 104, 0.55);
+  --control-stroke-secondary: rgba(65, 72, 104, 0.35);
+
+  /* Address bar - blue tint */
+  --address-bar-bg: rgba(122, 162, 247, 0.08);
+  --address-bar-stroke: rgba(65, 72, 104, 0.5);
+  --address-bar-highlight: rgba(122, 162, 247, 0.04);
+  --address-bar-bg-hover: rgba(122, 162, 247, 0.12);
+  --address-bar-stroke-hover: rgba(65, 72, 104, 0.65);
+
+  /* Focus indicators */
+  --focus-stroke-outer: #7aa2f7;
+  --focus-stroke-inner: #16161e;
+
+  /* System status colors */
+  --system-critical: #f7768e;
+  --system-success: #9ece6a;
+  --system-caution: #e0af68;
+
+  /* Shadows - near-black, deeper than dim background */
+  --shadow-flyout: 0 8px 24px rgba(10, 10, 15, 0.65), 0 2px 8px rgba(10, 10, 15, 0.4), 0 0 12px rgba(122, 162, 247, 0.04);
+  --shadow-dialog: 0 32px 64px rgba(10, 10, 15, 0.75), 0 4px 24px rgba(10, 10, 15, 0.45);
+  --shadow-tooltip: 0 4px 12px rgba(10, 10, 15, 0.55);
+  --shadow-card: 0 1px 4px rgba(10, 10, 15, 0.35), 0 0 1px rgba(10, 10, 15, 0.25), 0 0 8px rgba(122, 162, 247, 0.03);
+  --shadow-subtle: 0 1px 2px rgba(10, 10, 15, 0.25);
+
+  /* Mica overlay - blue/purple wash */
+  --mica-overlay: linear-gradient(
+    170deg,
+    rgba(122, 162, 247, 0.03) 0%,
+    rgba(187, 154, 247, 0.03) 25%,
+    transparent 45%,
+    rgba(224, 175, 104, 0.02) 80%,
+    transparent 100%
+  );
+
+  /* Per-section opacity */
+  --sidebar-opacity: 1;
+  --toolbar-opacity: 1;
+  --content-opacity: 1;
+  --titlebar-opacity: 1;
+  --statusbar-opacity: 1;
+
+  /* Icon colors - blue folders */
+  --icon-folder: #7aa2f7;
+}

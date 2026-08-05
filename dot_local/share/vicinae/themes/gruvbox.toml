@@ -1,0 +1,32 @@
+# Gruvbox
+# Classic retro-warm dark theme with vivid orange accent
+
+[meta]
+version = 1
+name = "Gruvbox"
+description = "Classic retro-warm dark theme with vivid orange accent"
+variant = "dark"
+
+[colors.core]
+background = "#282828"
+foreground = "#EBDBB2"
+secondary_background = "#3C3836"
+border = "#665C54"
+accent = "#FE8019"
+
+[colors.accents]
+blue = "#83A598"
+green = "#B8BB26"
+magenta = "#D3869B"
+orange = "#FE8019"
+purple = "#D3869B"
+red = "#FB4934"
+yellow = "#FABD2F"
+cyan = "#8EC07C"
+
+[colors.list.item.selection]
+background = { name = "#504945", opacity = 0.55 }
+secondary_background = "#504945"
+
+[colors.list.item.hover]
+background = { name = "#504945", opacity = 0.35 }

@@ -1,0 +1,32 @@
+# Horizon Dark
+# Cinematic sunset-noir dark theme with warm rose accents
+
+[meta]
+version = 1
+name = "Horizon Dark"
+description = "Cinematic sunset-noir dark theme with warm rose accents"
+variant = "dark"
+
+[colors.core]
+background = "#1c1e26"
+foreground = "#d5d8da"
+secondary_background = "#232530"
+border = "#2e303e"
+accent = "#e95678"
+
+[colors.accents]
+blue = "#26bbd9"
+green = "#29d398"
+magenta = "#ee64ac"
+orange = "#fab795"
+purple = "#ee64ac"
+red = "#e95678"
+yellow = "#fab795"
+cyan = "#59e1e3"
+
+[colors.list.item.selection]
+background = { name = "#2e303e", opacity = 0.55 }
+secondary_background = "#2e303e"
+
+[colors.list.item.hover]
+background = { name = "#2e303e", opacity = 0.35 }

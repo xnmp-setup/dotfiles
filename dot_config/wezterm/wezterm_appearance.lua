@@ -65,6 +65,20 @@ function M.apply(config)
       ansi = { '#000000', '#fc644d', '#7afde1', '#fff09b', '#6c9bf5', '#ff4fa1', '#64e0ff', '#c0c9e5' },
       brights = { '#304b66', '#fc644d', '#7afde1', '#fff09b', '#6c9bf5', '#ff4fa1', '#64e0ff', '#ffffff' },
     },
+    -- Classic Gruvbox Dark (medium). Inline because no builtin normalizes to
+    -- plain "Gruvbox" (builtins are "Gruvbox Dark (Gogh)", "GruvboxDark", ...),
+    -- so set-theme.sh's builtin probe can't find it from the "gruvbox" slug.
+    ['Gruvbox'] = {
+      background = '#282828',
+      foreground = '#ebdbb2',
+      cursor_bg = '#ebdbb2',
+      cursor_fg = '#282828',
+      cursor_border = '#ebdbb2',
+      selection_bg = '#504945',
+      selection_fg = '#ebdbb2',
+      ansi = { '#282828', '#cc241d', '#98971a', '#d79921', '#458588', '#b16286', '#689d6a', '#a89984' },
+      brights = { '#928374', '#fb4934', '#b8bb26', '#fabd2f', '#83a598', '#d3869b', '#8ec07c', '#ebdbb2' },
+    },
   }
   -- NOTE: the "Set Theme..." palette entry persists your choice by rewriting the
   -- color_scheme line in this APPLIED module, not its chezmoi source. Therefore

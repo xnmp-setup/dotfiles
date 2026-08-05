@@ -1,0 +1,32 @@
+# Catppuccin Mocha
+# Deep blue-grey/purple base with a soft mauve accent
+
+[meta]
+version = 1
+name = "Catppuccin Mocha"
+description = "Deep blue-grey/purple base with a soft mauve accent"
+variant = "dark"
+
+[colors.core]
+background = "#1e1e2e"
+foreground = "#cdd6f4"
+secondary_background = "#313244"
+border = "#45475a"
+accent = "#cba6f7"
+
+[colors.accents]
+blue = "#89b4fa"
+green = "#a6e3a1"
+magenta = "#f5c2e7"
+orange = "#fab387"
+purple = "#cba6f7"
+red = "#f38ba8"
+yellow = "#f9e2af"
+cyan = "#94e2d5"
+
+[colors.list.item.selection]
+background = { name = "#45475a", opacity = 0.55 }
+secondary_background = "#313244"
+
+[colors.list.item.hover]
+background = { name = "#45475a", opacity = 0.35 }

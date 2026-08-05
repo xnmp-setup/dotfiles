@@ -1,0 +1,32 @@
+# Night Owl
+# Deep-blue night coding theme by Sarah Drasner
+
+[meta]
+version = 1
+name = "Night Owl"
+description = "Deep-blue night coding theme by Sarah Drasner"
+variant = "dark"
+
+[colors.core]
+background = "#011627"
+foreground = "#D6DEEB"
+secondary_background = "#0B2942"
+border = "#1E3A5C"
+accent = "#82AAFF"
+
+[colors.accents]
+blue = "#82AAFF"
+green = "#22DA6E"
+magenta = "#C792EA"
+orange = "#F78C6C"
+purple = "#C792EA"
+red = "#EF5350"
+yellow = "#FFEB95"
+cyan = "#21C7A8"
+
+[colors.list.item.selection]
+background = { name = "#1E3A5C", opacity = 0.55 }
+secondary_background = "#1D3B53"
+
+[colors.list.item.hover]
+background = { name = "#1E3A5C", opacity = 0.35 }

@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "Gruvbox",
+  "version": "1.0.0",
+  "description": "Classic retro-warm dark theme with vivid orange accents",
+  "theme": {
+    "colors": {
+      "frame": [60, 56, 54],
+      "frame_inactive": [53, 46, 45],
+      "frame_incognito": [48, 40, 38],
+      "frame_incognito_inactive": [42, 33, 31],
+      "toolbar": [40, 40, 40, 0.95],
+      "tab_text": [235, 219, 178],
+      "tab_background_text": [146, 131, 116],
+      "background_tab": [60, 56, 54, 0.95],
+      "bookmark_text": [235, 219, 178],
+      "ntp_background": [60, 56, 54],
+      "ntp_text": [235, 219, 178],
+      "ntp_link": [254, 128, 25],
+      "ntp_header": [80, 73, 69],
+      "omnibox_background": [60, 56, 54],
+      "omnibox_text": [235, 219, 178],
+      "toolbar_button_icon": [146, 131, 116],
+      "button_background": [254, 128, 25]
+    },
+    "tints": {
+      "buttons": [-1, -1, -1],
+      "frame_incognito": [-1, 0.2, 0.15],
+      "frame_incognito_inactive": [-1, 0.15, 0.1]
+    },
+    "properties": {
+      "ntp_background_alignment": "center",
+      "ntp_background_repeat": "no-repeat"
+    }
+  }
+}

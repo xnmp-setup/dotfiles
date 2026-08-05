@@ -1,0 +1,102 @@
+/**
+ * Gruvbox Dark (Medium) Theme - Classic retro-warm dark palette
+ *
+ * Muted dark backgrounds, warm cream text, vivid orange primary accent.
+ * All background values are opaque hex (no alpha) per operational rules.
+ *
+ * Key palette:
+ *   bg: #282828   panel: #3C3836   surface: #504945   border: #665C54
+ *   accent: #FE8019   spectrum: red #FB4934, yellow #FABD2F, aqua #8EC07C, blue #83A598, purple #D3869B
+ */
+
+[data-theme="gruvbox"] {
+  color-scheme: dark;
+
+  /* Theme metadata */
+  --theme-name: "Gruvbox";
+  --theme-description: "Classic retro-warm dark palette with vivid orange accents";
+  --theme-order: 15;
+
+  /* Accent colors - gruvbox orange */
+  --accent: #FE8019;
+  --accent-light: #FEA45C;
+  --accent-dark: #D65D0E;
+
+  /* Text colors */
+  --text-primary: #EBDBB2;
+  --text-secondary: #EBDBB2;
+  --text-tertiary: #928374;
+  --text-on-accent: #282828;
+
+  /* Background colors - dim/main/selection, opaque hex */
+  --background-solid: #282828;
+  --background-mica: #282828;
+  --background-acrylic: #302C2A;
+  --background-card: #3C3836;
+  --background-card-secondary: #504945;
+  --miller-bg: #322E2C;
+  --content-bg: #282828;
+
+  /* Surface/border colors - gruvbox border */
+  --surface-stroke: rgba(102, 92, 84, 0.5);
+  --surface-stroke-flyout: rgba(102, 92, 84, 0.6);
+  --divider: rgba(102, 92, 84, 0.35);
+
+  /* Control/input backgrounds - orange tint */
+  --control-fill: rgba(254, 128, 25, 0.08);
+  --control-fill-secondary: rgba(254, 128, 25, 0.12);
+  --control-fill-tertiary: rgba(254, 128, 25, 0.05);
+  --control-fill-disabled: rgba(254, 128, 25, 0.03);
+
+  /* Subtle hover/active fills - orange */
+  --subtle-fill: transparent;
+  --subtle-fill-secondary: rgba(254, 128, 25, 0.12);
+  --subtle-fill-tertiary: rgba(254, 128, 25, 0.06);
+
+  /* Control borders - gruvbox */
+  --control-stroke: rgba(102, 92, 84, 0.55);
+  --control-stroke-secondary: rgba(102, 92, 84, 0.35);
+
+  /* Address bar - orange tint */
+  --address-bar-bg: rgba(254, 128, 25, 0.08);
+  --address-bar-stroke: rgba(102, 92, 84, 0.5);
+  --address-bar-highlight: rgba(254, 128, 25, 0.04);
+  --address-bar-bg-hover: rgba(254, 128, 25, 0.12);
+  --address-bar-stroke-hover: rgba(102, 92, 84, 0.65);
+
+  /* Focus indicators */
+  --focus-stroke-outer: #FE8019;
+  --focus-stroke-inner: #282828;
+
+  /* System status colors */
+  --system-critical: #FB4934;
+  --system-success: #B8BB26;
+  --system-caution: #FABD2F;
+
+  /* Shadows - near-black, deeper than dim background */
+  --shadow-flyout: 0 8px 24px rgba(15, 13, 12, 0.65), 0 2px 8px rgba(15, 13, 12, 0.4), 0 0 12px rgba(254, 128, 25, 0.04);
+  --shadow-dialog: 0 32px 64px rgba(15, 13, 12, 0.75), 0 4px 24px rgba(15, 13, 12, 0.45);
+  --shadow-tooltip: 0 4px 12px rgba(15, 13, 12, 0.55);
+  --shadow-card: 0 1px 4px rgba(15, 13, 12, 0.35), 0 0 1px rgba(15, 13, 12, 0.25), 0 0 8px rgba(254, 128, 25, 0.03);
+  --shadow-subtle: 0 1px 2px rgba(15, 13, 12, 0.25);
+
+  /* Mica overlay - orange/aqua wash */
+  --mica-overlay: linear-gradient(
+    170deg,
+    rgba(254, 128, 25, 0.03) 0%,
+    rgba(142, 192, 124, 0.03) 25%,
+    transparent 45%,
+    rgba(250, 189, 47, 0.02) 80%,
+    transparent 100%
+  );
+
+  /* Per-section opacity */
+  --sidebar-opacity: 1;
+  --toolbar-opacity: 1;
+  --content-opacity: 1;
+  --titlebar-opacity: 1;
+  --statusbar-opacity: 1;
+
+  /* Icon colors - orange folders */
+  --icon-folder: #FE8019;
+}

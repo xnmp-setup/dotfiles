@@ -1,0 +1,110 @@
+/**
+ * Catppuccin Mocha Theme
+ * Ported from the canonical Catppuccin Mocha palette
+ * https://github.com/catppuccin/catppuccin
+ *
+ * Deep blue-grey/purple base with a soft mauve accent.
+ * All background-* values are opaque hex (no alpha) per theme guidelines.
+ * Card/acrylic/address-bar backgrounds are computed arithmetically as flat
+ * per-channel offsets from base #1e1e2e (rgb 30,30,46), preserving the same
+ * offsets the ayu-mirage reference uses relative to its own base, so the
+ * relative "lift" between surfaces matches even though Catppuccin has no
+ * canonical swatch for these intermediate panel shades.
+ *
+ * Key palette:
+ *   bg: #1e1e2e   panel: #313244   darkest: #11111b
+ *   accent: #cba6f7   text: #cdd6f4   secondary: #a6adc8
+ *   selection: #45475a
+ */
+
+[data-theme="catppuccin-mocha"] {
+  color-scheme: dark;
+
+  /* Theme metadata */
+  --theme-name: "Catppuccin Mocha";
+  --theme-description: "Deep blue-grey/purple base with a soft mauve accent";
+  --theme-order: 12;
+
+  /* Accent colors - soft mauve */
+  --accent: #cba6f7;
+  --accent-light: #b4befe;
+  --accent-dark: #ad8dd2;
+
+  /* Text colors */
+  --text-primary: #cdd6f4;
+  --text-secondary: #a6adc8;
+  --text-tertiary: #6c7086;
+  --text-on-accent: #11111b;
+
+  /* Background colors - opaque hex only, no rgba */
+  --background-solid: #1e1e2e;
+  --background-mica: #1e1e2e;
+  --background-acrylic: #222232;
+  --background-card: #202030;
+  --background-card-secondary: #1d1d2c;
+  --miller-bg: #202030;
+  --content-bg: #1e1e2e;
+
+  /* Surface/border colors - muted lavender-grey tint */
+  --surface-stroke: rgba(127, 132, 156, 0.12);
+  --surface-stroke-flyout: rgba(127, 132, 156, 0.16);
+  --divider: rgba(127, 132, 156, 0.07);
+
+  /* Control/input backgrounds */
+  --control-fill: rgba(127, 132, 156, 0.08);
+  --control-fill-secondary: rgba(127, 132, 156, 0.11);
+  --control-fill-tertiary: rgba(127, 132, 156, 0.04);
+  --control-fill-disabled: rgba(127, 132, 156, 0.03);
+
+  /* Subtle hover/active fills - mauve accent tint */
+  --subtle-fill: transparent;
+  --subtle-fill-secondary: rgba(203, 166, 247, 0.14);
+  --subtle-fill-tertiary: rgba(203, 166, 247, 0.08);
+
+  /* Control borders */
+  --control-stroke: rgba(127, 132, 156, 0.14);
+  --control-stroke-secondary: rgba(127, 132, 156, 0.09);
+
+  /* Address bar - opaque hex for backgrounds, tinted rgba for strokes */
+  --address-bar-bg: #242535;
+  --address-bar-stroke: rgba(127, 132, 156, 0.16);
+  --address-bar-highlight: rgba(127, 132, 156, 0.03);
+  --address-bar-bg-hover: #282839;
+  --address-bar-stroke-hover: rgba(127, 132, 156, 0.22);
+
+  /* Focus indicators */
+  --focus-stroke-outer: #cba6f7;
+  --focus-stroke-inner: #1e1e2e;
+
+  /* System status colors */
+  --system-critical: #f38ba8;
+  --system-success: #a6e3a1;
+  --system-caution: #f9e2af;
+
+  /* Shadows - deep with subtle mauve glow */
+  --shadow-flyout: 0 8px 24px rgba(17, 17, 27, 0.65), 0 2px 8px rgba(17, 17, 27, 0.4), 0 0 12px rgba(203, 166, 247, 0.04);
+  --shadow-dialog: 0 32px 64px rgba(17, 17, 27, 0.75), 0 4px 24px rgba(17, 17, 27, 0.45);
+  --shadow-tooltip: 0 4px 12px rgba(17, 17, 27, 0.55);
+  --shadow-card: 0 1px 4px rgba(17, 17, 27, 0.35), 0 0 1px rgba(17, 17, 27, 0.25), 0 0 8px rgba(203, 166, 247, 0.03);
+  --shadow-subtle: 0 1px 2px rgba(17, 17, 27, 0.25);
+
+  /* Mica overlay - mauve-to-blue banding */
+  --mica-overlay: linear-gradient(
+    170deg,
+    rgba(203, 166, 247, 0.03) 0%,
+    rgba(137, 180, 250, 0.03) 25%,
+    transparent 45%,
+    rgba(17, 17, 27, 0.02) 80%,
+    transparent 100%
+  );
+
+  /* Per-section opacity */
+  --sidebar-opacity: 1;
+  --toolbar-opacity: 1;
+  --content-opacity: 1;
+  --titlebar-opacity: 1;
+  --statusbar-opacity: 1;
+
+  /* Icon colors - entity blue folders */
+  --icon-folder: #89b4fa;
+}
