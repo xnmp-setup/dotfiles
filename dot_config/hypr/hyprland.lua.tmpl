@@ -1,9 +1,9 @@
 -- Hyprland Lua config (0.55+).
 --
 -- IMPORTANT: Hyprland prefers hyprland.lua over hyprland.conf — when both
--- exist, the .conf is never read (see Jeremy::getMainConfigPath). The .conf
--- template is kept in chezmoi purely as a fallback; to go back to it, remove
--- ~/.config/hypr/hyprland.lua.
+-- exist, the .conf is never read (see Jeremy::getMainConfigPath). This file is
+-- the only config; the legacy .conf was removed to avoid edits landing in a
+-- file Hyprland ignores.
 --
 -- Layout is "lua:nary" (see nary.lua): an N-ary tiling tree, so three windows
 -- can be equal peers rather than dwindle's forced binary nesting.
@@ -629,3 +629,7 @@ for i = 1, 5 do
     hl.bind(mainMod .. " + " .. i,        hl.dsp.focus({ workspace = i }))
     hl.bind(mainMod .. " + CTRL + " .. i, function() group_actions.move_to_workspace(i) end)
 end
+
+-- Cycle through the monitor's open workspaces; m+1/m-1 wrap at the ends.
+hl.bind(mainMod .. " + Tab",          hl.dsp.focus({ workspace = "m+1" }))
+hl.bind(mainMod .. " + SHIFT + Tab",  hl.dsp.focus({ workspace = "m-1" }))
