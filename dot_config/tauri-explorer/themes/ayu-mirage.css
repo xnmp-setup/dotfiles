@@ -1,0 +1,104 @@
+/**
+ * Ayu Mirage Theme
+ * Ported from the canonical Ayu Mirage palette
+ *
+ * Deep blue-grey base with warm golden accents.
+ * All background-* values are opaque hex (no alpha) per theme guidelines.
+ *
+ * Key palette:
+ *   bg: #1f2430   panel: #232834   darkest: #171b24
+ *   accent: #ffcc66   text: #cbccc6   secondary: #707a8c
+ *   selection: #34455a
+ */
+
+[data-theme="ayu-mirage"] {
+  color-scheme: dark;
+
+  /* Theme metadata */
+  --theme-name: "Ayu Mirage";
+  --theme-description: "Deep blue-grey base with warm gold accents";
+  --theme-order: 11;
+
+  /* Accent colors - warm gold */
+  --accent: #ffcc66;
+  --accent-light: #ffd580;
+  --accent-dark: #e0ac47;
+
+  /* Text colors */
+  --text-primary: #cbccc6;
+  --text-secondary: #707a8c;
+  --text-tertiary: #5c6773;
+  --text-on-accent: #171b24;
+
+  /* Background colors - opaque hex only, no rgba */
+  --background-solid: #1f2430;
+  --background-mica: #1f2430;
+  --background-acrylic: #232834;
+  --background-card: #212632;
+  --background-card-secondary: #1e232e;
+  --miller-bg: #212632;
+  --content-bg: #1f2430;
+
+  /* Surface/border colors - muted blue-grey tint */
+  --surface-stroke: rgba(112, 122, 140, 0.12);
+  --surface-stroke-flyout: rgba(112, 122, 140, 0.16);
+  --divider: rgba(112, 122, 140, 0.07);
+
+  /* Control/input backgrounds */
+  --control-fill: rgba(112, 122, 140, 0.08);
+  --control-fill-secondary: rgba(112, 122, 140, 0.11);
+  --control-fill-tertiary: rgba(112, 122, 140, 0.04);
+  --control-fill-disabled: rgba(112, 122, 140, 0.03);
+
+  /* Subtle hover/active fills - gold accent tint */
+  --subtle-fill: transparent;
+  --subtle-fill-secondary: rgba(255, 204, 102, 0.14);
+  --subtle-fill-tertiary: rgba(255, 204, 102, 0.08);
+
+  /* Control borders */
+  --control-stroke: rgba(112, 122, 140, 0.14);
+  --control-stroke-secondary: rgba(112, 122, 140, 0.09);
+
+  /* Address bar - opaque hex for backgrounds, tinted rgba for strokes */
+  --address-bar-bg: #252b37;
+  --address-bar-stroke: rgba(112, 122, 140, 0.16);
+  --address-bar-highlight: rgba(112, 122, 140, 0.03);
+  --address-bar-bg-hover: #292e3b;
+  --address-bar-stroke-hover: rgba(112, 122, 140, 0.22);
+
+  /* Focus indicators */
+  --focus-stroke-outer: #ffcc66;
+  --focus-stroke-inner: #1f2430;
+
+  /* System status colors */
+  --system-critical: #ff3333;
+  --system-success: #bae67e;
+  --system-caution: #ffd580;
+
+  /* Shadows - deep with subtle gold glow */
+  --shadow-flyout: 0 8px 24px rgba(23, 27, 36, 0.65), 0 2px 8px rgba(23, 27, 36, 0.4), 0 0 12px rgba(255, 204, 102, 0.04);
+  --shadow-dialog: 0 32px 64px rgba(23, 27, 36, 0.75), 0 4px 24px rgba(23, 27, 36, 0.45);
+  --shadow-tooltip: 0 4px 12px rgba(23, 27, 36, 0.55);
+  --shadow-card: 0 1px 4px rgba(23, 27, 36, 0.35), 0 0 1px rgba(23, 27, 36, 0.25), 0 0 8px rgba(255, 204, 102, 0.03);
+  --shadow-subtle: 0 1px 2px rgba(23, 27, 36, 0.25);
+
+  /* Mica overlay - gold-to-blue banding */
+  --mica-overlay: linear-gradient(
+    170deg,
+    rgba(255, 204, 102, 0.03) 0%,
+    rgba(115, 208, 255, 0.03) 25%,
+    transparent 45%,
+    rgba(23, 27, 36, 0.02) 80%,
+    transparent 100%
+  );
+
+  /* Per-section opacity */
+  --sidebar-opacity: 1;
+  --toolbar-opacity: 1;
+  --content-opacity: 1;
+  --titlebar-opacity: 1;
+  --statusbar-opacity: 1;
+
+  /* Icon colors - entity blue folders */
+  --icon-folder: #73d0ff;
+}

@@ -1,0 +1,104 @@
+/**
+ * Cosmic Dusk Theme - Sci-fi planet sunrise
+ * Issue: tauri-explorer-248w
+ *
+ * Deep indigo base matched to the Ghostty Cosmic Dusk terminal theme.
+ * Warm coral accents evoke the sunrise glow against a vast cosmic sky.
+ *
+ * Key palette:
+ *   bg: #0a0e28   sidebar: #0e1330   surface: #151a42
+ *   accent: #d4607a   text: #d8dce8   secondary: #8a90b8
+ *   folder: #6a7acc   divider: #2a3060
+ */
+
+[data-theme="cosmic-dusk"] {
+  color-scheme: dark;
+
+  /* Theme metadata */
+  --theme-name: "Cosmic Dusk";
+  --theme-description: "Deep indigo with warm coral sunrise accents";
+  --theme-order: 9;
+
+  /* Accent colors - warm coral from the sunrise */
+  --accent: #d4607a;
+  --accent-light: #e87898;
+  --accent-dark: #b04860;
+
+  /* Text colors */
+  --text-primary: #d8dce8;
+  --text-secondary: #8088b4;
+  --text-tertiary: #484e78;
+  --text-on-accent: #0a0e28;
+
+  /* Background colors - deep indigo, matched to Ghostty #0e1330 */
+  --background-solid: #0a0e28;
+  --background-mica: rgba(10, 14, 40, 0.97);
+  --background-acrylic: rgba(14, 19, 48, 0.94);
+  --background-card: rgba(21, 26, 66, 0.5);
+  --background-card-secondary: rgba(18, 22, 56, 0.4);
+  --miller-bg: rgba(14, 17, 46, 0.5);
+  --content-bg: radial-gradient(ellipse at 50% 0%, rgba(212, 96, 122, 0.03) 0%, rgba(90, 80, 180, 0.02) 30%, transparent 60%);
+
+  /* Surface/border colors - indigo-tinted */
+  --surface-stroke: rgba(120, 128, 180, 0.12);
+  --surface-stroke-flyout: rgba(120, 128, 180, 0.16);
+  --divider: rgba(120, 128, 180, 0.07);
+
+  /* Control/input backgrounds */
+  --control-fill: rgba(120, 128, 180, 0.08);
+  --control-fill-secondary: rgba(120, 128, 180, 0.11);
+  --control-fill-tertiary: rgba(120, 128, 180, 0.04);
+  --control-fill-disabled: rgba(120, 128, 180, 0.03);
+
+  /* Subtle hover/active fills - indigo tint */
+  --subtle-fill: transparent;
+  --subtle-fill-secondary: rgba(90, 100, 190, 0.14);
+  --subtle-fill-tertiary: rgba(90, 100, 190, 0.08);
+
+  /* Control borders */
+  --control-stroke: rgba(120, 128, 180, 0.14);
+  --control-stroke-secondary: rgba(120, 128, 180, 0.09);
+
+  /* Address bar */
+  --address-bar-bg: rgba(120, 128, 180, 0.08);
+  --address-bar-stroke: rgba(120, 128, 180, 0.16);
+  --address-bar-highlight: rgba(120, 128, 180, 0.03);
+  --address-bar-bg-hover: rgba(120, 128, 180, 0.12);
+  --address-bar-stroke-hover: rgba(120, 128, 180, 0.22);
+
+  /* Focus indicators */
+  --focus-stroke-outer: #d4607a;
+  --focus-stroke-inner: #0a0e28;
+
+  /* System status colors */
+  --system-critical: #f87171;
+  --system-success: #69db7c;
+  --system-caution: #fbbf24;
+
+  /* Shadows - deep with subtle indigo glow */
+  --shadow-flyout: 0 8px 24px rgba(5, 6, 18, 0.65), 0 2px 8px rgba(5, 6, 18, 0.4), 0 0 12px rgba(90, 80, 180, 0.04);
+  --shadow-dialog: 0 32px 64px rgba(5, 6, 18, 0.75), 0 4px 24px rgba(5, 6, 18, 0.45);
+  --shadow-tooltip: 0 4px 12px rgba(5, 6, 18, 0.55);
+  --shadow-card: 0 1px 4px rgba(5, 6, 18, 0.35), 0 0 1px rgba(5, 6, 18, 0.25), 0 0 8px rgba(90, 80, 180, 0.03);
+  --shadow-subtle: 0 1px 2px rgba(5, 6, 18, 0.25);
+
+  /* Mica overlay - dusk gradient with coral-to-indigo banding */
+  --mica-overlay: linear-gradient(
+    170deg,
+    rgba(212, 96, 122, 0.03) 0%,
+    rgba(90, 80, 180, 0.03) 25%,
+    transparent 45%,
+    rgba(70, 50, 150, 0.02) 80%,
+    transparent 100%
+  );
+
+  /* Per-section opacity */
+  --sidebar-opacity: 1;
+  --toolbar-opacity: 1;
+  --content-opacity: 1;
+  --titlebar-opacity: 1;
+  --statusbar-opacity: 1;
+
+  /* Icon colors - soft blue-violet folders */
+  --icon-folder: #7a8ae0;
+}

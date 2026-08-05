@@ -1,0 +1,90 @@
+/**
+ * Rapture Theme - Ghostty terminal color scheme
+ * Issue: tauri-jvdk
+ *
+ * Deep navy dark theme with pastel neon accents.
+ * Based on the Rapture color palette from Ghostty/iTerm2.
+ *
+ * Key palette:
+ *   bg: #111e2a   fg: #c0c9e5   selection: #304b66
+ *   red: #fc644d   green: #7afde1   yellow: #fff09b
+ *   blue: #6c9bf5  magenta: #ff4fa1  cyan: #64e0ff
+ */
+
+[data-theme="rapture"] {
+  color-scheme: dark;
+
+  /* Theme metadata */
+  --theme-name: "Rapture";
+  --theme-description: "Deep navy with pastel neon accents";
+  --theme-order: 4;
+
+  /* Accent colors - cyan from the Rapture palette */
+  --accent: #64e0ff;
+  --accent-light: #7afde1;
+  --accent-dark: #4bb8d4;
+
+  /* Text colors - from Rapture foreground */
+  --text-primary: #c0c9e5;
+  --text-secondary: #a0aace;
+  --text-tertiary: #7a87a8;
+  --text-on-accent: #111e2a;
+
+  /* Background colors - from Rapture background, darkened for compositor transparency */
+  --background-solid: #081420;
+  --background-mica: rgba(6, 16, 24, 1);
+  --background-acrylic: rgba(6, 16, 24, 0.98);
+  --background-card: rgba(48, 75, 102, 0.3);
+  --background-card-secondary: rgba(48, 75, 102, 0.2);
+  --miller-bg: rgba(38, 62, 86, 0.3);
+
+  /* Surface/border colors */
+  --surface-stroke: rgba(192, 201, 229, 0.12);
+  --surface-stroke-flyout: rgba(192, 201, 229, 0.18);
+  --divider: rgba(192, 201, 229, 0.06);
+
+  /* Control/input backgrounds */
+  --control-fill: rgba(192, 201, 229, 0.08);
+  --control-fill-secondary: rgba(192, 201, 229, 0.12);
+  --control-fill-tertiary: rgba(192, 201, 229, 0.05);
+  --control-fill-disabled: rgba(192, 201, 229, 0.04);
+
+  /* Subtle hover/active fills - selection blue tint */
+  --subtle-fill: transparent;
+  --subtle-fill-secondary: rgba(48, 75, 102, 0.4);
+  --subtle-fill-tertiary: rgba(48, 75, 102, 0.25);
+
+  /* Control borders */
+  --control-stroke: rgba(192, 201, 229, 0.15);
+  --control-stroke-secondary: rgba(192, 201, 229, 0.1);
+
+  /* Focus indicators */
+  --focus-stroke-outer: #64e0ff;
+  --focus-stroke-inner: #111e2a;
+
+  /* System status colors - from Rapture ANSI colors */
+  --system-critical: #fc644d;
+  --system-success: #7afde1;
+  --system-caution: #fff09b;
+
+  /* Shadows */
+  --shadow-flyout: 0 8px 20px rgba(0, 10, 20, 0.5);
+  --shadow-dialog: 0 32px 64px rgba(0, 10, 20, 0.6), 0 4px 24px rgba(0, 10, 20, 0.4);
+  --shadow-tooltip: 0 4px 12px rgba(0, 10, 20, 0.5);
+
+  /* Mica overlay - navy gradient */
+  --mica-overlay: linear-gradient(
+    170deg,
+    rgba(100, 224, 255, 0.02) 0%,
+    rgba(48, 75, 102, 0.02) 25%,
+    transparent 45%
+  );
+
+  /* Premium shadows */
+  --shadow-card: 0 1px 4px rgba(0, 10, 20, 0.25), 0 0 1px rgba(0, 10, 20, 0.2);
+  --shadow-subtle: 0 1px 2px rgba(0, 10, 20, 0.2);
+
+  /* Icon colors - themeable */
+  --icon-folder: #5cc8b4;
+  /* --icon-file-tint: unset; when set, overrides all file icon colors */
+}
