@@ -13,6 +13,12 @@ end
 
 function M.setup(config, opts)
   local persist_path = assert(opts.persist_path, 'theme persistence path is required')
+  -- Injected from wezterm_appearance: name -> scheme table, and scheme table ->
+  -- tab bar palette. Switching color_scheme at runtime does NOT recolor the
+  -- fancy tab bar (its button colors come from static config.colors.tab_bar),
+  -- so we re-derive and override them alongside the scheme.
+  local resolve_scheme = assert(opts.resolve_scheme, 'resolve_scheme is required')
+  local tab_bar_colors = assert(opts.tab_bar_colors, 'tab_bar_colors is required')
 
   -- ---------- Command palette: Set Theme ----------
   local function persist_color_scheme(name)
@@ -52,6 +58,23 @@ function M.setup(config, opts)
               if label then
                 local overrides = w:get_config_overrides() or {}
                 overrides.color_scheme = label
+                -- Copy the base colors table so unrelated entries (split
+                -- divider, …) survive; only tab_bar/background are re-derived.
+                local colors = {}
+                for k, v in pairs(overrides.colors or config.colors or {}) do
+                  colors[k] = v
+                end
+                colors.tab_bar = tab_bar_colors(resolve_scheme(config, label))
+                overrides.colors = colors
+                -- window_frame is a separate table and also carries the scheme
+                -- background (the strip behind the tab buttons).
+                local frame = {}
+                for k, v in pairs(overrides.window_frame or config.window_frame or {}) do
+                  frame[k] = v
+                end
+                frame.active_titlebar_bg = colors.tab_bar.background
+                frame.inactive_titlebar_bg = colors.tab_bar.background
+                overrides.window_frame = frame
                 w:set_config_overrides(overrides)
                 persist_color_scheme(label)
               end

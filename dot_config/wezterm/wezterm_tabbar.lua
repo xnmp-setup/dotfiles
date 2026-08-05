@@ -273,6 +273,15 @@ function M.setup(deps)
     --
     -- Resolve the leading marker glyph + its color for the current state first, so
     -- we know how many cells it consumes before deciding how much title fits.
+    -- Title colors come from the effective config's tab bar palette, which
+    -- wezterm_appearance derives from the active color scheme. Read them from
+    -- `cfg` (not a value captured at setup) so the "Set Theme..." override is
+    -- picked up on the next repaint. Hardcoding white/grey here made titles
+    -- unreadable under light schemes.
+    local palette = (cfg.colors or {}).tab_bar or {}
+    local active_title_fg = (palette.active_tab or {}).fg_color or '#ffffff'
+    local inactive_title_fg = (palette.inactive_tab or {}).fg_color or '#aaaaaa'
+
     local marker, marker_fg, title_fg
     local is_working = false
     if agent then
@@ -305,7 +314,7 @@ function M.setup(deps)
       if status == 'attention' then
         title_fg = '#F58A82'
       else
-        title_fg = is_active and '#ffffff' or '#bbbbbb'
+        title_fg = is_active and active_title_fg or inactive_title_fg
       end
     else
       -- Non-agent tabs: default to a terminal prompt glyph (❯ U+276F, text-
@@ -316,7 +325,7 @@ function M.setup(deps)
       marker = APP_ICONS[pname] or '❯'
       -- Focused: rich saturated blue. Unfocused: muted slate (was grey).
       marker_fg = is_active and '#4a90e2' or '#5a7a9a'
-      title_fg = is_active and '#ffffff' or '#aaaaaa'
+      title_fg = is_active and active_title_fg or inactive_title_fg
     end
 
     -- Truncate via the pure helper. Use a conservative fixed budget rather than

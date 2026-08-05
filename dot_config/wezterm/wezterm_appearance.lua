@@ -7,6 +7,58 @@ local M = {
   config_path = wezterm.config_file:gsub('[^/\\]+$', 'wezterm_appearance.lua'),
 }
 
+-- ---------- Scheme-derived tab bar palette (pure) ----------
+-- The fancy tab bar fills each button from static config.colors.tab_bar.*
+-- colors, so they can't be computed per-tab in format-tab-title. Derive them
+-- from whichever scheme is active instead of hardcoding one theme's hues, so
+-- the active tab reads as "this theme's highlighted surface" under every
+-- scheme (including the ~1000 builtins, which we don't control).
+
+local function parse_hex(hex)
+  local r, g, b = tostring(hex):match('^#?(%x%x)(%x%x)(%x%x)$')
+  if not r then return nil end
+  return tonumber(r, 16), tonumber(g, 16), tonumber(b, 16)
+end
+
+-- Linear blend: t=0 yields `from`, t=1 yields `to`.
+function M.mix(from, to, t)
+  local fr, fg, fb = parse_hex(from)
+  local tr, tg, tb = parse_hex(to)
+  if not fr or not tr then return from end
+  local function chan(a, b) return math.floor(a + (b - a) * t + 0.5) end
+  return string.format('#%02x%02x%02x', chan(fr, tr), chan(fg, tg), chan(fb, tb))
+end
+
+-- Colors for the fancy tab bar buttons, derived from a color scheme table.
+-- selection_bg is the scheme author's own "highlighted surface" color, which is
+-- exactly what an active tab is; when a scheme omits it (some builtins do) fall
+-- back to nudging the background toward the foreground, which works for light
+-- and dark schemes alike without branching on luminance.
+function M.tab_bar_colors(scheme)
+  local bg = scheme.background or '#000000'
+  local fg = scheme.foreground or '#ffffff'
+  local active_bg = scheme.selection_bg or M.mix(bg, fg, 0.15)
+  return {
+    background = bg,
+    -- Active tab a touch lighter than the bar; inactive matches the bar; hover
+    -- sits halfway so it reads as a preview of selecting the tab.
+    active_tab   = { bg_color = active_bg, fg_color = scheme.selection_fg or fg },
+    inactive_tab = { bg_color = bg, fg_color = M.mix(fg, bg, 0.35) },
+    inactive_tab_hover = { bg_color = M.mix(bg, active_bg, 0.5), fg_color = fg },
+    new_tab = { bg_color = bg, fg_color = M.mix(fg, bg, 0.5) },
+    new_tab_hover = { bg_color = M.mix(bg, active_bg, 0.5), fg_color = fg },
+  }
+end
+
+-- Look up a scheme table by name: our inline schemes first, then the builtins.
+-- The final fallback keeps config load working if a persisted scheme name no
+-- longer resolves (e.g. a builtin renamed across wezterm versions).
+function M.resolve_scheme(config, name)
+  return (config.color_schemes or {})[name]
+    or wezterm.color.get_builtin_schemes()[name]
+    or { background = '#0e1330', foreground = '#d8dce8' }
+end
+
 function M.apply(config)
   -- ---------- Default shell ----------
   -- Default new tabs/windows to the WSL distro, but only on Windows: this domain
@@ -65,6 +117,20 @@ function M.apply(config)
       ansi = { '#000000', '#fc644d', '#7afde1', '#fff09b', '#6c9bf5', '#ff4fa1', '#64e0ff', '#c0c9e5' },
       brights = { '#304b66', '#fc644d', '#7afde1', '#fff09b', '#6c9bf5', '#ff4fa1', '#64e0ff', '#ffffff' },
     },
+    -- "Yosemite Glow" (light) — Half Dome sunset: pale rose/peach sky, golden
+    -- clouds, violet haze, slate-gray granite, pine green. No existing Ghostty
+    -- theme; palette defined from scratch (see theme brief).
+    ['Yosemite Glow'] = {
+      background = '#f8ece2',
+      foreground = '#45424f',
+      cursor_bg = '#d26847',
+      cursor_fg = '#f8ece2',
+      cursor_border = '#d26847',
+      selection_bg = '#f2cbb0',
+      selection_fg = '#45424f',
+      ansi = { '#55505c', '#bf4d55', '#5c7a52', '#d28f3c', '#5b7996', '#a35d9b', '#58908c', '#f1e0d2' },
+      brights = { '#766f7d', '#d16680', '#6f9160', '#e2ab55', '#7592b1', '#bc7fb4', '#74aaa4', '#fdf5ec' },
+    },
     -- Classic Gruvbox Dark (medium). Inline because no builtin normalizes to
     -- plain "Gruvbox" (builtins are "Gruvbox Dark (Gogh)", "GruvboxDark", ...),
     -- so set-theme.sh's builtin probe can't find it from the "gruvbox" slug.
@@ -85,7 +151,7 @@ function M.apply(config)
   -- `chezmoi apply` resets the theme to whatever is written here.
   -- Keep this line in sync with your current theme (or re-pick from the palette
   -- after applying).
-  config.color_scheme = 'Cosmic Dusk'
+  config.color_scheme = 'Gruvbox Material (Gogh)'
   config.font_size = 14
   config.window_background_opacity = 0.92
   config.window_padding = { left = 10, right = 10, top = 6, bottom = 6 }
@@ -112,9 +178,7 @@ function M.apply(config)
   -- own truncation in format-tab-title uses the per-tab max_width passed there.
   config.tab_max_width = 32
   config.status_update_interval = M.status_update_interval_ms
-  local scheme = config.color_schemes[config.color_scheme]
-    or wezterm.color.get_builtin_schemes()[config.color_scheme]
-    or { background = '#0e1330' }
+  local scheme = M.resolve_scheme(config, config.color_scheme)
   config.window_frame = {
     -- Inter for the label text; fall back to Hack Nerd Font so the per-app tab
     -- icons (editor/git/docker/… — see wezterm_tabbar.lua) have glyphs to render. Inter has
@@ -142,17 +206,11 @@ function M.apply(config)
   -- split-divider-color = #FFBF00
   config.colors = {
     split = '#FFBF00',
-    tab_bar = {
-      background = scheme.background,
-      -- Fancy tab bar fills each button from these static colors (per-tab bg in
-      -- format-tab-title only paints behind the text). Active tab a touch
-      -- lighter than the bar; inactive matches the bar; hover between.
-      active_tab   = { bg_color = '#2a3352', fg_color = '#ffffff' },
-      inactive_tab = { bg_color = scheme.background, fg_color = '#aaaaaa' },
-      inactive_tab_hover = { bg_color = '#1c2340', fg_color = '#dddddd' },
-      new_tab = { bg_color = scheme.background, fg_color = '#888888' },
-      new_tab_hover = { bg_color = '#1c2340', fg_color = '#dddddd' },
-    },
+    -- Fancy tab bar fills each button from these static colors (per-tab bg in
+    -- format-tab-title only paints behind the text), so they're derived from the
+    -- scheme up front. The "Set Theme..." palette entry re-derives them when it
+    -- switches schemes at runtime (see wezterm_themes.lua).
+    tab_bar = M.tab_bar_colors(scheme),
   }
 
   -- copy-on-select = false (only copy via explicit ctrl+c)
