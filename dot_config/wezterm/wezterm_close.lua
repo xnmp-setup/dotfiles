@@ -119,6 +119,10 @@ local function confirmation_message(scope, process)
     { Foreground = { Color = '#9aa4c8' } },
     { Text = consequence },
     'ResetAttributes',
+    { Text = '\n\n' },
+    { Foreground = { Color = '#6b7394' } },
+    { Text = 'Enter closes · Esc cancels' },
+    'ResetAttributes',
   }
 end
 
