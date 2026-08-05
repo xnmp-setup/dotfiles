@@ -1,0 +1,33 @@
+filetype: ghostty
+
+detect:
+    # Ghostty config lives at .../ghostty/config (plus config-file includes
+    # kept in the same directory). Micro matches this against the full path.
+    filename: "ghostty[\\\\/](config([-._][^\\\\/]*)?|themes[\\\\/][^\\\\/]+)$"
+
+rules:
+    # Everything right of the first "=" is the value.
+    - constant.string: "=.*$"
+
+    # Bare scalar values get their own colour.
+    - constant.number: "=[[:space:]]*-?[0-9]+([.][0-9]+)?(%|px)?[[:space:]]*$"
+    - constant.bool: "=[[:space:]]*(true|false)[[:space:]]*$"
+
+    # Hex colours, e.g. #FFBF00 or rrggbb after "=".
+    - constant.specialChar: "#[0-9A-Fa-f]{6}\\b|#[0-9A-Fa-f]{3}\\b"
+
+    # keybind values: modifiers/chords left of the action, e.g. ctrl+shift+t=new_tab
+    - special: "\\b(ctrl|super|cmd|alt|opt|shift|global|all|unconsumed|performable)\\b"
+
+    # ~ home expansion in paths.
+    - special: "=[[:space:]]*~"
+
+    # Config key: kebab-case identifier at start of line.
+    - identifier: "^[[:space:]]*[a-z][a-z0-9-]*"
+    - symbol.operator: "="
+
+    - comment:
+        start: "#"
+        end: "$"
+        rules:
+            - todo: "(TODO|XXX|FIXME|NOTE):?"
