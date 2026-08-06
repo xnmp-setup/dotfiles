@@ -461,6 +461,8 @@ if [[ -f "$dr_css" ]] && command -v jq &>/dev/null; then
 
     # Full default theme object with our colour overrides, so importing this
     # replaces only the theme (site lists etc. are preserved by the merge).
+    # fontFamily must be a non-empty string even with useFont off — Dark
+    # Reader's import validator rejects "" ("Unexpected value for fontFamily").
     jq -n \
       --argjson mode "$dr_mode" \
       --arg bg "$bg" --arg fg "$fg" \
@@ -470,7 +472,7 @@ if [[ -f "$dr_css" ]] && command -v jq &>/dev/null; then
         theme: {
           mode: $mode,
           brightness: 100, contrast: 100, grayscale: 0, sepia: 0,
-          useFont: false, fontFamily: "", textStroke: 0,
+          useFont: false, fontFamily: "Open Sans", textStroke: 0,
           engine: "dynamicTheme", stylesheet: "",
           darkSchemeBackgroundColor: (if $mode == 1 then $bg else "#181a1b" end),
           darkSchemeTextColor:       (if $mode == 1 then $fg else "#e8e6e3" end),
