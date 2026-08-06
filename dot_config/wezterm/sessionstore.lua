@@ -60,20 +60,55 @@ local last_save = 0
 -- last good one kept. (Measured; see session.lua.) Returning nil here means not
 -- one cwd is asked for on the way to discovering that — including in windows
 -- walked before the zoomed one.
+local function scan_tab(tab)
+  local pane_infos = tab:panes_with_info()
+  for _, pane_info in ipairs(pane_infos) do
+    if pane_info.is_zoomed then return nil end
+  end
+  return pane_infos
+end
+
 local function scan()
   local windows = {}
   for _, mux_win in ipairs(wezterm.mux.all_windows()) do
     local tabs = {}
     for _, tab_info in ipairs(mux_win:tabs_with_info()) do
-      local pane_infos = tab_info.tab:panes_with_info()
-      for _, pane_info in ipairs(pane_infos) do
-        if pane_info.is_zoomed then return nil end
-      end
+      local pane_infos = scan_tab(tab_info.tab)
+      if not pane_infos then return nil end
       tabs[#tabs + 1] = { tab = tab_info.tab, active = tab_info.is_active, panes = pane_infos }
     end
     windows[#windows + 1] = tabs
   end
   return windows
+end
+
+-- Query a scanned set of panes. `resume_args_for` is deliberately optional:
+-- periodic session persistence restores only shells, while the in-memory
+-- recently-closed stack may decorate recognized coding-agent panes with a safe
+-- resume argv. A broken decorator cannot prevent the tab layout being saved.
+local function capture_panes(pane_infos, resume_args_for)
+  local panes = {}
+  for _, pane_info in ipairs(pane_infos) do
+    local p = pane_info.pane
+    -- Domain first, cwd only for panes that will survive sanitize. A background
+    -- pane is dropped whatever its cwd, and that cwd query crosses a mux socket.
+    local domain = p:get_domain_name()
+    if session.is_restorable_domain(domain) then
+      local pane_state = {
+        cwd = session.normalize_cwd(p:get_current_working_dir()),
+        domain = domain,
+        left = pane_info.left, top = pane_info.top,
+        width = pane_info.width, height = pane_info.height,
+        active = pane_info.is_active,
+      }
+      if resume_args_for then
+        local ok, args = pcall(resume_args_for, p)
+        if ok then pane_state.args = args end
+      end
+      panes[#panes + 1] = pane_state
+    end
+  end
+  return panes
 end
 
 -- Pass two: the queries, into a plain state table (shape documented in
@@ -85,26 +120,7 @@ local function capture()
   for _, win_tabs in ipairs(scanned) do
     local tabs, size = {}, nil
     for _, tab in ipairs(win_tabs) do
-      local panes = {}
-      for _, pane_info in ipairs(tab.panes) do
-        local p = pane_info.pane
-        -- Domain first, cwd only for panes that will survive sanitize. A
-        -- background pane is dropped there whatever its cwd, and its cwd is the
-        -- expensive one to ask for — it's the query that crosses the socket. The
-        -- predicate is session's own, not a restatement, so the two can't drift;
-        -- capture omitting these panes and sanitize dropping them produce the
-        -- same state, and therefore the same digest and the same file.
-        local domain = p:get_domain_name()
-        if session.is_restorable_domain(domain) then
-          panes[#panes + 1] = {
-            cwd = session.normalize_cwd(p:get_current_working_dir()),
-            domain = domain,
-            left = pane_info.left, top = pane_info.top,
-            width = pane_info.width, height = pane_info.height,
-            active = pane_info.is_active,
-          }
-        end
-      end
+      local panes = capture_panes(tab.panes)
       size = size or tab.tab:get_size()
       tabs[#tabs + 1] = { panes = panes, active = tab.active }
     end
@@ -115,6 +131,26 @@ local function capture()
     }
   end
   return { windows = windows }
+end
+
+-- Capture one live tab for browser-style reopen. The result is plain data, so
+-- it is safe to retain in wezterm.GLOBAL across a configuration reload.
+function M.capture_tab(tab, resume_args_for)
+  if not tab then return nil, 'missing tab' end
+  local pane_infos = scan_tab(tab)
+  if not pane_infos then return nil, 'zoomed pane' end
+
+  local title
+  local got_title, value = pcall(function() return tab:get_title() end)
+  if got_title and type(value) == 'string' and value ~= '' then title = value end
+
+  local state = session.sanitize({ windows = { { tabs = { {
+    active = true,
+    title = title,
+    panes = capture_panes(pane_infos, resume_args_for),
+  } } } } }, { preserve_resume_args = true })
+  if session.is_empty(state) then return nil, 'no restorable panes' end
+  return state.windows[1].tabs[1]
 end
 
 -- ---------- save ----------
@@ -188,6 +224,7 @@ end
 
 local function spawn_args_for(pane_state)
   local args = { cwd = pane_state.cwd }
+  if pane_state.args then args.args = pane_state.args end
   if domain_is_spawnable(pane_state.domain) then
     args.domain = { DomainName = pane_state.domain }
   end
@@ -209,9 +246,45 @@ local function restore_tab_panes(base_pane, tab_state, plan)
       if ok and new_pane then panes[op.new] = new_pane end
     end
   end
+  local active_pane = base_pane
   for i, p in ipairs(tab_state.panes) do
-    if p.active and panes[i] then panes[i]:activate() end
+    if p.active and panes[i] then
+      active_pane = panes[i]
+      active_pane:activate()
+    end
   end
+  return active_pane
+end
+
+local function finish_restored_tab(tab, pane, tab_state, plan)
+  local active_pane = restore_tab_panes(pane, tab_state, plan)
+  if tab_state.title then pcall(function() tab:set_title(tab_state.title) end) end
+  return active_pane
+end
+
+-- Restore one captured tab into an existing mux window. Returns the new tab and
+-- focused pane, or nil plus an error. The base spawn is atomic; split failures
+-- degrade to the panes that did restore, matching full-session restoration.
+function M.restore_tab(mux_win, tab_state)
+  if not mux_win or type(tab_state) ~= 'table' or #(tab_state.panes or {}) == 0 then
+    return nil, 'invalid tab snapshot'
+  end
+  local sanitized = session.sanitize(
+    { windows = { { tabs = { tab_state } } } },
+    { preserve_resume_args = true }
+  )
+  if session.is_empty(sanitized) then return nil, 'invalid tab snapshot' end
+  tab_state = sanitized.windows[1].tabs[1]
+  local plan = session.split_plan(tab_state.panes)
+  local base_state = tab_state.panes[plan.base or 1]
+  local ok, tab, pane = pcall(function()
+    local spawned_tab, spawned_pane = mux_win:spawn_tab(spawn_args_for(base_state))
+    return spawned_tab, spawned_pane
+  end)
+  if not ok or not tab or not pane then return nil, ok and 'tab spawn failed' or tab end
+  local active_pane = finish_restored_tab(tab, pane, tab_state, plan)
+  tab:activate()
+  return tab, active_pane
 end
 
 local function read()
@@ -250,7 +323,7 @@ function M.restore()
       else
         tab, pane = mux_win:spawn_tab(args)
       end
-      restore_tab_panes(pane, tab_state, plan)
+      finish_restored_tab(tab, pane, tab_state, plan)
       if tab_state.active then tab:activate() end
     end
   end

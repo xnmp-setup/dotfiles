@@ -21,6 +21,7 @@ package.preload.wezterm = function()
     action = action,
     action_callback = function(callback) return callback end,
     format = format,
+    log_error = function() end,
   }
 end
 
@@ -80,7 +81,10 @@ local nested = proc('/usr/bin/zsh', {
 eq('tree/find nested stateful process', close_module.find_stateful_process(nested), 'bun')
 eq('tree/all stateless', close_module.find_stateful_process(proc('/usr/bin/zsh')), nil)
 
-local close = close_module.setup()
+local remembered_tabs = 0
+local close = close_module.setup {
+  before_close_tab = function() remembered_tabs = remembered_tabs + 1 end,
+}
 local performed = {}
 local active_panes = {}
 local active_tab_id = 7
@@ -100,14 +104,17 @@ local function last() return performed[#performed] end
 
 -- Idle shells close immediately, no prompt.
 local idle_shell = pane(proc('/usr/bin/zsh'))
+active_panes = { idle_shell, pane(proc('/usr/bin/bash')) }
 close.close_pane()(window, idle_shell)
 eq('pane/idle shell closes immediately', last().action.kind, 'CloseCurrentPane')
 eq('pane/idle shell skips confirmation', last().action.value.confirm, false)
 eq('pane/idle shell leaves enter alone', close.confirmation_active(window, overlay_pane), false)
+eq('pane/close is not remembered as tab', remembered_tabs, 0)
 
 -- Stateful pane: centered Confirmation overlay; Enter maps to y while it is up.
 local claude = pane(proc('/home/x/.local/share/claude/versions/2.1.222'),
   '/home/x/.local/share/claude/versions/2.1.222')
+active_panes = { claude, idle_shell }
 close.close_pane()(window, claude)
 local confirmation = last().action
 eq('pane/stateful uses confirmation overlay', confirmation.kind, 'Confirmation')
@@ -137,12 +144,18 @@ active_panes = { idle_shell, hidden_terminal }
 close.close_tab()(window, idle_shell)
 confirmation = last().action
 eq('tab/hidden daemon prompts', confirmation.kind, 'Confirmation')
+eq('tab/not remembered before confirmation', remembered_tabs, 0)
 contains('tab/message names scope', confirmation.value.message, 'Close this tab?')
 contains('tab/message names hidden process', confirmation.value.message, 'bun')
 contains('tab/message explains consequence', confirmation.value.message,
   'All panes in this tab will be terminated.')
+confirmation.value.cancel(window)
+eq('tab/cancel is not remembered', remembered_tabs, 0)
+close.close_tab()(window, idle_shell)
+confirmation = last().action
 confirmation.value.action(window, idle_shell)
 eq('tab/accept closes whole tab', last().action.kind, 'CloseCurrentTab')
+eq('tab/accept remembered once', remembered_tabs, 1)
 
 -- Process info unavailable: fall back to the foreground process name.
 local remote_process = pane(false, '/usr/bin/ssh')
@@ -154,6 +167,27 @@ last().action.value.cancel(window)
 active_panes = { idle_shell, pane(proc('/usr/bin/bash')) }
 close.close_tab()(window, idle_shell)
 eq('tab/all shells closes immediately', last().action.kind, 'CloseCurrentTab')
+eq('tab/direct close remembered', remembered_tabs, 2)
+
+-- Ctrl+W is a pane-close action, but closing the tab's final pane also closes
+-- the tab. That path must enter recently-closed history just like CloseCurrentTab.
+active_panes = { idle_shell }
+close.close_pane()(window, idle_shell)
+eq('pane/final shell closes immediately', last().action.kind, 'CloseCurrentPane')
+eq('pane/final shell remembers tab', remembered_tabs, 3)
+
+active_panes = { claude }
+close.close_pane()(window, claude)
+confirmation = last().action
+eq('pane/final process prompts', confirmation.kind, 'Confirmation')
+eq('pane/final process not remembered before confirmation', remembered_tabs, 3)
+confirmation.value.cancel(window)
+eq('pane/final process cancel is not remembered', remembered_tabs, 3)
+close.close_pane()(window, claude)
+confirmation = last().action
+confirmation.value.action(window, claude)
+eq('pane/final process accept closes pane', last().action.kind, 'CloseCurrentPane')
+eq('pane/final process accept remembers tab', remembered_tabs, 4)
 
 io.write(string.format('\n%d passed, %d failed\n', passed, failed))
 os.exit(failed == 0 and 0 or 1)

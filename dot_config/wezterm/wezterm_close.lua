@@ -149,38 +149,70 @@ local function confirmation_active(window, pane)
   return not ok or name == nil or name == ''
 end
 
-local function confirm_or_close(window, pane, scope, panes)
+local function perform_close(window, pane, scope, before_close_tab, closes_tab, log)
+  log('close.perform', { closes_tab = closes_tab, scope = scope })
+  if closes_tab and before_close_tab then
+    local ok, remembered_or_error = pcall(before_close_tab, window)
+    log('close.capture_hook', {
+      pcall_ok = ok,
+      remembered = ok and remembered_or_error == true,
+      result = remembered_or_error,
+    })
+    if not ok and wezterm.log_error then
+      wezterm.log_error('could not remember closed tab: ' .. tostring(remembered_or_error))
+    end
+  end
+  log('close.action', { action = scope == 'tab' and 'CloseCurrentTab' or 'CloseCurrentPane' })
+  window:perform_action(close_action(scope), pane)
+end
+
+local function confirm_or_close(window, pane, scope, panes, before_close_tab, closes_tab, log)
   local process = first_stateful_process(panes)
-  local action = close_action(scope)
+  log('close.request', {
+    closes_tab = closes_tab,
+    pane_count = #panes,
+    process = process or 'none',
+    scope = scope,
+  })
   if not process then
-    window:perform_action(action, pane)
+    perform_close(window, pane, scope, before_close_tab, closes_tab, log)
     return
   end
 
+  log('close.confirmation_shown', { process = process, scope = scope })
   pending[window:window_id()] = window:active_tab():tab_id()
   window:perform_action(act.Confirmation {
     message = confirmation_message(scope, process),
     action = wezterm.action_callback(function(confirm_window, confirm_pane)
       pending[confirm_window:window_id()] = nil
-      confirm_window:perform_action(action, confirm_pane)
+      log('close.confirmation_accepted', { scope = scope })
+      perform_close(confirm_window, confirm_pane, scope, before_close_tab, closes_tab, log)
     end),
     cancel = wezterm.action_callback(function(confirm_window)
       pending[confirm_window:window_id()] = nil
+      log('close.confirmation_cancelled', { scope = scope })
     end),
   }, pane)
 end
 
-function M.setup()
+function M.setup(opts)
+  opts = opts or {}
+  local before_close_tab = opts.before_close_tab
+  local log = opts.log or function() end
   return {
     confirmation_active = confirmation_active,
     close_pane = function()
       return wezterm.action_callback(function(window, pane)
-        confirm_or_close(window, pane, 'pane', { pane })
+        local tab = window:active_tab()
+        local closes_tab = tab and #tab:panes() == 1
+        confirm_or_close(window, pane, 'pane', { pane }, before_close_tab, closes_tab, log)
       end)
     end,
     close_tab = function()
       return wezterm.action_callback(function(window, pane)
-        confirm_or_close(window, pane, 'tab', window:active_tab():panes())
+        confirm_or_close(
+          window, pane, 'tab', window:active_tab():panes(), before_close_tab, true, log
+        )
       end)
     end,
   }

@@ -153,9 +153,52 @@ fi
 [ "$TERM_PROGRAM" = "WezTerm" ] || exit 0
 [ -n "$WEZTERM_PANE" ] || exit 0
 
-# OSC 1337 SetUserVar requires values to be base64-encoded. Both fields draw
-# from tiny fixed sets, and this runs ~60x per busy agent turn, so the encodings
-# are inlined rather than costing two `base64 | tr` pipelines per invocation.
+# Preserve the exact resumable session/thread id in the pane. The dynamic value
+# costs jq+base64 once per agent process, then comes from a tiny cache keyed by
+# GUI instance + pane + agent identity. Hook-heavy turns can invoke this script
+# ~60x, so repeating those subprocesses would be measurable. The Lua restore
+# side accepts only UUIDs before passing this value to an agent CLI.
+session_b64=""
+session_cachefile=""
+session_identity=""
+case "$agent_kind" in
+  claude) session_identity=${CLAUDE_PID:-} ;;
+  codex)  session_identity=${CODEX_THREAD_ID:-} ;;
+esac
+if [ -n "${WEZTERM_UNIX_SOCKET:-}" ] && [ -n "$session_identity" ]; then
+  session_cache_key="${WEZTERM_UNIX_SOCKET##*/}.$WEZTERM_PANE.$agent_kind.$session_identity"
+  case "$session_cache_key" in
+    ""|*[!A-Za-z0-9._-]*) : ;;
+    *) session_cachefile="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/wezterm-agent-session.$session_cache_key" ;;
+  esac
+fi
+if [ -n "$session_cachefile" ]; then
+  { IFS= read -r session_b64 < "$session_cachefile"; } 2>/dev/null
+fi
+if [ -z "$session_b64" ]; then
+  session_id=${CODEX_THREAD_ID:-}
+  if [ -z "$session_id" ]; then
+    session_id=$(printf '%s' "$payload" \
+      | jq -r '.session_id // .thread_id // empty' 2>/dev/null)
+  fi
+  if [ -n "$session_id" ]; then
+    session_b64=$(printf '%s' "$session_id" | base64 | tr -d '\n')
+    if [ -n "$session_cachefile" ] && [ -n "$session_b64" ]; then
+      session_cache_tmp="$session_cachefile.$$"
+      umask 077
+      if printf '%s\n' "$session_b64" > "$session_cache_tmp" 2>/dev/null; then
+        mv -f "$session_cache_tmp" "$session_cachefile" 2>/dev/null \
+          || rm -f "$session_cache_tmp"
+      else
+        rm -f "$session_cache_tmp"
+      fi
+    fi
+  fi
+fi
+
+# OSC 1337 SetUserVar requires values to be base64-encoded. The fixed fields
+# draw from tiny sets, so their encodings are inlined rather than costing
+# additional `base64 | tr` pipelines per invocation.
 # Regenerate after changing either set:
 #   for v in claude codex working done attention; do
 #     printf '%s %s\n' "$v" "$(printf '%s' "$v" | base64 | tr -d '\n')"; done
@@ -171,8 +214,12 @@ case "$status" in
   attention) status_b64=YXR0ZW50aW9u ;;
   *)         status_b64=$(printf '%s' "$status" | base64 | tr -d '\n') ;;
 esac
-osc=$(printf '\033]1337;SetUserVar=agent_kind=%s\007\033]1337;SetUserVar=agent_status=%s\007' \
-  "$kind_b64" "$status_b64")
+session_osc=""
+if [ -n "$session_b64" ]; then
+  session_osc=$(printf '\033]1337;SetUserVar=agent_session_id=%s\007' "$session_b64")
+fi
+osc=$(printf '\033]1337;SetUserVar=agent_kind=%s\007\033]1337;SetUserVar=agent_status=%s\007%s' \
+  "$kind_b64" "$status_b64" "$session_osc")
 
 # Fast path: we have a controlling terminal (Codex). Costs no subprocess.
 #

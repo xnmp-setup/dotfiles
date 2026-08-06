@@ -304,9 +304,38 @@ do
   eq('sanitize/rows', out.windows[1].rows, 40)
 end
 
+-- 16. Optional resume argv is copied only when it is a bounded string array;
+-- malformed or huge executable input degrades to a fresh shell.
+do
+  local function sanitized_args(args)
+    local state = { windows = { { tabs = { {
+      active = true,
+      title = 'agent tab',
+      panes = { pane(0, 0, 80, 24, { domain = 'local', active = true, args = args }) },
+    } } } } }
+    return session.sanitize(state, { preserve_resume_args = true }).windows[1].tabs[1]
+  end
+  local valid = { 'codex', 'resume', '12345678-1234-4abc-9def-1234567890ab' }
+  local tab = sanitized_args(valid)
+  eq('sanitize/title retained', tab.title, 'agent tab')
+  eq('sanitize/args retained', table.concat(tab.panes[1].args, ' '), table.concat(valid, ' '))
+  eq('sanitize/args copied', tab.panes[1].args == valid, false)
+  eq('sanitize/malformed args dropped', sanitized_args({ 'codex', false }).panes[1].args, nil)
+  eq('sanitize/huge arg dropped', sanitized_args({ string.rep('x', 4097) }).panes[1].args, nil)
+  eq('sanitize/arbitrary command dropped', sanitized_args({ 'bash', '-lc', 'rm -rf x' }).panes[1].args, nil)
+  local too_many = {}
+  for i = 1, 17 do too_many[i] = tostring(i) end
+  eq('sanitize/too many args dropped', sanitized_args(too_many).panes[1].args, nil)
+  local disk_state = { windows = { { tabs = { { active = true, panes = {
+    pane(0, 0, 80, 24, { domain = 'local', active = true, args = valid }),
+  } } } } } }
+  eq('sanitize/disk default drops resume args',
+    session.sanitize(disk_state).windows[1].tabs[1].panes[1].args, nil)
+end
+
 -- ---------- zoom guard ----------
 
--- 16. Zoomed geometry is self-overlapping, so the save must be skipped rather
+-- 17. Zoomed geometry is self-overlapping, so the save must be skipped rather
 --     than allowed to overwrite a good layout. Geometry below is the real thing,
 --     read off a live mux server: a 2x2 grid with pane 1 zoomed reports that
 --     pane at the full 80x24 tab size while its siblings keep their own coords.
@@ -331,7 +360,7 @@ do
   eq('zoom/not-persisted', session.sanitize(zoomed_grid).windows[1].tabs[1].zoomed, nil)
 end
 
--- 17. The real unzoomed 2x2 geometry from that same live server round-trips
+-- 18. The real unzoomed 2x2 geometry from that same live server round-trips
 --     exactly — this is the divider-offset case (pane ends at 39, next starts
 --     at 40) that the tolerance exists for.
 do

@@ -20,7 +20,8 @@
 --       tabs = { {
 --         active = <bool>,
 --         panes = { { cwd, domain, left, top, width, height,
---                     active = <bool> }, ... },
+--                     active = <bool>, args = <optional string[]> }, ... },
+--         title = <optional string>,
 --       }, ... },
 --     }, ... } }
 --
@@ -87,10 +88,34 @@ function M.normalize_cwd(cwd)
   return path
 end
 
+local function valid_uuid(value)
+  return type(value) == 'string'
+    and value:match('^%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x$') ~= nil
+end
+
+-- Spawn arguments are executable input. Only the exact, non-destructive resume
+-- forms produced by wezterm_agent are accepted; malformed state can therefore
+-- only degrade to a fresh shell, never become an arbitrary SpawnCommand.
+local function sanitize_args(args)
+  if type(args) ~= 'table' or (#args ~= 2 and #args ~= 3) then return nil end
+  local recognized = (args[1] == 'claude' and args[2] == '--resume')
+    or (args[1] == 'codex' and args[2] == 'resume')
+  if not recognized or (#args == 3 and not valid_uuid(args[3])) then return nil end
+  local out = { args[1], args[2] }
+  if args[3] then out[3] = args[3] end
+  return out
+end
+
+local function should_preserve_args(opts)
+  return type(opts) == 'table' and opts.preserve_resume_args == true
+end
+
 -- Drop what can't or shouldn't be restored, and collapse anything left empty.
 -- A tab whose every pane was a background pane disappears; a window left with no
 -- tabs disappears with it. Pure: returns a new table, never mutates the input.
-function M.sanitize(state)
+-- Resume argv is opt-in so untrusted on-disk session JSON remains shell-only.
+function M.sanitize(state, opts)
+  local preserve_args = should_preserve_args(opts)
   local out = { version = M.VERSION, windows = {} }
   for _, win in ipairs((state or {}).windows or {}) do
     local tabs = {}
@@ -98,12 +123,14 @@ function M.sanitize(state)
       local panes = {}
       for _, p in ipairs(tab.panes or {}) do
         if M.is_restorable_domain(p.domain) and p.cwd and p.cwd ~= '' then
-          panes[#panes + 1] = {
+          local pane = {
             cwd = p.cwd, domain = p.domain,
             left = p.left or 0, top = p.top or 0,
             width = p.width or 1, height = p.height or 1,
             active = p.active and true or false,
           }
+          if preserve_args then pane.args = sanitize_args(p.args) end
+          panes[#panes + 1] = pane
         end
       end
       if #panes > 0 then
@@ -114,7 +141,11 @@ function M.sanitize(state)
           if p.active then has_active = true; break end
         end
         if not has_active then panes[1].active = true end
-        tabs[#tabs + 1] = { panes = panes, active = tab.active and true or false }
+        tabs[#tabs + 1] = {
+          panes = panes,
+          active = tab.active and true or false,
+          title = type(tab.title) == 'string' and tab.title ~= '' and tab.title or nil,
+        }
       end
     end
     if #tabs > 0 then
@@ -158,9 +189,10 @@ function M.digest(state)
           p.domain or '', p.cwd or '',
           p.left or 0, p.top or 0, p.width or 0, p.height or 0,
           p.active and 1 or 0,
+          table.concat(p.args or {}, '\0'),
         }, '\1')
       end
-      parts[#parts + 1] = 'T' .. (tab.active and 1 or 0)
+      parts[#parts + 1] = 'T' .. (tab.active and 1 or 0) .. (tab.title or '')
     end
     parts[#parts + 1] = 'W'
   end

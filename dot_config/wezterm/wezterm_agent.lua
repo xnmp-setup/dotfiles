@@ -2,6 +2,7 @@
 local wezterm = require 'wezterm'
 
 local M = {}
+local diagnostic_log = function() end
 
 -- Per-pane coding-agent status (Claude Code or Codex), keyed by pane-id. This is
 -- the SOURCE OF TRUTH the tab bar reads — NOT the raw agent_status user var —
@@ -56,7 +57,8 @@ end
 -- Mirror every agent_status var write into pane_status. Fires on each OSC
 -- SetUserVar receipt, so a fresh 'working' on the next prompt overrides an
 -- Esc-set 'done' automatically.
-function M.setup()
+function M.setup(opts)
+  diagnostic_log = (opts or {}).log or function() end
   wezterm.on('user-var-changed', function(window, pane, name, value)
     if name == 'agent_status' or name == 'claude_status' then
       local pane_id = pane:pane_id()
@@ -67,8 +69,14 @@ function M.setup()
   return M
 end
 
+local function user_var(user_vars, name)
+  local ok, value = pcall(function() return user_vars and user_vars[name] end)
+  return ok and value or nil
+end
+
 local function agent_named_in(s)
   if not s or s == '' then return nil end
+  s = s:lower()
   if s:find('claude') then return 'claude' end
   if s:find('codex') then return 'codex' end
   return nil
@@ -80,9 +88,52 @@ end
 -- embedded mux. Direct process-name matching remains only as a compatibility
 -- fallback for native Claude panes created before agent_kind was introduced.
 local function agent_of_pane(proc, user_vars)
-  local kind = (user_vars or {}).agent_kind
+  local kind = user_var(user_vars, 'agent_kind')
   if kind == 'claude' or kind == 'codex' then return kind end
   return agent_named_in(proc)
+end
+
+local function valid_session_id(value)
+  if type(value) ~= 'string' then return nil end
+  -- Claude and Codex both expose UUID session/thread ids. Restricting this to a
+  -- UUID prevents a forged OSC user variable from being interpreted as a CLI
+  -- option; an invalid or missing id simply falls back to the agent's picker.
+  if value:match('^%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x$') then
+    return value
+  end
+end
+
+-- Fixed allowlist of programs that have an explicit, non-destructive resume
+-- protocol. Everything else restores as a fresh shell; replaying arbitrary argv
+-- could silently re-run builds, migrations or destructive commands.
+local function resume_args_for(pane)
+  local got_vars, user_vars = pcall(function() return pane:get_user_vars() end)
+  if not got_vars or user_vars == nil then user_vars = {} end
+
+  local kind = agent_of_pane(nil, user_vars)
+  local proc
+  if not kind then
+    local got_proc
+    got_proc, proc = pcall(function() return pane:get_foreground_process_name() end)
+    if got_proc then kind = agent_of_pane(proc, user_vars) end
+  end
+
+  local raw_session_id = user_var(user_vars, 'agent_session_id')
+  local session_id = valid_session_id(raw_session_id)
+  diagnostic_log('agent.resume_args', {
+    agent_kind_var = user_var(user_vars, 'agent_kind') or 'none',
+    kind = kind or 'none',
+    process = (proc and proc:match('[^/\\]+$')) or 'not_queried',
+    session_id_present = raw_session_id ~= nil and raw_session_id ~= '',
+    session_id_valid = session_id ~= nil,
+    user_vars_type = type(user_vars),
+  })
+  if not kind then return nil end
+
+  if kind == 'claude' then
+    return session_id and { 'claude', '--resume', session_id } or { 'claude', '--resume' }
+  end
+  return session_id and { 'codex', 'resume', session_id } or { 'codex', 'resume' }
 end
 
 -- Plain page keys scroll terminal history only when zsh itself or Codex owns
@@ -133,6 +184,7 @@ M.now_ms = now_ms
 M.track_animation = track_animation
 M.status_of = agent_status_of
 M.of_pane = agent_of_pane
+M.resume_args_for = resume_args_for
 M.page_keys_scroll_terminal = page_keys_scroll_terminal
 
 return M

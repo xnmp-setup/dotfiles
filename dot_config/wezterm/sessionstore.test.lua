@@ -74,6 +74,7 @@ local function fake_windows(spec)
         tab = {
           panes_with_info = function() return infos end,
           get_size = function() return { cols = win.cols, rows = win.rows } end,
+          get_title = function() return tab.title or '' end,
         },
       }
     end
@@ -93,7 +94,12 @@ package.preload['wezterm'] = function()
     log_error = function() end,
     background_child_process = function() end,
     on = function() end,
-    mux = { all_windows = function() return mux_windows end },
+    mux = {
+      all_windows = function() return mux_windows end,
+      get_domain = function()
+        return { is_spawnable = function() return true end }
+      end,
+    },
   }
 end
 
@@ -254,6 +260,78 @@ do
   sessionstore.save()
   eq('no-cwd/queried-anyway', counts.cwd, 2)
   eq('no-cwd/bytes-identical', saved_bytes(), want)
+end
+
+-- 5. Single-tab capture reuses the same filtering and preserves only a
+-- caller-provided, sanitize-validated resume command.
+do
+  local resume = { 'claude', '--resume', '12345678-1234-4abc-9def-1234567890ab' }
+  use({ { cols = 80, rows = 24, tabs = { { active = true, title = 'agent', panes = {
+    { domain = 'local', cwd = '/repo', left = 0, top = 0, width = 39, height = 24, active = true },
+    { domain = 'bg-1', cwd = '/ignored', left = 40, top = 0, width = 40, height = 24 },
+  } } } } })
+  local live_tab = mux_windows[1]:tabs_with_info()[1].tab
+  local captured = sessionstore.capture_tab(live_tab, function() return resume end)
+  eq('single/title', captured.title, 'agent')
+  eq('single/background pane dropped', #captured.panes, 1)
+  eq('single/resume args retained', table.concat(captured.panes[1].args, ' '), table.concat(resume, ' '))
+  eq('single/cwd skipped for background', counts.cwd, 1)
+
+  use({ { cols = 80, rows = 24, tabs = { { active = true, panes = {
+    { domain = 'local', cwd = '/repo', left = 0, top = 0, width = 80, height = 24,
+      active = true, zoomed = true },
+  } } } } })
+  live_tab = mux_windows[1]:tabs_with_info()[1].tab
+  local skipped, reason = sessionstore.capture_tab(live_tab)
+  eq('single/zoom skipped', skipped, nil)
+  eq('single/zoom reason', reason, 'zoomed pane')
+  eq('single/zoom avoids domain query', counts.domain, 0)
+  eq('single/zoom avoids cwd query', counts.cwd, 0)
+end
+
+-- 6. Single-tab restore applies resume argv only to the decorated pane, rebuilds
+-- the split, restores focus/title, and returns the new active pane to callers.
+do
+  local spawned_args, split_args, activated_tab, title = nil, nil, false, nil
+  local base_pane = {
+    id = 'base',
+    split = function(_, args)
+      split_args = args
+      return { id = 'split', activate = function(self) self.activated = true end }
+    end,
+    activate = function(self) self.activated = true end,
+  }
+  local new_tab = {
+    activate = function() activated_tab = true end,
+    set_title = function(_, value) title = value end,
+  }
+  local target_window = {
+    spawn_tab = function(_, args)
+      spawned_args = args
+      return new_tab, base_pane
+    end,
+  }
+  local snapshot = session.sanitize({ windows = { { tabs = { {
+    active = true,
+    title = 'restored agent',
+    panes = {
+      { cwd = '/repo', domain = 'local', left = 0, top = 0, width = 39, height = 24,
+        args = { 'codex', 'resume', '12345678-1234-4abc-9def-1234567890ab' } },
+      { cwd = '/repo/docs', domain = 'local', left = 40, top = 0, width = 40, height = 24,
+        active = true },
+    },
+  } } } } }, { preserve_resume_args = true }).windows[1].tabs[1]
+
+  local restored_tab, active_pane = sessionstore.restore_tab(target_window, snapshot)
+  eq('restore-single/tab returned', restored_tab, new_tab)
+  eq('restore-single/base cwd', spawned_args.cwd, '/repo')
+  eq('restore-single/base resume command', table.concat(spawned_args.args, ' '),
+    'codex resume 12345678-1234-4abc-9def-1234567890ab')
+  eq('restore-single/split cwd', split_args.cwd, '/repo/docs')
+  eq('restore-single/plain split is shell', split_args.args, nil)
+  eq('restore-single/active pane returned', active_pane.id, 'split')
+  eq('restore-single/title', title, 'restored agent')
+  eq('restore-single/tab activated', activated_tab, true)
 end
 
 os.remove(session_file)

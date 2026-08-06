@@ -4,19 +4,34 @@
 
 local wezterm = require 'wezterm'
 local config = wezterm.config_builder()
+local recent_tabs_log = require 'wezterm_recent_tabs_log'
+
+recent_tabs_log.emit('config.loaded', {
+  config = wezterm.config_file or 'unknown',
+  version = wezterm.version or 'unknown',
+})
 
 local navigation = require 'wezterm_navigation'
 local background = require('wezterm_background').setup(config)
 local windowing = require('wezterm_windowing').setup()
 local utilities = require('wezterm_utilities').setup(config)
-local close = require('wezterm_close').setup()
 local output = require('wezterm_output').setup()
 
 -- Restore normal panes from the last GUI session. Background panes are excluded
 -- because their dedicated mux domains already outlive the GUI.
-require('sessionstore').setup { dir = background.socket_dir }
+local sessionstore = require 'sessionstore'
+sessionstore.setup { dir = background.socket_dir }
 
-local agent = require('wezterm_agent').setup()
+local agent = require('wezterm_agent').setup { log = recent_tabs_log.emit }
+local recent_tabs = require('wezterm_recent_tabs').setup {
+  sessionstore = sessionstore,
+  agent = agent,
+  log = recent_tabs_log.emit,
+}
+local close = require('wezterm_close').setup {
+  before_close_tab = recent_tabs.remember_tab,
+  log = recent_tabs_log.emit,
+}
 local appearance = require 'wezterm_appearance'
 appearance.apply(config)
 require('wezterm_links').setup(config)
@@ -27,6 +42,7 @@ require('wezterm_keybindings').apply(config, {
   windowing = windowing,
   agent = agent,
   close = close,
+  recent_tabs = recent_tabs,
   output = output,
   utilities = utilities,
 })
@@ -50,7 +66,7 @@ return config
 -- * font-thicken / font-thicken-strength : no direct equivalent. Closest is
 --   picking a heavier font weight via config.font = wezterm.font(name, {weight=...}).
 -- * write_screen_file:paste (ctrl+shift+c) : no equivalent; left as default copy.
--- * ctrl+,=open_config and ctrl+shift+t=undo : no built-in WezTerm actions.
+-- * ctrl+,=open_config : no built-in WezTerm action.
 -- * SUPER == the Windows key, which Windows reserves (Win+L locks, Win+P projects)
 --   and your AHK script also intercepts (Win+Arrows, LWin remap). The super+arrow
 --   pane nav and super+l/p/; binds likely won't reach WezTerm. If you want

@@ -18,7 +18,12 @@ package.preload.wezterm = function()
   }
 end
 
-local agent = require('wezterm_agent').setup()
+local diagnostics = {}
+local agent = require('wezterm_agent').setup {
+  log = function(event, fields)
+    diagnostics[#diagnostics + 1] = { event = event, fields = fields }
+  end,
+}
 
 local passed, failed = 0, 0
 local function eq(name, got, want)
@@ -38,10 +43,33 @@ local function pane(id, process, user_vars)
   }
 end
 
+local function args_eq(name, got, want)
+  eq(name .. '/count', #(got or {}), #want)
+  for i, value in ipairs(want) do eq(name .. '/' .. i, got and got[i], value) end
+end
+
 eq('registers status event', type(callbacks['user-var-changed']), 'function')
 eq('identity/user-var', agent.of_pane('/usr/bin/zsh', { agent_kind = 'codex' }), 'codex')
 eq('identity/process fallback', agent.of_pane('/opt/claude', {}), 'claude')
 eq('identity/plain process', agent.of_pane('/usr/bin/zsh', {}), nil)
+
+local session_id = '12345678-1234-4abc-9def-1234567890ab'
+args_eq('resume/claude exact', agent.resume_args_for(
+  pane(30, '/usr/bin/zsh', { agent_kind = 'claude', agent_session_id = session_id })
+), { 'claude', '--resume', session_id })
+args_eq('resume/codex exact', agent.resume_args_for(
+  pane(31, '/usr/bin/zsh', { agent_kind = 'codex', agent_session_id = session_id })
+), { 'codex', 'resume', session_id })
+eq('resume/diagnostic event', diagnostics[#diagnostics].event, 'agent.resume_args')
+eq('resume/diagnostic kind', diagnostics[#diagnostics].fields.kind, 'codex')
+eq('resume/diagnostic valid id', diagnostics[#diagnostics].fields.session_id_valid, true)
+args_eq('resume/agent without id opens picker', agent.resume_args_for(
+  pane(32, '/usr/bin/claude', {})
+), { 'claude', '--resume' })
+args_eq('resume/malformed id cannot become option', agent.resume_args_for(
+  pane(33, '/usr/bin/zsh', { agent_kind = 'codex', agent_session_id = '--dangerously-bypass-approvals-and-sandbox' })
+), { 'codex', 'resume' })
+eq('resume/unrecognized process', agent.resume_args_for(pane(34, '/usr/bin/helix')), nil)
 
 local p = pane(7, '/usr/bin/claude', { agent_status = 'working' })
 eq('status/user-var fallback', agent.status_of(7, p:get_user_vars()), 'working')

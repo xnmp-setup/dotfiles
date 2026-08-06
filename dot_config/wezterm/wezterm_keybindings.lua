@@ -18,6 +18,7 @@ function M.apply(config, deps)
   local close_tab = deps.close.close_tab
   local confirmation_active = deps.close.confirmation_active
   local copy_previous_command = deps.output.copy_previous_command
+  local reopen_tab = deps.recent_tabs.reopen_tab
 
   -- ---------- Keybinds ----------
   config.keys = {
@@ -55,19 +56,9 @@ function M.apply(config, deps)
       window:perform_action(act.SendKey { key = 'Escape' }, pane)
     end) },
     { key = 't', mods = 'CTRL', action = spawn_tab_next('CurrentPaneDomain') },
-    -- new PowerShell (pwsh) tab in the local Windows domain (default domain is WSL).
-    -- Full path to the MSI install — avoids the slow WindowsApps execution-alias stub.
-    { key = 't', mods = 'CTRL|SHIFT', action = wezterm.action_callback(function(win, pane)
-      local idx
-      for _, item in ipairs(win:mux_window():tabs_with_info()) do
-        if item.is_active then idx = item.index; break end
-      end
-      win:perform_action(act.SpawnCommandInNewTab {
-        domain = { DomainName = 'local' },
-        args = { 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' },
-      }, pane)
-      win:perform_action(act.MoveTab(idx + 1), pane)
-    end) },
+    -- Browser-style LIFO restore: layout/cwds always, recognized coding agents
+    -- via their explicit resume commands. See wezterm_recent_tabs.lua.
+    { key = 't', mods = 'CTRL|SHIFT', action = reopen_tab() },
     { key = 'n', mods = 'CTRL', action = act.SpawnWindow },
     -- ctrl+shift+n: pop the current tab out into its own new window.
     { key = 'n', mods = 'CTRL|SHIFT', action = wezterm.action_callback(function(win, pane)
