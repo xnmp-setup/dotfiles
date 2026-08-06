@@ -61,15 +61,18 @@ local function new(hl, window_actions)
 
     -- A shown special workspace has the same negative ID on its window and monitor.
     -- Comparing IDs also avoids coupling visibility to a particular workspace name.
-    local function is_shown(w)
+    local function shown_monitor(w)
         local workspace = w and w.workspace
-        if not (workspace and workspace.id) then return false end
+        if not (workspace and workspace.id) then return nil end
 
         for _, m in ipairs(hl.get_monitors() or {}) do
             local special = m.active_special_workspace
-            if special and special.id == workspace.id then return true end
+            if special and special.id == workspace.id then return m end
         end
-        return false
+    end
+
+    local function is_shown(w)
+        return shown_monitor(w) ~= nil
     end
 
     -- A `hyprctl reload` re-runs this config from scratch, so the table of claimed
@@ -214,16 +217,11 @@ local function new(hl, window_actions)
         return hl.get_active_workspace()
     end
 
-    local function workspace_under(name, w)
-        local workspace = w and w.workspace
-        for _, monitor in ipairs(hl.get_monitors() or {}) do
-            local special = monitor.active_special_workspace
-            if workspace and special and special.id == workspace.id
-                and monitor.active_workspace
-            then
-                host_workspace[name] = monitor.active_workspace
-                return monitor.active_workspace
-            end
+    local function workspace_under(name, w, monitor)
+        monitor = monitor or shown_monitor(w)
+        if monitor and monitor.active_workspace then
+            host_workspace[name] = monitor.active_workspace
+            return monitor.active_workspace
         end
 
         return host_workspace[name]
@@ -296,7 +294,8 @@ local function new(hl, window_actions)
     local function hide(name, w, next_focus)
         focused_once[name] = nil
 
-        local workspace = workspace_under(name, w) or visible_workspace()
+        local shown_on = shown_monitor(w)
+        local workspace = workspace_under(name, w, shown_on) or visible_workspace()
         local remembered = window_at(return_focus[name])
         if not (remembered and remembered.workspace and workspace
             and remembered.workspace.id == workspace.id)
@@ -309,7 +308,13 @@ local function new(hl, window_actions)
             or focus_fallback(w.address, workspace)
         return_focus[name] = nil
 
-        if is_shown(w) then
+        -- togglespecialworkspace acts on the focused monitor. Invoking it from a
+        -- monitor the pad is not shown on transfers the named special workspace
+        -- there instead of dismissing it, so close it from its owning monitor.
+        if shown_on then
+            if not shown_on.focused then
+                hl.dispatch(hl.dsp.focus({ monitor = shown_on }))
+            end
             hl.dispatch(hl.dsp.workspace.toggle_special(name))
         end
         window_actions.focus_exact(restore)

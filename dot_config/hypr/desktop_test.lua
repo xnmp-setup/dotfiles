@@ -66,7 +66,7 @@ local function fake_runtime(spec)
     local active = spec.active
     local windows = spec.windows or {}
     local normal_workspace = spec.workspace or { id = 1, name = "1" }
-    local special_workspace
+    local special_workspace, special_monitor
     local callbacks, timers, dispatches, executions, configs, monitors = {}, {}, {}, {}, {}, {}
     local bindings = {}
     local active_monitor = spec.active_monitor or {
@@ -108,17 +108,11 @@ local function fake_runtime(spec)
             executions[#executions + 1] = { cmd = cmd, options = options }
         end,
         config = function(value) configs[#configs + 1] = value end,
-        get_active_monitor = function()
-            active_monitor.active_special_workspace = special_workspace
-            return active_monitor
-        end,
+        get_active_monitor = function() return active_monitor end,
         get_active_window = function() return active end,
         get_active_workspace = function() return normal_workspace end,
         get_cursor_pos = function() return spec.cursor end,
-        get_monitors = function()
-            active_monitor.active_special_workspace = special_workspace
-            return spec.monitors or { active_monitor }
-        end,
+        get_monitors = function() return spec.monitors or { active_monitor } end,
         get_workspace = function(selector)
             for _, workspace in ipairs(spec.workspaces or { normal_workspace }) do
                 if workspace.id == selector or workspace.name == tostring(selector) then
@@ -144,7 +138,13 @@ local function fake_runtime(spec)
         local args = value.args or {}
 
         if value.kind == "focus" then
-            active = args.window
+            if args.monitor then
+                active_monitor.focused = false
+                active_monitor = args.monitor
+                active_monitor.focused = true
+            else
+                active = args.window
+            end
         elseif value.kind == "group_active" then
             local target_group = args.window and args.window.group
             if target_group then
@@ -156,18 +156,28 @@ local function fake_runtime(spec)
             args.window.floating = args.action == "on"
         elseif value.kind == "toggle_special" then
             if special_workspace then
-                special_workspace = nil
-                if spec.fallback_on_hide then
-                    active = spec.fallback_on_hide
-                    local fallback_group = active.group
-                    if fallback_group then
-                        fallback_group.current = active
-                        fallback_group.current_index = window_model.group_index(active)
+                if special_monitor == active_monitor then
+                    special_monitor.active_special_workspace = nil
+                    special_monitor = nil
+                    special_workspace = nil
+                    if spec.fallback_on_hide then
+                        active = spec.fallback_on_hide
+                        local fallback_group = active.group
+                        if fallback_group then
+                            fallback_group.current = active
+                            fallback_group.current_index = window_model.group_index(active)
+                        end
                     end
+                else
+                    special_monitor.active_special_workspace = nil
+                    special_monitor = active_monitor
+                    special_monitor.active_special_workspace = special_workspace
                 end
             else
                 special_workspace = spec.special_workspace
                     or { id = -94, name = "special:" .. tostring(args) }
+                special_monitor = active_monitor
+                special_monitor.active_special_workspace = special_workspace
             end
         elseif value.kind == "move" and args.window and args.workspace then
             if tostring(args.workspace):match("^special:") then
@@ -197,6 +207,11 @@ local function fake_runtime(spec)
             for index = #windows, 1, -1 do
                 if windows[index] == target then table.remove(windows, index) end
             end
+        end,
+        set_active_monitor = function(value)
+            active_monitor.focused = false
+            active_monitor = value
+            active_monitor.focused = true
         end,
         run_timer = function(timeout)
             for index, timer in ipairs(timers) do
@@ -1283,6 +1298,64 @@ do
     scratchpad.toggle("ghostty-drop")
     equal("dismissal stays on a workspace selected while the scratchpad was open",
         control.active(), second)
+end
+
+do
+    local primary_ws = { id = 1, name = "1" }
+    local secondary_ws = { id = 6, name = "6" }
+    local special = { id = -94, name = "special:ghostty-drop" }
+    local primary_window = window("primary", "primary-app", primary_ws)
+    local secondary_window = window("secondary", "secondary-app", secondary_ws)
+    local pad = window("pad", "com.mitchellh.ghostty", special)
+    local primary = {
+        id = 0,
+        name = "DP-2",
+        focused = true,
+        active_workspace = primary_ws,
+        width = 3440,
+        height = 1440,
+        scale = 1,
+    }
+    local secondary = {
+        id = 1,
+        name = "eDP-1",
+        focused = false,
+        active_workspace = secondary_ws,
+        width = 1920,
+        height = 1200,
+        scale = 1,
+    }
+    primary_ws.monitor = primary
+    secondary_ws.monitor = secondary
+
+    local hl, control = fake_runtime({
+        active = primary_window,
+        active_monitor = primary,
+        monitors = { primary, secondary },
+        special_workspace = special,
+        windows = { primary_window, secondary_window, pad },
+        workspaces = { primary_ws, secondary_ws },
+        workspace = primary_ws,
+    })
+    local scratchpad = scratchpads.new(hl, window_actions.new(hl))
+    scratchpad.define("ghostty-drop", {
+        class = "com.mitchellh.ghostty",
+        cmd = "ghostty",
+        w = 1600,
+        h = 1000,
+        monitor = "primary",
+    })
+
+    scratchpad.toggle("ghostty-drop")
+    control.emit("window.active")
+    control.set_active_monitor(secondary)
+    control.set_active(secondary_window)
+    control.emit("window.active")
+
+    check("clicking another monitor does not transfer a primary scratchpad",
+        not control.special_shown())
+    equal("cross-monitor dismissal preserves the clicked window",
+        control.active(), secondary_window)
 end
 
 -- Scratchpad geometry. The sizes below are shares of a monitor rather than pixel
