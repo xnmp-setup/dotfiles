@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Hyprland
 import "StatusLayout.js" as StatusLayout
 
 PanelWindow {
@@ -9,7 +10,13 @@ PanelWindow {
     required property bool barVisible
     required property string candidate
     required property var statusSource
+    required property int renameRequestSerial
+    property int editingWorkspaceId: 0
+    property bool renameRequestsReady: false
     readonly property var themeColors: statusSource.themeColors
+    readonly property bool editingWorkspaceExists: editingWorkspaceId === 0
+        || statusSource.workspaces.some(workspace => workspace.id === editingWorkspaceId
+            && workspace.monitor === screen.name)
     readonly property bool showCpuTemp: statusSource.metrics.cpuTemp !== null
         && statusSource.metrics.cpuTemp !== undefined
     readonly property bool showGpuTemp: statusSource.metrics.gpuTemp !== null
@@ -42,11 +49,45 @@ PanelWindow {
         return value < 20 ? 2 : value < 40 ? 1 : 0;
     }
 
+    function beginFocusedWorkspaceRename(): void {
+        const focusedWorkspace = Hyprland.focusedWorkspace;
+        if (!focusedWorkspace)
+            return;
+        const belongsToBar = statusSource.workspaces.some(
+            workspace => workspace.id === focusedWorkspace.id
+                && workspace.monitor === screen.name
+        );
+        if (belongsToBar)
+            editingWorkspaceId = focusedWorkspace.id;
+    }
+
+    onEditingWorkspaceExistsChanged: {
+        if (!editingWorkspaceExists)
+            editingWorkspaceId = 0;
+    }
+    onRenameRequestSerialChanged: {
+        if (renameRequestsReady)
+            beginFocusedWorkspaceRename();
+    }
+
+    Component.onCompleted: renameRequestsReady = true
+
     visible: barVisible
     implicitHeight: 40
     exclusiveZone: barVisible ? 40 : 0
     color: themeColors.background
-    focusable: false
+    focusable: editingWorkspaceId > 0
+
+    HyprlandFocusGrab {
+        id: renameFocusGrab
+
+        windows: [bar]
+        active: bar.editingWorkspaceId > 0
+        onCleared: {
+            if (bar.editingWorkspaceId > 0)
+                bar.editingWorkspaceId = 0;
+        }
+    }
 
     anchors {
         top: true
@@ -95,6 +136,14 @@ PanelWindow {
                     workspaceData: modelData
                     candidate: bar.candidate
                     themeColors: bar.themeColors
+                    editing: bar.editingWorkspaceId === modelData.id
+                    onRenameStarted: workspaceId => {
+                        bar.editingWorkspaceId = workspaceId;
+                    }
+                    onRenameFinished: {
+                        if (bar.editingWorkspaceId === modelData.id)
+                            bar.editingWorkspaceId = 0;
+                    }
                 }
             }
         }

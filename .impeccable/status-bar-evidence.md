@@ -9,7 +9,7 @@ Hyprland monitor.
 | --- | --- |
 | Visible | Show occupied workspaces only. Each workspace is one bounded control containing its current name and one icon per open window. Clicking it focuses that workspace. Long names are bounded and elided. |
 | Active workspace | Distinguishable by stronger fill and a bottom accent, not color alone. |
-| Rename workspace | Right-click any workspace and choose `Rename workspace`; no hover popup competes with the click target. The menu shows the `Alt+F2` shortcut reminder and dismisses on Escape, outside press, or focus moving to another application. `Alt+F2` renames the focused workspace. The single-instance prompt is prefilled with the current name, dismisses with Escape, and uses empty input to reset to the numeric ID. |
+| Rename workspace | Right-click any workspace and choose `Rename workspace`; no hover popup competes with the click target. The menu shows the `Alt+F2` shortcut reminder and dismisses on Escape, outside press, or focus moving to another application. `Alt+F2` edits the focused workspace. Renaming happens inline inside the workspace control, is prefilled and selected, submits with Enter, cancels with Escape or focus loss, limits names to 32 characters, and uses empty input to reset to the numeric ID. |
 | Terminal window | Show the terminal icon and number of tabs for both WezTerm and Ghostty OS windows. WezTerm uses its pane-list API; Ghostty uses the GTK AT-SPI tab hierarchy. |
 | Agent sessions | Show per-workspace running Claude and Codex session counts across WezTerm and Ghostty. Claude uses the supplied logo asset; Codex uses the actual OpenAI knot mark. Omit zero counts. Invisible terminal-specific identity tags and stable one-to-one assignment prevent duplicate visible titles from merging windows. |
 | Clock | Center `HH:mm` and an abbreviated weekday/date. Read-only. |
@@ -155,7 +155,7 @@ PanelWindow. Set `STATUSBAR_CANDIDATE=instrument` to run Candidate A; Candidate 
 
 | Category | A: instrument | B: segmented | Evidence |
 | --- | ---: | ---: | --- |
-| Functional contract | Pass | Pass | 26 Python + 7 QML tests plus rename-helper integration; live IPC and event checks |
+| Functional contract | Pass | Pass | 26 Python + 14 QML tests plus rename-helper integration; live IPC and event checks |
 | Composition and geometry | 4/5 | 5/5 | `candidate-a-instrument-fixed.png`, final captures |
 | Typography | 4/5 | 4/5 | Inter + JetBrains Mono at locked sizes |
 | Material, color, and depth | 2/5 | 5/5 | A predates thematic correction; B consumes Hypr palette |
@@ -192,7 +192,7 @@ the active Hyprland theme.
 - F9 reservation behavior: the reserved-aware scratchpad assertions pass for
   both a 40 px visible reservation (y=52) and a hidden reservation (y=12).
 - Impeccable detector: no findings.
-- Behavior tests: 26 Python tests plus 7 QML contract tests and the workspace
+- Behavior tests: 26 Python tests plus 14 QML contract tests and the workspace
   rename integration suite passed. The Python
   suite covers Ghostty bulk AT-SPI parsing, tab and agent extraction, live-title
   compatibility, malformed/huge payloads, transient discovery failure, and
@@ -200,14 +200,19 @@ the active Hyprland theme.
   tests cover all color boundaries and prove the numeric column has identical
   coordinates for 5%, 55%, 100%, temperature, and disconnected Wi-Fi states.
   They also reject empty workspaces and bound malformed/huge metric payloads.
-  The rename suite covers focused and explicit workspace selection, Lua-safe
-  Unicode/name encoding, reset, cancellation, rejected dispatches,
-  oversized/malformed input, and single-instance locking; the QML suite verifies
-  Escape/outside-click dismissal. A live temporary rename was observed in
-  Hyprland, the status stream, and the rendered chip before automatic restoration.
-  Pyrefly: 0 errors. Lua template: syntax valid.
-- Current source-manifest SHA-256: `624352af16238bb00d6de9467ae031a89a60d896f00c41d3a655ecedc2d79227`
-  on Git base `6bfc9afd2eb1dd490d52979f43e014bbc2157731`.
+  The rename suite covers explicit workspace selection, Lua-safe Unicode/name
+  encoding, reset, rejected dispatches, oversized/malformed input, malformed
+  invocations, and single-instance locking. The QML suite verifies context-menu
+  dismissal plus inline prefill/selection, persistent focus intent, Enter
+  submission, Escape/focus-loss cancellation, immediate editor-width release,
+  empty reset, and the 32-character bound. A live temporary rename
+  was observed in Hyprland, the status stream, and the rendered chip before
+  automatic restoration. The inline configuration, IPC registration, Hyprland
+  focus-grab activation, active `TextInput` focus, and Escape dismissal were
+  also verified live with a real Wayland key event. Pyrefly: 0 errors. Lua
+  template: syntax valid.
+- Current source-manifest SHA-256: `0ec109f89b8c3b4a290c64138a66cd7d6241c8ae1a455e8e588fd996eb9eee61`
+  on Git base `64bbc919cde9ba5150ac61a8634adfa6e98fb22f`.
   Reproduce it with:
   `sha256sum dot_config/quickshell/statusbar/*.qml dot_config/quickshell/statusbar/*.js dot_config/quickshell/statusbar/assets/* dot_local/lib/ghostty_status.py dot_local/lib/hypr_status_stream.py dot_local/bin/executable_hypr-status-stream dot_local/bin/executable_rename-hypr-workspace dot_config/hypr/scratchpad.lua dot_config/hypr/hyprland.lua.tmpl dot_config/hypr/desktop_test.lua dot_config/wezterm/wezterm_window_identity.lua dot_config/wezterm/wezterm_windowing.lua scripts/test_hypr_status_stream.py scripts/rename-hypr-workspace.test.sh scripts/tst_statusbar.qml .impeccable/fixtures/statusbar_laptop_hot.py | sha256sum`.
 

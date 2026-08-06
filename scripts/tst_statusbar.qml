@@ -36,6 +36,45 @@ TestCase {
         }
     }
 
+    Component {
+        id: workspaceEditorComponent
+
+        WorkspaceNameEditor {
+            initialText: "Deep work"
+            themeColors: testCase.themeColors
+        }
+    }
+
+    Component {
+        id: workspaceEditorRowComponent
+
+        Row {
+            id: editorRow
+
+            property bool editing: true
+            readonly property alias editorLoader: loader
+            spacing: 5
+
+            Loader {
+                id: loader
+
+                active: editorRow.editing
+                visible: active
+                width: active && item ? item.implicitWidth : 0
+                height: active && item ? item.implicitHeight : 0
+                sourceComponent: WorkspaceNameEditor {
+                    initialText: "Deep work"
+                    themeColors: testCase.themeColors
+                }
+            }
+
+            Rectangle {
+                width: 20
+                height: 24
+            }
+        }
+    }
+
     function colorAt(value): string {
         const metric = createTemporaryObject(metricComponent, this, { value: value });
         verify(metric !== null);
@@ -72,6 +111,77 @@ TestCase {
         tryCompare(menu, "activeFocus", true);
         menu.dismissOnFocusLoss(false);
         tryCompare(menu, "visible", false);
+    }
+
+    function test_workspace_editor_prefills_selects_and_limits_input(): void {
+        const editor = createTemporaryObject(workspaceEditorComponent, this);
+        verify(editor !== null);
+        compare(editor.editorText, "Deep work");
+        compare(editor.maximumLength, 32);
+        compare(editor.focusRequested, true);
+        tryCompare(editor, "inputHasFocus", true);
+
+        editor.editorText = "123456789012345678901234567890123";
+        compare(editor.editorText, "12345678901234567890123456789012");
+    }
+
+    function test_workspace_editor_submits_trimmed_name_with_enter(): void {
+        const editor = createTemporaryObject(workspaceEditorComponent, this);
+        verify(editor !== null);
+        let submittedName = null;
+        editor.submitted.connect(name => submittedName = name);
+        editor.editorText = "  project alpha  ";
+        tryCompare(editor, "inputHasFocus", true);
+
+        keyClick(Qt.Key_Return);
+
+        compare(submittedName, "project alpha");
+    }
+
+    function test_workspace_editor_allows_empty_reset(): void {
+        const editor = createTemporaryObject(workspaceEditorComponent, this);
+        verify(editor !== null);
+        let submittedName = null;
+        editor.submitted.connect(name => submittedName = name);
+        editor.editorText = "   ";
+
+        editor.submit();
+
+        compare(submittedName, "");
+    }
+
+    function test_workspace_editor_cancels_on_escape_or_focus_loss(): void {
+        const escapeEditor = createTemporaryObject(workspaceEditorComponent, this);
+        verify(escapeEditor !== null);
+        let escapeCancelled = false;
+        escapeEditor.cancelled.connect(() => escapeCancelled = true);
+        tryCompare(escapeEditor, "inputHasFocus", true);
+
+        keyClick(Qt.Key_Escape);
+
+        verify(escapeCancelled);
+
+        const blurEditor = createTemporaryObject(workspaceEditorComponent, this);
+        verify(blurEditor !== null);
+        let blurCancelled = false;
+        blurEditor.cancelled.connect(() => blurCancelled = true);
+        tryCompare(blurEditor, "inputHasFocus", true);
+
+        blurEditor.dismissOnFocusLoss(false);
+
+        verify(blurCancelled);
+    }
+
+    function test_workspace_editor_releases_row_width_when_closed(): void {
+        const row = createTemporaryObject(workspaceEditorRowComponent, this);
+        verify(row !== null);
+        compare(row.editorLoader.width, 160);
+        compare(row.implicitWidth, 185);
+
+        row.editing = false;
+
+        compare(row.editorLoader.visible, false);
+        tryCompare(row, "implicitWidth", 20);
     }
 
     function test_numeric_column_does_not_move_with_digit_count(): void {

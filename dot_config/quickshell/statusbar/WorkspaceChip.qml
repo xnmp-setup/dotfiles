@@ -9,6 +9,7 @@ Rectangle {
     required property var workspaceData
     required property string candidate
     required property var themeColors
+    required property bool editing
 
     readonly property bool segmented: candidate === "segmented"
     readonly property var liveWorkspace: Hyprland.workspaces.values.find(
@@ -20,11 +21,26 @@ Rectangle {
     readonly property color textPrimary: themeColors.text
     readonly property color textSecondary: themeColors.text_dim
 
-    function renameWorkspace(): void {
+    signal renameStarted(int workspaceId)
+    signal renameFinished
+
+    function beginRename(): void {
+        contextMenu.close();
+        if (editing) {
+            if (editorLoader.item)
+                editorLoader.item.activate();
+            return;
+        }
+        renameStarted(workspaceData.id);
+    }
+
+    function submitRename(name: string): void {
         Quickshell.execDetached([
             Quickshell.env("HOME") + "/.local/bin/rename-hypr-workspace",
-            String(chip.workspaceData.id)
+            String(chip.workspaceData.id),
+            name
         ]);
+        renameFinished();
     }
 
     function openRenameMenu(): void {
@@ -59,10 +75,28 @@ Rectangle {
         anchors.centerIn: parent
         spacing: chip.segmented ? 7 : 8
 
+        Loader {
+            id: editorLoader
+
+            active: chip.editing
+            visible: active
+            anchors.verticalCenter: parent.verticalCenter
+            width: active && item ? item.implicitWidth : 0
+            height: active && item ? item.implicitHeight : 0
+
+            sourceComponent: WorkspaceNameEditor {
+                initialText: chip.displayName
+                highlighted: chip.active
+                themeColors: chip.themeColors
+                onSubmitted: name => chip.submitRename(name)
+                onCancelled: chip.renameFinished()
+            }
+        }
+
         Rectangle {
             id: workspaceNameTile
 
-            visible: chip.segmented
+            visible: chip.segmented && !chip.editing
             anchors.verticalCenter: parent.verticalCenter
             width: Math.min(140, Math.max(22, workspaceNameSegmented.implicitWidth + 10))
             height: 24
@@ -89,7 +123,7 @@ Rectangle {
         Text {
             id: workspaceNameInstrument
 
-            visible: !chip.segmented
+            visible: !chip.segmented && !chip.editing
             anchors.verticalCenter: parent.verticalCenter
             width: Math.min(140, implicitWidth)
             text: chip.displayName
@@ -203,6 +237,7 @@ Rectangle {
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         hoverEnabled: true
+        enabled: !chip.editing
         cursorShape: Qt.PointingHandCursor
         onClicked: mouse => {
             if (mouse.button === Qt.RightButton) {
@@ -223,7 +258,7 @@ Rectangle {
         x: 0
         y: chip.height + 4
         themeColors: chip.themeColors
-        onRenameRequested: chip.renameWorkspace()
+        onRenameRequested: chip.beginRename()
     }
 
 }

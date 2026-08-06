@@ -304,11 +304,6 @@ hl.window_rule({ name = "imv-size",   match = { class = "^imv$" }, size = "75% 7
 hl.window_rule({ name = "thunar-dialog-float",  match = { class = "[Tt]hunar", title = "negative:.*[Tt]hunar.*" }, float = true })
 hl.window_rule({ name = "thunar-dialog-center", match = { class = "[Tt]hunar", title = "negative:.*[Tt]hunar.*" }, center = true })
 
--- The workspace rename prompt is a short-lived normal window so its keyboard
--- focus returns predictably. Keep it out of the tiling tree while it is open.
-hl.window_rule({ name = "workspace-rename-float",  match = { class = "^wofi$" }, float = true })
-hl.window_rule({ name = "workspace-rename-center", match = { class = "^wofi$" }, center = true })
-
 local expose = exposes.new(hl, {
     dissolve_lone_groups = group_actions.dissolve_lone_groups,
 })
@@ -346,7 +341,7 @@ hl.bind(mainMod .. " + E",         hl.dsp.exec_cmd("~/.config/hypr/open-explorer
 hl.bind(mainMod .. " + SHIFT + S", hl.dsp.exec_cmd("hyprshot -m region --clipboard-only"))
 hl.bind("CTRL + SHIFT + C",        hl.dsp.exec_cmd("~/Repos/obsidian-capture/hotkey/capture-linux.sh"))
 hl.bind("CTRL + ALT + U",          hl.dsp.exec_cmd("qs -c statusbar ipc call bar toggle"))
-hl.bind("ALT + F2",                hl.dsp.exec_cmd("~/.local/bin/rename-hypr-workspace"))
+hl.bind("ALT + F2",                hl.dsp.exec_cmd("qs -c statusbar ipc call bar renameCurrentWorkspace"))
 
 -- Move Focus
 hl.bind(mainMod .. " + left",  hl.dsp.focus({ direction = "left" }))

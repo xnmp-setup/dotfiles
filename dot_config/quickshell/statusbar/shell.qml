@@ -8,6 +8,7 @@ ShellRoot {
     id: root
 
     property bool barVisible: true
+    property int renameRequestSerial: 0
     property string candidate: Quickshell.env("STATUSBAR_CANDIDATE") === "instrument"
         ? "instrument"
         : "segmented"
@@ -34,6 +35,10 @@ ShellRoot {
         function visible(): bool {
             return root.barVisible;
         }
+
+        function renameCurrentWorkspace(): void {
+            root.renameRequestSerial += 1;
+        }
     }
 
     Variants {
@@ -46,6 +51,7 @@ ShellRoot {
             barVisible: root.barVisible
             candidate: root.candidate
             statusSource: source
+            renameRequestSerial: root.renameRequestSerial
         }
     }
 }
