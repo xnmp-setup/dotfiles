@@ -7,7 +7,10 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import subprocess
 import sys
+import tempfile
 import unittest
 from collections.abc import Sequence
 from pathlib import Path
@@ -263,12 +266,14 @@ class WorkspaceTest(unittest.TestCase):
                 {
                     "window_id": 0,
                     "tab_id": 1,
+                    "pane_id": 1,
                     "tty_name": "/dev/pts/12",
                     "title": "chezmoi",
                 },
                 {
                     "window_id": 0,
                     "tab_id": 2,
+                    "pane_id": 2,
                     "tty_name": "/dev/pts/13",
                     "title": "chezmoi",
                 },
@@ -277,6 +282,7 @@ class WorkspaceTest(unittest.TestCase):
                 {
                     "window_id": 0,
                     "tab_id": 1,
+                    "pane_id": 1,
                     "tty_name": "/dev/pts/15",
                     "title": "ballast",
                 }
@@ -294,13 +300,30 @@ class WorkspaceTest(unittest.TestCase):
                 status.AgentProcess("claude", "/dev/pts/15"),
             ]
         )
-        windows = status.wezterm_windows(rows, tty_counts)
-        workspaces = status.build_workspaces(
-            clients, [{"id": 0, "name": "DP-2"}], windows
-        )
+        with tempfile.TemporaryDirectory() as directory:
+            runtime_root = Path(directory)
+            (runtime_root / "wezterm-agent-state.gui-sock-101.1.codex").write_text(
+                "working\n"
+            )
+            (runtime_root / "wezterm-agent-state.gui-sock-101.2.codex").write_text(
+                "attention\n"
+            )
+            windows = status.wezterm_windows(
+                rows,
+                tty_counts,
+                runtime_root=runtime_root,
+                state_reader=lambda path: path.read_text() if path.is_file() else "",
+            )
+            workspaces = status.build_workspaces(
+                clients, [{"id": 0, "name": "DP-2"}], windows
+            )
 
         self.assertEqual(workspaces[0]["codex"], 2)
         self.assertEqual(workspaces[0]["clients"][0]["tabs"], 2)
+        self.assertEqual(
+            [activity["state"] for activity in workspaces[0]["clients"][0]["activities"]],
+            ["working", "attention"],
+        )
         self.assertEqual(workspaces[1]["claude"], 1)
         self.assertEqual(workspaces[1]["clients"][0]["tabs"], 1)
         self.assertEqual(
@@ -385,6 +408,12 @@ class WorkspaceTest(unittest.TestCase):
             "claude",
         )
         self.assertEqual(ghostty.ghostty_agent_kind("⬦ Codex"), "codex")
+        self.assertEqual(ghostty.ghostty_agent_state("⬦ Codex"), "working")
+        self.assertEqual(ghostty.ghostty_agent_state("⬣ Codex"), "attention")
+        self.assertEqual(ghostty.ghostty_agent_state("🔻 Codex"), "idle")
+        self.assertEqual(
+            ghostty.strip_invisible_metadata("Codex\u2063\u2064\u2063"), "Codex"
+        )
         self.assertEqual(ghostty.ghostty_agent_kind("❯ shell"), "")
 
     def test_ghostty_bus_is_selected_by_hyprland_pid(self) -> None:
@@ -558,8 +587,6 @@ class WorkspaceTest(unittest.TestCase):
         self.assertEqual(status.icon_name_for(app_class), "org.wezfurlong.wezterm")
 
     def test_icon_resolution_prefers_vector_then_nearest_raster(self) -> None:
-        import tempfile
-
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             svg = root / "scalable/apps/example.svg"
@@ -574,6 +601,38 @@ class WorkspaceTest(unittest.TestCase):
     def test_malformed_json_is_an_empty_collection(self) -> None:
         self.assertEqual(status.parse_json_array("null"), [])
         self.assertEqual(status.parse_json_array("not json"), [])
+
+
+class AgentHookStateTest(unittest.TestCase):
+    def test_wezterm_hook_publishes_namespaced_state_atomically(self) -> None:
+        script = Path(__file__).parents[1] / "dot_local/bin/executable_wezterm-agent-status"
+        with tempfile.TemporaryDirectory() as directory:
+            environment = dict(os.environ)
+            environment.pop("CLAUDECODE", None)
+            environment.pop("CLAUDE_PID", None)
+            environment.update(
+                {
+                    "TERM_PROGRAM": "WezTerm",
+                    "WEZTERM_PANE": "7",
+                    "WEZTERM_UNIX_SOCKET": "/run/user/1000/wezterm/gui-sock-42",
+                    "WEZTERM_EXECUTABLE": "/bin/false-gui",
+                    "XDG_RUNTIME_DIR": directory,
+                }
+            )
+            path = Path(directory) / "wezterm-agent-state.gui-sock-42.7.codex"
+            for state in ("working", "attention", "done"):
+                completed = subprocess.run(
+                    ["/bin/sh", str(script), state],
+                    input="{}",
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                    env=environment,
+                    timeout=5,
+                )
+                self.assertEqual(completed.returncode, 0, completed.stderr)
+                self.assertEqual(path.read_text(), state + "\n")
+                self.assertEqual(path.stat().st_mode & 0o777, 0o600)
 
 
 if __name__ == "__main__":

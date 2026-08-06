@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from collections import defaultdict, deque
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -23,6 +24,8 @@ AGENT_GLYPHS: Mapping[str, frozenset[str]] = {
     "claude": frozenset({"✴", "✹", "✢", "✶", "✻", "✽"}),
     "codex": frozenset({"🔻", "⬣", "⬩", "⬦", "◈", "⬥"}),
 }
+AGENT_IDLE_GLYPHS = frozenset({"✴", "🔻"})
+AGENT_ATTENTION_GLYPHS = frozenset({"✹", "⬣"})
 
 
 @dataclass(frozen=True)
@@ -36,6 +39,13 @@ class AtspiNode:
 
 
 @dataclass(frozen=True)
+class AgentActivity:
+    kind: str
+    state: str
+    title: str
+
+
+@dataclass(frozen=True)
 class GhosttyWindow:
     identity: str
     index: int
@@ -45,6 +55,7 @@ class GhosttyWindow:
     tabs: int
     claude: int
     codex: int
+    activities: tuple[AgentActivity, ...] = ()
 
 
 def busctl_data(text: str) -> Any | None:
@@ -142,6 +153,14 @@ def strip_invisible_tags(text: str) -> str:
     return INVISIBLE_TAG.sub("", text)
 
 
+def strip_invisible_metadata(text: str) -> str:
+    return "".join(
+        character
+        for character in strip_invisible_tags(text)
+        if unicodedata.category(character) != "Cf"
+    )
+
+
 def ghostty_agent_kind(title: str) -> str:
     tagged = [
         payload
@@ -154,6 +173,39 @@ def ghostty_agent_kind(title: str) -> str:
     return next(
         (kind for kind, glyphs in AGENT_GLYPHS.items() if visible[:1] in glyphs),
         "",
+    )
+
+
+def ghostty_agent_state(title: str) -> str:
+    visible = strip_invisible_metadata(title).lstrip()
+    glyph = visible[:1]
+    if glyph in AGENT_ATTENTION_GLYPHS:
+        return "attention"
+    if glyph in AGENT_IDLE_GLYPHS:
+        return "idle"
+    return (
+        "working"
+        if any(glyph in glyphs for glyphs in AGENT_GLYPHS.values())
+        else ""
+    )
+
+
+def ghostty_activity(title: str) -> AgentActivity:
+    kind = ghostty_agent_kind(title)
+    visible = strip_invisible_metadata(title).lstrip()
+    if kind and visible:
+        visible = visible[1:].lstrip("\ufe0e\ufe0f ")
+    fallback = (
+        "Claude Code"
+        if kind == "claude"
+        else "Codex"
+        if kind == "codex"
+        else "Shell"
+    )
+    return AgentActivity(
+        kind=kind or "process",
+        state=ghostty_agent_state(title) if kind else "",
+        title=(visible or fallback)[:160],
     )
 
 
@@ -206,6 +258,7 @@ def ghostty_windows(
                 tabs=max(1, len(titles)),
                 claude=kinds.count("claude"),
                 codex=kinds.count("codex"),
+                activities=tuple(ghostty_activity(title) for title in titles),
             )
         )
     return result

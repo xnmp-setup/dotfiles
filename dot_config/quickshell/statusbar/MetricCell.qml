@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Controls
 
 Item {
     id: root
@@ -86,14 +85,13 @@ Item {
         }
     }
 
-    MouseArea {
-        id: hoverArea
-        anchors.fill: parent
-        hoverEnabled: true
-        acceptedButtons: Qt.NoButton
+    HoverHandler {
+        id: hoverHandler
     }
 
-    ToolTip.visible: hoverArea.containsMouse && root.tooltip.length > 0
-    ToolTip.text: root.tooltip
-    ToolTip.delay: 350
+    ThemedToolTip {
+        visible: hoverHandler.hovered && root.tooltip.length > 0
+        text: root.tooltip
+        themeColors: root.themeColors
+    }
 }

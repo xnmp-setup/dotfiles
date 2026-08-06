@@ -2,6 +2,7 @@
 
 const MAX_WORKSPACES = 64;
 const MAX_CLIENTS_PER_WORKSPACE = 128;
+const MAX_ACTIVITIES_PER_CLIENT = 32;
 
 function safeString(value, fallback, limit) {
     if (typeof value !== "string")
@@ -109,14 +110,41 @@ function normalizeMetrics(base, raw) {
 
 function normalizeClient(raw) {
     const client = raw !== null && typeof raw === "object" ? raw : {};
+    const rawActivities = Array.isArray(client.activities) ? client.activities : [];
+    const activities = [];
+    for (let index = 0;
+         index < rawActivities.length && index < MAX_ACTIVITIES_PER_CLIENT;
+         index += 1) {
+        const rawActivity = rawActivities[index];
+        if (rawActivity === null || typeof rawActivity !== "object")
+            continue;
+        const rawKind = safeString(rawActivity.kind, "process", 16);
+        const kind = ["claude", "codex", "process"].includes(rawKind)
+            ? rawKind
+            : "process";
+        const rawState = safeString(rawActivity.state, "idle", 16);
+        const state = kind === "process"
+            ? ""
+            : ["working", "idle", "attention"].includes(rawState)
+                ? rawState
+                : "idle";
+        activities.push({
+            kind: kind,
+            state: state,
+            title: safeString(rawActivity.title, kind === "process" ? "Shell" : "", 160)
+        });
+    }
     return {
         address: safeString(client.address, "", 128),
         class: safeString(client.class, "application", 256),
         icon: safeString(client.icon, "application-x-executable", 1024),
+        label: safeString(client.label, "Application", 64),
+        title: safeString(client.title, "", 256),
         terminal: client.terminal === true,
         tabs: boundedInteger(client.tabs, 1, 1, 9999),
         claude: boundedInteger(client.claude, 0, 0, 9999),
-        codex: boundedInteger(client.codex, 0, 0, 9999)
+        codex: boundedInteger(client.codex, 0, 0, 9999),
+        activities: activities
     };
 }
 

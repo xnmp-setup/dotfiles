@@ -63,6 +63,42 @@ TestCase {
     }
 
     Component {
+        id: themedTooltipComponent
+
+        ThemedToolTip {
+            text: "Disk activity"
+            themeColors: testCase.themeColors
+        }
+    }
+
+    Component {
+        id: workspaceTooltipComponent
+
+        WorkspaceToolTip {
+            workspaceData: ({
+                id: 1,
+                name: "Chez4",
+                claude: 1,
+                codex: 2,
+                clients: [
+                    {
+                        label: "WezTerm",
+                        title: "chezmoi",
+                        icon: "assets/openai.svg",
+                        terminal: true,
+                        tabs: 2,
+                        activities: [
+                            { kind: "codex", state: "working", title: "chezmoi" },
+                            { kind: "claude", state: "attention", title: "dotfiles" }
+                        ]
+                    }
+                ]
+            })
+            themeColors: testCase.themeColors
+        }
+    }
+
+    Component {
         id: workspaceEditorRowComponent
 
         Row {
@@ -252,6 +288,48 @@ TestCase {
         compare(normalized[0].clients[0].tabs, 1);
         compare(normalized[0].claude, 0);
         verify(normalized.every(workspace => workspace.clients.length > 0));
+    }
+
+    function test_agent_activities_are_bounded_and_states_are_normalized(): void {
+        const activities = [];
+        activities.push({ kind: "codex", state: "attention", title: "review" });
+        activities.push({ kind: "claude", state: "unknown", title: "x".repeat(500) });
+        activities.push({ kind: "forged", state: "working", title: "shell" });
+        for (let index = 0; index < 100; index += 1)
+            activities.push({ kind: "process", title: "task " + index });
+        const normalized = Sanitizer.normalizeWorkspaces([{
+            id: 1,
+            clients: [{
+                label: "WezTerm",
+                title: "chezmoi",
+                activities: activities
+            }]
+        }]);
+        const client = normalized[0].clients[0];
+        compare(client.label, "WezTerm");
+        compare(client.title, "chezmoi");
+        compare(client.activities.length, 32);
+        compare(client.activities[0].state, "attention");
+        compare(client.activities[1].state, "idle");
+        compare(client.activities[1].title.length, 160);
+        compare(client.activities[2].kind, "process");
+        compare(client.activities[2].state, "");
+    }
+
+    function test_tooltips_use_theme_and_human_agent_states(): void {
+        const themed = createTemporaryObject(themedTooltipComponent, this);
+        const workspace = createTemporaryObject(workspaceTooltipComponent, this);
+        verify(themed !== null);
+        verify(workspace !== null);
+        compare(themed.surfaceColor.toString(), "#4b4840");
+        compare(workspace.surfaceColor.toString(), "#4b4840");
+        compare(themed.delay, 90);
+        compare(workspace.delay, 0);
+        compare(workspace.windowSummary, "1 window · 3 agents");
+        compare(workspace.stateLabel("working"), "Running");
+        compare(workspace.stateLabel("idle"), "Idle");
+        compare(workspace.stateLabel("attention"), "Awaiting input");
+        compare(workspace.stateColor("attention").toString(), "#fabd2f");
     }
 
     function test_malformed_metrics_are_bounded_before_rendering(): void {

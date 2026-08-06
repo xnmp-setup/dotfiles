@@ -153,6 +153,33 @@ fi
 [ "$TERM_PROGRAM" = "WezTerm" ] || exit 0
 [ -n "$WEZTERM_PANE" ] || exit 0
 
+# Mirror the GUI-local user variable into a tiny runtime record consumed by the
+# status bar. Pane ids are only unique inside one GUI, so the socket basename is
+# part of the key. Stale files are harmless: the collector consults them only
+# while a matching live agent process still owns that pane's TTY.
+state_cachefile=""
+if [ -n "${WEZTERM_UNIX_SOCKET:-}" ]; then
+  state_cache_key="${WEZTERM_UNIX_SOCKET##*/}.$WEZTERM_PANE.$agent_kind"
+  case "$state_cache_key" in
+    ""|*[!A-Za-z0-9._-]*) : ;;
+    *) state_cachefile="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/wezterm-agent-state.$state_cache_key" ;;
+  esac
+fi
+case "$status" in
+  working|done|attention)
+    if [ -n "$state_cachefile" ]; then
+      state_cache_tmp="$state_cachefile.$$"
+      umask 077
+      if printf '%s\n' "$status" > "$state_cache_tmp" 2>/dev/null; then
+        mv -f "$state_cache_tmp" "$state_cachefile" 2>/dev/null \
+          || rm -f "$state_cache_tmp"
+      else
+        rm -f "$state_cache_tmp"
+      fi
+    fi
+    ;;
+esac
+
 # Preserve the exact resumable session/thread id in the pane. The dynamic value
 # costs jq+base64 once per agent process, then comes from a tiny cache keyed by
 # GUI instance + pane + agent identity. Hook-heavy turns can invoke this script

@@ -145,6 +145,37 @@ local function page_keys_scroll_terminal(pane)
     or agent_of_pane(proc, pane:get_user_vars()) == 'codex'
 end
 
+local function state_cache_path(runtime_root, gui_pid, pane_id, kind)
+  if type(runtime_root) ~= 'string' or runtime_root:sub(1, 1) ~= '/' then return nil end
+  if type(gui_pid) ~= 'number' or gui_pid < 1 or gui_pid % 1 ~= 0 then return nil end
+  if type(pane_id) ~= 'number' or pane_id < 0 or pane_id % 1 ~= 0 then return nil end
+  if kind ~= 'claude' and kind ~= 'codex' then return nil end
+  return string.format(
+    '%s/wezterm-agent-state.gui-sock-%d.%d.%s',
+    runtime_root,
+    gui_pid,
+    pane_id,
+    kind
+  )
+end
+
+local function persist_state(pane_id, kind, state)
+  local procinfo = wezterm.procinfo
+  if not procinfo or type(procinfo.pid) ~= 'function' then return false end
+  local got_pid, gui_pid = pcall(procinfo.pid)
+  if not got_pid then return false end
+  local path = state_cache_path(os.getenv('XDG_RUNTIME_DIR'), gui_pid, pane_id, kind)
+  if not path then return false end
+  local temporary = path .. '.' .. tostring(now_ms())
+  local file = io.open(temporary, 'w')
+  if not file then return false end
+  file:write(state, '\n')
+  file:close()
+  if os.rename(temporary, path) then return true end
+  os.remove(temporary)
+  return false
+end
+
 -- Clear a stuck working state when Escape interrupts or dismisses an agent UI.
 -- This runs on EVERY bare Escape press (the keybind forwards the key after),
 -- so it must never query the foreground process — that's a synchronous /proc
@@ -156,11 +187,14 @@ end
 -- is correct — not just cheap.
 function M.mark_done(pane)
   local pane_id = pane:pane_id()
+  local vars = pane:get_user_vars() or {}
+  local kind = user_var(vars, 'agent_kind')
+  if kind == nil and user_var(vars, 'claude_status') ~= nil then kind = 'claude' end
+  persist_state(pane_id, kind, 'done')
   if pane_status[pane_id] ~= nil then
     pane_status[pane_id] = 'done'
     return
   end
-  local vars = pane:get_user_vars() or {}
   if vars.agent_kind or vars.agent_status or vars.claude_status then
     pane_status[pane_id] = 'done'
   end
@@ -186,5 +220,6 @@ M.status_of = agent_status_of
 M.of_pane = agent_of_pane
 M.resume_args_for = resume_args_for
 M.page_keys_scroll_terminal = page_keys_scroll_terminal
+M.state_cache_path = state_cache_path
 
 return M

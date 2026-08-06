@@ -52,6 +52,13 @@ eq('registers status event', type(callbacks['user-var-changed']), 'function')
 eq('identity/user-var', agent.of_pane('/usr/bin/zsh', { agent_kind = 'codex' }), 'codex')
 eq('identity/process fallback', agent.of_pane('/opt/claude', {}), 'claude')
 eq('identity/plain process', agent.of_pane('/usr/bin/zsh', {}), nil)
+eq(
+  'state cache/path namespaces gui and pane',
+  agent.state_cache_path('/run/user/1000', 42, 7, 'codex'),
+  '/run/user/1000/wezterm-agent-state.gui-sock-42.7.codex'
+)
+eq('state cache/rejects relative root', agent.state_cache_path('tmp', 42, 7, 'codex'), nil)
+eq('state cache/rejects unknown kind', agent.state_cache_path('/tmp', 42, 7, 'other'), nil)
 
 local session_id = '12345678-1234-4abc-9def-1234567890ab'
 args_eq('resume/claude exact', agent.resume_args_for(

@@ -261,4 +261,10 @@ Rectangle {
         onRenameRequested: chip.beginRename()
     }
 
+    WorkspaceToolTip {
+        visible: pointer.containsMouse && !chip.editing && !contextMenu.opened
+        workspaceData: chip.workspaceData
+        themeColors: chip.themeColors
+    }
+
 }

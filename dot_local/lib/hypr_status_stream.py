@@ -25,10 +25,12 @@ from ghostty_status import (
     GhosttyWindow,
     assign_ghostty_windows,
     is_ghostty_class,
+    strip_invisible_metadata,
 )
 
 JsonObject = dict[str, Any]
 CommandRunner = Callable[[Sequence[str]], str]
+PathReader = Callable[[Path], str]
 
 
 @dataclass(frozen=True)
@@ -84,6 +86,20 @@ APP_ICONS: Mapping[str, str] = {
     "code-oss": "visual-studio-code",
     "firefox": "firefox",
 }
+APP_LABELS: Mapping[str, str] = {
+    "org.wezfurlong.wezterm": "WezTerm",
+    "com.mitchellh.ghostty": "Ghostty",
+    "google-chrome": "Google Chrome",
+    "google-chrome-stable": "Google Chrome",
+    "chromium": "Chromium",
+    "obsidian": "Obsidian",
+    "dev.zed.zed": "Zed",
+    "dev.zed.zed-dev": "Zed",
+    "code": "Visual Studio Code",
+    "code-oss": "Visual Studio Code",
+    "firefox": "Firefox",
+    "tauri-explorer": "Tauri Explorer",
+}
 WEZTERM_CLASS = "org.wezfurlong.wezterm"
 PHYSICAL_DISK_EXCLUDES = ("loop", "ram", "zram", "dm-", "md")
 CPU_HWMON_NAMES = frozenset({"coretemp", "k10temp", "zenpower"})
@@ -91,6 +107,7 @@ GPU_HWMON_NAMES = frozenset({"amdgpu", "nouveau", "nvidia"})
 HOT_TEMPERATURE_C = 75
 MAX_WEZTERM_INSTANCES = 64
 MAX_WEZTERM_PANES = 1024
+MAX_ACTIVITIES_PER_CLIENT = 32
 TITLE_PREFIX = re.compile(r"^(?:\[Z\]\s+)?(?:\[\d+/(\d+)\]\s+)?")
 WEZTERM_WINDOW_TAG = re.compile(r"([\U000e0020-\U000e007e]+)\U000e007f$")
 THEME_KEYS = (
@@ -372,6 +389,51 @@ def nonnegative_integer(value: object) -> int | None:
     return number if 0 <= number <= 2_147_483_647 else None
 
 
+def normalized_agent_state(value: str) -> str:
+    state = value.strip().casefold()
+    if state == "working":
+        return "working"
+    if state == "attention":
+        return "attention"
+    return "idle"
+
+
+def activity_title(value: object, kind: str = "") -> str:
+    title = title_body(value) if isinstance(value, str) else ""
+    title = title.strip()[:160]
+    while title and not (title[0].isalnum() or title[0] in "~/."):
+        title = title[1:].lstrip()
+    if re.fullmatch(r"[0-9a-fA-F-]{32,36}", title):
+        title = ""
+    lowered = title.casefold()
+    prefix = f"{kind} | "
+    if kind and lowered.startswith(prefix):
+        title = title[len(prefix):].strip()
+    if title:
+        return title
+    return "Claude Code" if kind == "claude" else "Codex" if kind == "codex" else "Shell"
+
+
+def wezterm_agent_state(
+    row: Mapping[str, Any],
+    kind: str,
+    runtime_root: Path | None,
+    state_reader: PathReader | None,
+) -> str:
+    gui_pid = positive_integer(row.get("gui_pid"))
+    pane_id = nonnegative_integer(row.get("pane_id"))
+    if (
+        runtime_root is None
+        or state_reader is None
+        or gui_pid is None
+        or pane_id is None
+        or kind not in {"claude", "codex"}
+    ):
+        return "idle"
+    path = runtime_root / f"wezterm-agent-state.gui-sock-{gui_pid}.{pane_id}.{kind}"
+    return normalized_agent_state(state_reader(path)[:64])
+
+
 def agent_counts_by_tty(processes: Iterable[AgentProcess]) -> dict[str, dict[str, int]]:
     counts: dict[str, dict[str, int]] = defaultdict(lambda: {"claude": 0, "codex": 0})
     for process in processes:
@@ -381,7 +443,11 @@ def agent_counts_by_tty(processes: Iterable[AgentProcess]) -> dict[str, dict[str
 
 
 def wezterm_windows(
-    rows: Sequence[Mapping[str, Any]], tty_counts: Mapping[str, Mapping[str, int]]
+    rows: Sequence[Mapping[str, Any]],
+    tty_counts: Mapping[str, Mapping[str, int]],
+    *,
+    runtime_root: Path | None = None,
+    state_reader: PathReader | None = None,
 ) -> list[JsonObject]:
     grouped: dict[tuple[int | None, int], list[Mapping[str, Any]]] = defaultdict(list)
     for row in rows[:MAX_WEZTERM_PANES]:
@@ -394,20 +460,47 @@ def wezterm_windows(
         tab_ids = {pane.get("tab_id") for pane in panes}
         counts = {"claude": 0, "codex": 0}
         titles: set[str] = set()
+        activities: list[JsonObject] = []
         for pane in panes:
             for key in ("title", "window_title"):
                 value = pane.get(key)
                 if isinstance(value, str) and value:
                     titles.add(title_body(value))
             pane_counts = tty_counts.get(str(pane.get("tty_name", "")), {})
+            pane_has_agent = False
             for kind in counts:
-                counts[kind] += int(pane_counts.get(kind, 0))
+                count = nonnegative_integer(pane_counts.get(kind, 0)) or 0
+                counts[kind] += count
+                for _ in range(min(count, MAX_ACTIVITIES_PER_CLIENT - len(activities))):
+                    pane_has_agent = True
+                    activities.append(
+                        {
+                            "kind": kind,
+                            "state": wezterm_agent_state(
+                                pane, kind, runtime_root, state_reader
+                            ),
+                            "title": activity_title(
+                                pane.get("title") or pane.get("window_title"), kind
+                            ),
+                        }
+                    )
+            if not pane_has_agent and len(activities) < MAX_ACTIVITIES_PER_CLIENT:
+                activities.append(
+                    {
+                        "kind": "process",
+                        "state": "",
+                        "title": activity_title(
+                            pane.get("title") or pane.get("window_title")
+                        ),
+                    }
+                )
         result.append(
             {
                 "guiPid": gui_pid,
                 "windowId": window_id,
                 "tabs": max(1, len(tab_ids)),
                 "titles": sorted(titles, key=len, reverse=True),
+                "activities": activities,
                 **counts,
             }
         )
@@ -585,6 +678,26 @@ def icon_name_for(app_class: str) -> str:
     return APP_ICONS.get(normalized, app_class or "application-x-executable")
 
 
+def app_label(app_class: str) -> str:
+    normalized = app_class.casefold()
+    if normalized.startswith(WEZTERM_CLASS):
+        return APP_LABELS[WEZTERM_CLASS]
+    known = APP_LABELS.get(normalized)
+    if known:
+        return known
+    tail = re.split(r"[./_-]+", app_class)[-1] if app_class else "Application"
+    return tail[:64].replace("-", " ").title() or "Application"
+
+
+def client_title(client: Mapping[str, Any], app_class: str) -> str:
+    title = str(client.get("title", ""))
+    if is_wezterm_class(app_class):
+        title = title_body(title)
+    elif is_ghostty_class(app_class):
+        title = strip_invisible_metadata(title)
+    return title.strip()[:256]
+
+
 @lru_cache(maxsize=128)
 def resolve_icon(icon_name: str, roots: tuple[Path, ...] = ICON_ROOTS) -> str:
     """Return a stable local URL when an icon exists, otherwise its theme name."""
@@ -669,9 +782,12 @@ def build_workspaces(
             "class": app_class,
             "icon": icon_for(app_class),
             "terminal": is_terminal_class(app_class),
+            "label": app_label(app_class),
+            "title": client_title(client, app_class),
             "tabs": 1,
             "claude": 0,
             "codex": 0,
+            "activities": [],
         }
         if is_wezterm_class(app_class):
             matched = matched_wezterm.get(app["address"])
@@ -679,6 +795,9 @@ def build_workspaces(
                 for field in ("tabs", "claude", "codex"):
                     app[field] = int(matched.get(field, app[field]))
                 app["weztermWindowId"] = int(matched["windowId"])
+                app["activities"] = list(matched.get("activities", []))[
+                    :MAX_ACTIVITIES_PER_CLIENT
+                ]
                 gui_pid = positive_integer(matched.get("guiPid"))
                 if gui_pid is not None:
                     app["weztermGuiPid"] = gui_pid
@@ -687,6 +806,9 @@ def build_workspaces(
                 if stale:
                     for field in ("tabs", "claude", "codex"):
                         app[field] = int(stale.get(field, app[field]))
+                    app["activities"] = list(stale.get("activities", []))[
+                        :MAX_ACTIVITIES_PER_CLIENT
+                    ]
                 else:
                     app["tabs"] = parse_tab_count(str(client.get("title", "")))
         elif is_ghostty_class(app_class):
@@ -694,12 +816,23 @@ def build_workspaces(
             if ghostty_window:
                 for field in ("tabs", "claude", "codex"):
                     app[field] = int(getattr(ghostty_window, field))
+                app["activities"] = [
+                    {
+                        "kind": activity.kind,
+                        "state": activity.state,
+                        "title": activity.title,
+                    }
+                    for activity in ghostty_window.activities[:MAX_ACTIVITIES_PER_CLIENT]
+                ]
                 app["ghosttyWindowId"] = ghostty_window.identity
             else:
                 stale = previous_clients.get(app["address"])
                 if stale:
                     for field in ("tabs", "claude", "codex"):
                         app[field] = int(stale.get(field, app[field]))
+                    app["activities"] = list(stale.get("activities", []))[
+                        :MAX_ACTIVITIES_PER_CLIENT
+                    ]
         grouped[workspace_key].append(app)
 
     result: list[JsonObject] = []
@@ -922,7 +1055,12 @@ class StatusCollector:
         self.cached_workspaces = build_workspaces(
             clients,
             monitors,
-            wezterm_windows(rows, tty_counts),
+            wezterm_windows(
+                rows,
+                tty_counts,
+                runtime_root=self.runtime_root,
+                state_reader=self._read,
+            ),
             previous=self.cached_workspaces,
             ghostty=self.ghostty_discovery.windows(clients),
         )

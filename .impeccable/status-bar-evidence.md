@@ -7,13 +7,13 @@ Hyprland monitor.
 
 | State | Contract |
 | --- | --- |
-| Visible | Show occupied workspaces only. Each workspace is one bounded control containing its current name and one icon per open window. Clicking it focuses that workspace. Long names are bounded and elided. |
+| Visible | Show occupied workspaces only. Each workspace is one bounded control containing its current name and one icon per open window. Clicking it focuses that workspace. Long names are bounded and elided. Hovering opens an immediate themed inventory of the workspace's windows, terminal tabs, and processes. |
 | Active workspace | Distinguishable by stronger fill and a bottom accent, not color alone. |
 | Rename workspace | Right-click any workspace and choose `Rename workspace`; no hover popup competes with the click target. The menu shows the `Alt+F2` shortcut reminder and dismisses on Escape, outside press, or focus moving to another application. `Alt+F2` edits the focused workspace. Renaming happens inline inside the workspace control, is prefilled and selected, submits with Enter, cancels with Escape or focus loss, limits names to 32 characters, and uses empty input to reset to the numeric ID. |
 | Terminal window | Show the terminal icon and number of tabs for both WezTerm and Ghostty OS windows. WezTerm uses its pane-list API; Ghostty uses the GTK AT-SPI tab hierarchy. |
-| Agent sessions | Show per-workspace running Claude and Codex session counts across WezTerm and Ghostty. Claude uses the supplied logo asset; Codex uses the actual OpenAI knot mark. Omit zero counts. Enumerate every active WezTerm GUI mux socket, namespace its window IDs by GUI process, and use stable one-to-one assignment so duplicate local IDs or visible titles cannot merge windows. |
+| Agent sessions | Show per-workspace Claude and Codex session counts across WezTerm and Ghostty. Claude uses the supplied logo asset; Codex uses the actual OpenAI knot mark. Omit zero counts. Enumerate every active WezTerm GUI mux socket, namespace its window IDs by GUI process, and use stable one-to-one assignment so duplicate local IDs or visible titles cannot merge windows. The workspace tooltip identifies every visible agent tab as Running, Idle, or Awaiting input. |
 | Clock | Center `HH:mm` and an abbreviated weekday/date. Read-only. |
-| Telemetry | Show CPU, RAM, disk I/O busy-time, and GPU as percentages in fixed label/value columns. Disk I/O is the busiest physical disk's busy-time over the trailing 30 seconds; the tooltip carries the device and read/write rates. Values below 50% use normal text, 50–75% use Gruvbox yellow, and values above 75% use Gruvbox red. |
+| Telemetry | Show CPU, RAM, disk I/O busy-time, and GPU as percentages in fixed label/value columns. Disk I/O is the busiest physical disk's busy-time over the trailing 30 seconds; the tooltip carries the device and read/write rates. All metric hints use the status-bar palette and a 90 ms hover guard instead of the platform's yellow tooltip. Values below 50% use normal text, 50–75% use Gruvbox yellow, and values above 75% use Gruvbox red. |
 | AI quota | Append Claude Code and Codex as individual horizontal metric cells at the far right. Each shows consumed weekly quota and a live reset countdown inline; tooltips retain the exact reset time and secondary window. Claude's five-hour quota remains available in its tooltip. Values below 75% use normal text, 75–89% yellow, and 90%+ red. At the unsupported 1920 px maximum-telemetry extreme, the two cells compact to provider mark plus percentage and retain reset details in tooltips. |
 | Laptop status | When a sysfs battery identifies the host as a laptop, append Wi-Fi signal/status and battery percentage. Disconnected/weak Wi-Fi and low battery use warning colors. Desktop hosts omit both cells. |
 | Thermal warnings | Omit CPU/GPU temperature cells below 75°C. Show 75–84°C in yellow and 85°C+ in red. |
@@ -160,7 +160,7 @@ PanelWindow. Set `STATUSBAR_CANDIDATE=instrument` to run Candidate A; Candidate 
 
 | Category | A: instrument | B: segmented | Evidence |
 | --- | ---: | ---: | --- |
-| Functional contract | Pass | Pass | 36 Python + 18 QML tests plus rename-helper integration; live IPC and event checks |
+| Functional contract | Pass | Pass | 37 Python + 20 QML contract tests + 39 WezTerm tests plus rename-helper integration; live IPC and event checks |
 | Composition and geometry | 4/5 | 5/5 | `candidate-a-instrument-fixed.png`, final captures |
 | Typography | 4/5 | 4/5 | Inter + JetBrains Mono at locked sizes |
 | Material, color, and depth | 2/5 | 5/5 | A predates thematic correction; B consumes Hypr palette |
@@ -186,6 +186,14 @@ the active Hyprland theme.
   (`c4ac5dba0e4a1b841c82d4bc72b6cff0fef1f888d1827e7e6f16e942b1ed1d46`,
   1000x40 physical pixels). The fixture shows Claude's weekly quota at 40% used
   and Codex at 65% used, both in normal text with live reset countdowns.
+- Immediate themed workspace inventory:
+  `.impeccable/captures/workspace-tooltip-detail.png`
+  (`38947edc2236039cb4af8fe15c9d594de393825aaa9a57b66efd3f33b84918d5`).
+  It shows two windows and three agent tabs with Running, Awaiting input, and
+  Idle represented together.
+- Themed standard metric hint:
+  `.impeccable/captures/metric-tooltip-themed.png`
+  (`10f5f9eafa0e23db1b6214d0b388820fdd6862537d09a663ec190f74b150ad61`).
 - Immediate workspace-2 event capture:
   `.impeccable/captures/workspace-2-event-highlight.png`
   (`139febe707f2f9bb2110fbb8c025125533d276bc92c9064df2ac66d1ddbdad4d`)
@@ -202,7 +210,8 @@ the active Hyprland theme.
 - F9 reservation behavior: the reserved-aware scratchpad assertions pass for
   both a 40 px visible reservation (y=52) and a hidden reservation (y=12).
 - Impeccable detector: no findings.
-- Behavior tests: 36 Python tests plus 18 QML contract tests and the workspace
+- Behavior tests: 37 Python tests, 20 QML contract tests, 39 WezTerm agent
+  tests, and the workspace
   rename integration suite passed. The Python
   suite covers Ghostty bulk AT-SPI parsing, tab and agent extraction, live-title
   compatibility, malformed/huge payloads, transient discovery failure, and
@@ -221,10 +230,10 @@ the active Hyprland theme.
   focus-grab activation, active `TextInput` focus, and Escape dismissal were
   also verified live with a real Wayland key event. Pyrefly: 0 errors. Lua
   template: syntax valid.
-- Current source-manifest SHA-256: `f9cb5803e260360bce4db001fc2f653d63f51fba075227e048e55ccf24cc1630`
-  on Git base `1467683`.
+- Current source-manifest SHA-256: `68ea54df7c3c6de9669e072c0056df6290215361e3eaf405a004e9ba0d45df72`
+  on Git base `9a7bfb4`.
   Reproduce it with:
-  `sha256sum dot_config/quickshell/statusbar/*.qml dot_config/quickshell/statusbar/*.js dot_config/quickshell/statusbar/assets/* dot_claude/executable_statusline.sh dot_local/lib/ai_usage_stream.py dot_local/lib/ghostty_status.py dot_local/lib/hypr_status_stream.py dot_local/bin/executable_ai-usage-stream dot_local/bin/executable_hypr-status-stream dot_local/bin/executable_rename-hypr-workspace dot_config/hypr/scratchpad.lua dot_config/hypr/hyprland.lua.tmpl dot_config/hypr/desktop_test.lua dot_config/wezterm/wezterm_window_identity.lua dot_config/wezterm/wezterm_windowing.lua scripts/test_ai_usage_stream.py scripts/test_hypr_status_stream.py scripts/rename-hypr-workspace.test.sh scripts/tst_statusbar.qml .impeccable/fixtures/statusbar_ai_usage.py .impeccable/fixtures/statusbar_laptop_hot.py | sha256sum`.
+  `sha256sum dot_config/quickshell/statusbar/*.qml dot_config/quickshell/statusbar/*.js dot_config/quickshell/statusbar/assets/* dot_claude/executable_statusline.sh dot_local/lib/ai_usage_stream.py dot_local/lib/ghostty_status.py dot_local/lib/hypr_status_stream.py dot_local/bin/executable_ai-usage-stream dot_local/bin/executable_hypr-status-stream dot_local/bin/executable_rename-hypr-workspace dot_local/bin/executable_wezterm-agent-status dot_config/hypr/scratchpad.lua dot_config/hypr/hyprland.lua.tmpl dot_config/hypr/desktop_test.lua dot_config/wezterm/wezterm_agent.lua dot_config/wezterm/wezterm_agent.test.lua dot_config/wezterm/wezterm_window_identity.lua dot_config/wezterm/wezterm_windowing.lua scripts/test_ai_usage_stream.py scripts/test_hypr_status_stream.py scripts/rename-hypr-workspace.test.sh scripts/tst_statusbar.qml .impeccable/fixtures/statusbar_ai_usage.py .impeccable/fixtures/statusbar_laptop_hot.py | sha256sum`.
 
 ## Discrepancy ledger
 
