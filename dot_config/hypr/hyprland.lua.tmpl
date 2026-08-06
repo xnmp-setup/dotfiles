@@ -250,6 +250,9 @@ hl.animation({ leaf = "specialWorkspace", enabled = true, speed = 3, bezier = "f
 
 hl.on("hyprland.start", function()
     hl.exec_cmd("hyprpaper")
+    -- Named Quickshell config: its PanelWindow reserves 40 px while visible and
+    -- releases that space when toggled off.
+    hl.exec_cmd("qs -c statusbar")
     hl.exec_cmd("vicinae server")
     -- A shader runs before native output cloning, so both laptop mirror outputs
     -- receive the same 3500K night tint. Desktops retain solar-time wlsunset.
@@ -337,6 +340,7 @@ hl.bind(mainMod .. " + CTRL + R", hl.dsp.exec_cmd("~/.local/bin/hypr-session-res
 hl.bind(mainMod .. " + E",         hl.dsp.exec_cmd("~/.config/hypr/open-explorer-cwd.sh"))
 hl.bind(mainMod .. " + SHIFT + S", hl.dsp.exec_cmd("hyprshot -m region --clipboard-only"))
 hl.bind("CTRL + SHIFT + C",        hl.dsp.exec_cmd("~/Repos/obsidian-capture/hotkey/capture-linux.sh"))
+hl.bind("CTRL + ALT + U",          hl.dsp.exec_cmd("qs -c statusbar ipc call bar toggle"))
 
 -- Move Focus
 hl.bind(mainMod .. " + left",  hl.dsp.focus({ direction = "left" }))
@@ -539,6 +543,7 @@ scratchpad.define("ghostty-drop", {
     w     = 0.8, h = 0.7, max_w = 1600,
     anchor = "top", gap = 12,
     monitor = "primary",
+    respect_reserved = true,
     isolate = true,
 })
 scratchpad.define("lite-xl", {

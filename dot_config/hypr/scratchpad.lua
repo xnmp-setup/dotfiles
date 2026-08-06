@@ -172,6 +172,16 @@ local function new(hl, window_actions)
         return math.floor(value)
     end
 
+    -- Layer-shell panels contribute live reserved margins to their monitor. Reading
+    -- that compositor-owned value keeps a top-anchored pad aligned whether the panel
+    -- is shown or hidden, without mirroring visibility in a file or racing an IPC
+    -- toggle. Hyprland exposes reserved margins in logical pixels.
+    local function reserved_top(mon)
+        local reserved = mon and mon.reserved
+        local top = type(reserved) == "table" and tonumber(reserved.top) or nil
+        return math.max(top or 0, 0)
+    end
+
     -- Absolute logical geometry for a pad, or nil if no monitor could be resolved.
     -- Hyprland reports monitors in physical pixels; windows are placed in logical
     -- ones, hence the division by scale.
@@ -194,8 +204,9 @@ local function new(hl, window_actions)
         local gap = extent(pad.gap, screen_h) or 0
 
         local x = (mon.x or 0) + math.floor((screen_w - w) / 2)
+        local top_reservation = pad.respect_reserved and reserved_top(mon) or 0
         local y = (mon.y or 0) + (pad.anchor == "top"
-            and gap
+            and top_reservation + gap
             or math.floor((screen_h - h) / 2))
 
         return { w = w, h = h, x = x, y = y, monitor = mon }
@@ -340,10 +351,12 @@ local function new(hl, window_actions)
     ---
     --- `w`/`h`/`gap` are a share of the monitor at 0..1 and logical pixels above it.
     --- Optional `max_w`/`max_h` cap the resolved size using the same units.
-    --- `anchor` is "top" or, by default, centred. `monitor` pins the pad to a named
-    --- output; "primary" selects workspace 1's monitor and "builtin" the laptop panel.
+    --- `anchor` is "top" or, by default, centred. A top anchor can set
+    --- `respect_reserved` to sit below live panel reservations. `monitor` pins the pad
+    --- to a named output; "primary" selects workspace 1's monitor and "builtin" the
+    --- laptop panel.
     --- @param name string   also the special workspace it is parked in
-    --- @param spec table    { class, cmd, w, h, max_w?, max_h?, anchor?, gap?, monitor?, isolate? }
+    --- @param spec table    { class, cmd, w, h, max_w?, max_h?, anchor?, gap?, monitor?, respect_reserved?, isolate? }
     function M.define(name, spec)
         pads[name] = spec
     end

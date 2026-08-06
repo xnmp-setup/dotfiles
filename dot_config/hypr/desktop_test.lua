@@ -1378,6 +1378,7 @@ local function monitor(spec)
         width = spec.width,
         height = spec.height,
         scale = spec.scale or 1,
+        reserved = spec.reserved,
         focused = spec.focused,
         active_workspace = spec.workspace,
     }
@@ -1434,6 +1435,7 @@ do
     local pad = window("pad", "com.mitchellh.ghostty", special)
     local ultrawide = monitor({
         id = 0, name = "DP-2", width = 3440, height = 1440,
+        reserved = { top = 40, right = 0, bottom = 0, left = 0 },
         workspace = primary_ws,
     })
     local panel = monitor({
@@ -1457,6 +1459,7 @@ do
         w = 0.8, h = 0.7, max_w = 1600,
         anchor = "top", gap = 12,
         monitor = "primary",
+        respect_reserved = true,
     })
 
     scratchpad.toggle("ghostty-drop")
@@ -1465,7 +1468,7 @@ do
     equal("the primary display determines scratchpad width", size.x, 1600)
     equal("the primary display determines scratchpad height", size.y, 1008)
     equal("the primary display determines scratchpad position", at.x, 920)
-    equal("the primary display determines scratchpad top edge", at.y, 12)
+    equal("a visible panel moves its reserved-aware scratchpad down", at.y, 52)
     local focused_monitor
     for _, dispatch in ipairs(control.dispatches) do
         local args = dispatch.args or {}
@@ -1475,6 +1478,12 @@ do
     end
     equal("a primary scratchpad focuses the primary display",
         focused_monitor, ultrawide)
+
+    scratchpad.toggle("ghostty-drop")
+    ultrawide.reserved.top = 0
+    scratchpad.toggle("ghostty-drop")
+    at = last_dispatch(control, "move")
+    equal("hiding the panel restores the scratchpad's original top gap", at.y, 12)
 end
 
 do

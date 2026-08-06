@@ -1,5 +1,6 @@
 -- Window titles, compositor focus and moving tabs between existing windows.
 local wezterm = require 'wezterm'
+local window_identity = require 'wezterm_window_identity'
 local act = wezterm.action
 
 local M = {}
@@ -62,14 +63,20 @@ function M.setup()
   -- hypr_focus_window below predict a window's exact title, which is the only
   -- handle we have on which OS window is which. Keep the two in sync — if this
   -- and mux_window_title ever disagree, focus silently stops following.
-  local function format_title(zoomed, tab_index, tab_count, pane_title)
+  local function format_title(zoomed, tab_index, tab_count, pane_title, window_id)
     local z = zoomed and '[Z] ' or ''
     local idx = tab_count > 1 and string.format('[%d/%d] ', tab_index + 1, tab_count) or ''
-    return z .. idx .. pane_title
+    return z .. idx .. pane_title .. window_identity.tag(window_id)
   end
 
   wezterm.on('format-window-title', function(tab, _pane, tabs, _panes, _config)
-    return format_title(tab.active_pane.is_zoomed, tab.tab_index, #tabs, tab.active_pane.title)
+    return format_title(
+      tab.active_pane.is_zoomed,
+      tab.tab_index,
+      #tabs,
+      tab.active_pane.title,
+      tab.window_id
+    )
   end)
 
   -- The same string, derived from mux data. format-window-title's TabInformation
@@ -83,7 +90,13 @@ function M.setup()
         for _, p in ipairs(item.tab:panes_with_info()) do
           if p.is_active then zoomed = p.is_zoomed; break end
         end
-        return format_title(zoomed, item.index, #tabs, item.tab:active_pane():get_title() or '')
+        return format_title(
+          zoomed,
+          item.index,
+          #tabs,
+          item.tab:active_pane():get_title() or '',
+          mux_win:window_id()
+        )
       end
     end
     return nil
