@@ -208,6 +208,10 @@ function M.setup(deps)
     local agent_owns_title = agent ~= nil
       and proc_name ~= ''
       and not SHELLS[proc_name]
+    -- Identity user vars intentionally persist for pane restore, but they must
+    -- not keep an agent marker alive after the foreground process returns to a
+    -- shell. The marker and title share this live-process ownership boundary.
+    if not agent_owns_title then agent = nil end
     local is_claude = agent_owns_title and agent == 'claude'
     local is_codex = agent_owns_title and agent == 'codex'
 

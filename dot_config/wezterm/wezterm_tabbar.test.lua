@@ -4,6 +4,7 @@
 package.path = (arg[0]:match('(.*/)') or './') .. '?.lua;' .. package.path
 
 local callbacks = {}
+local clock_ms = 1000
 package.preload.wezterm = function()
   return {
     on = function(name, callback) callbacks[name] = callback end,
@@ -20,10 +21,16 @@ package.preload.wezterm = function()
 end
 
 local agent = {
-  now_ms = function() return 1000 end,
+  now_ms = function() return clock_ms end,
   track_animation = function() end,
-  status_of = function() return 'done' end,
-  of_pane = function(_, user_vars) return (user_vars or {}).agent_kind end,
+  status_of = function(_, user_vars) return (user_vars or {}).agent_status or 'done' end,
+  of_pane = function(process, user_vars)
+    local kind = (user_vars or {}).agent_kind
+    if kind == 'claude' or kind == 'codex' then return kind end
+    process = (process or ''):lower()
+    if process:find('claude') then return 'claude' end
+    if process:find('codex') then return 'codex' end
+  end,
   window_has_working = function() return false end,
 }
 
@@ -47,7 +54,7 @@ local function eq(name, got, want)
   end
 end
 
-local function render(spec)
+local function rendered(spec)
   local active_pane = {
     pane_id = 7,
     title = spec.title or '',
@@ -71,10 +78,28 @@ local function render(spec)
     24
   )
   local text = {}
+  local marker
+  local marker_fg
+  local current_fg
   for _, run in ipairs(runs) do
-    if run.Text then text[#text + 1] = run.Text end
+    if run.Foreground then current_fg = run.Foreground.Color end
+    if run.Text then
+      text[#text + 1] = run.Text
+      if not marker then
+        marker = run.Text:match('^  (.-) $')
+        marker_fg = current_fg
+      end
+    end
   end
-  return table.concat(text)
+  return {
+    marker = marker,
+    marker_fg = marker_fg,
+    text = table.concat(text),
+  }
+end
+
+local function render(spec)
+  return rendered(spec).text
 end
 
 eq(
@@ -98,14 +123,42 @@ eq(
 )
 
 eq(
-  'codex/stale agent identity returns to shell cwd',
+  'codex/startup before first hook uses idle marker',
   render {
     tab_id = 3,
+    process = '/usr/bin/codex',
+  },
+  '  ⬢︎ Codex '
+)
+
+clock_ms = 0
+local working_codex_first = rendered {
+  tab_id = 4,
+  title = 'Terminal tab titles',
+  process = '/usr/bin/codex',
+  user_vars = { agent_kind = 'codex', agent_status = 'working' },
+}
+clock_ms = 400
+local working_codex_second = rendered {
+  tab_id = 4,
+  title = 'Terminal tab titles',
+  process = '/usr/bin/codex',
+  user_vars = { agent_kind = 'codex', agent_status = 'working' },
+}
+eq('codex/working marker animates/first glyph', working_codex_first.marker, '⬩︎')
+eq('codex/working marker animates/second glyph', working_codex_second.marker, '⬦︎')
+eq('codex/working marker animates/first color', working_codex_first.marker_fg, '#0E8C6E')
+eq('codex/working marker animates/second color', working_codex_second.marker_fg, '#1FBF93')
+
+eq(
+  'codex/stale agent identity returns to shell caret',
+  render {
+    tab_id = 5,
     title = 'Terminal tab titles',
     process = '/usr/bin/zsh',
     user_vars = { agent_kind = 'codex' },
   },
-  '  ⬢︎ chezmoi '
+  '  ❯ chezmoi '
 )
 
 io.write(string.format('\n%d passed, %d failed\n', passed, failed))
