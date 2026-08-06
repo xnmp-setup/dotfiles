@@ -3,7 +3,7 @@ local wezterm = require 'wezterm'
 local act = wezterm.action
 
 local M = {
-  status_update_interval_ms = 200,
+  status_update_interval_ms = 500,
   config_path = wezterm.config_file:gsub('[^/\\]+$', 'wezterm_appearance.lua'),
 }
 

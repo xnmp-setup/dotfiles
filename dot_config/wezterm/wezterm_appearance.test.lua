@@ -84,6 +84,8 @@ eq('a config without inline schemes still resolves builtins',
 -- the max_fps cap.
 local applied = {}
 appearance.apply(applied)
+eq('agent status clock is 2fps', appearance.status_update_interval_ms, 500)
+eq('status update interval uses the agent clock', applied.status_update_interval, 500)
 eq('animation clock is 1fps', applied.animation_fps, 1)
 eq('cursor blink ease in is constant', applied.cursor_blink_ease_in, 'Constant')
 eq('cursor blink ease out is constant', applied.cursor_blink_ease_out, 'Constant')

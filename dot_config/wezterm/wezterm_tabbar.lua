@@ -423,7 +423,7 @@ function M.setup(deps)
   -- update-status does not schedule the next one — the timer is re-armed by
   -- the SetRightStatus notification handler (both its changed and unchanged
   -- branches). Skipping the write when the payload is unchanged looks like a
-  -- saving, but it kills the status clock: one ≥200ms GUI hitch mid-animation
+  -- saving, but it kills the status clock: one overdue tick mid-animation
   -- lands two ticks on the same parity, the write is skipped, and no further
   -- tick ever fires — spinner frozen until an unrelated update_title. WezTerm
   -- already dedupes identical payloads internally, so the unconditional write
