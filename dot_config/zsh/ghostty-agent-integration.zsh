@@ -2,6 +2,11 @@
 # in the originating shell and let Claude/Codex hooks update its private state
 # directory. OSC 2 changes the title. OSC 4 reserves palette entry 255 as a
 # per-surface state channel consumed by agent-aurora.glsl; OSC 104 restores it.
+typeset -gA __ghostty_agent_markers=(
+  claude $'\U000e0063\U000e006c\U000e0061\U000e0075\U000e0064\U000e0065\U000e007f'
+  codex  $'\U000e0063\U000e006f\U000e0064\U000e0065\U000e0078\U000e007f'
+)
+
 __ghostty_agent_shader_sequence() {
   emulate -L zsh
 
@@ -35,6 +40,7 @@ __ghostty_agent_animation() {
   local resolved_title=
   local title_resolver=${AGENT_SESSION_TITLE_BIN:-$HOME/.local/bin/agent-session-title}
   local routing_marker=
+  local agent_marker=${__ghostty_agent_markers[$agent_kind]-}
   local idle_marker attention_marker working_signal
   local -a frames
   local -A metadata_stat
@@ -106,24 +112,27 @@ __ghostty_agent_animation() {
         if [[ $previous_state != working ]]; then
           __ghostty_agent_shader_sequence working "$working_signal" >&$title_fd
         fi
-        printf '\e]2;%s %s%s\e\\' \
-          "$frames[$frame_index]" "$display_label" "$routing_marker" >&$title_fd
+        printf '\e]2;%s %s%s%s\e\\' \
+          "$frames[$frame_index]" "$display_label" \
+          "$routing_marker" "$agent_marker" >&$title_fd
         (( frame_index = frame_index % $#frames + 1 ))
         zselect -t $frame_delay_cs >/dev/null 2>&1
         ;;
       attention)
         if [[ $previous_state != attention || $previous_label != $display_label ]]; then
           __ghostty_agent_shader_sequence attention "$working_signal" >&$title_fd
-          printf '\e]2;%s %s%s\e\\' \
-            "$attention_marker" "$display_label" "$routing_marker" >&$title_fd
+          printf '\e]2;%s %s%s%s\e\\' \
+            "$attention_marker" "$display_label" \
+            "$routing_marker" "$agent_marker" >&$title_fd
         fi
         zselect -t 20 >/dev/null 2>&1
         ;;
       done)
         if [[ $previous_state != done || $previous_label != $display_label ]]; then
           __ghostty_agent_shader_sequence done "$working_signal" >&$title_fd
-          printf '\e]2;%s %s%s\e\\' \
-            "$idle_marker" "$display_label" "$routing_marker" >&$title_fd
+          printf '\e]2;%s %s%s%s\e\\' \
+            "$idle_marker" "$display_label" \
+            "$routing_marker" "$agent_marker" >&$title_fd
         fi
         zselect -t 20 >/dev/null 2>&1
         ;;
@@ -131,8 +140,9 @@ __ghostty_agent_animation() {
         state=idle
         if [[ $previous_state != idle || $previous_label != $display_label ]]; then
           __ghostty_agent_shader_sequence idle "$working_signal" >&$title_fd
-          printf '\e]2;%s %s%s\e\\' \
-            "$idle_marker" "$display_label" "$routing_marker" >&$title_fd
+          printf '\e]2;%s %s%s%s\e\\' \
+            "$idle_marker" "$display_label" \
+            "$routing_marker" "$agent_marker" >&$title_fd
         fi
         zselect -t 20 >/dev/null 2>&1
         ;;

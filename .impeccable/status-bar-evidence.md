@@ -9,8 +9,8 @@ Hyprland monitor.
 | --- | --- |
 | Visible | Show occupied workspaces only. Each workspace is one bounded control containing its numeric ID and one icon per open window. Clicking it focuses that workspace. |
 | Active workspace | Distinguishable by stronger fill and a bottom accent, not color alone. |
-| WezTerm window | Show the terminal icon and the number of tabs in that OS window. |
-| Agent sessions | Show per-workspace running Claude and Codex session counts. Claude uses the supplied logo asset; Codex uses the actual OpenAI knot mark. Omit zero counts. An invisible WezTerm mux-window ID in the OS title makes duplicate visible titles map one-to-one. |
+| Terminal window | Show the terminal icon and number of tabs for both WezTerm and Ghostty OS windows. WezTerm uses its pane-list API; Ghostty uses the GTK AT-SPI tab hierarchy. |
+| Agent sessions | Show per-workspace running Claude and Codex session counts across WezTerm and Ghostty. Claude uses the supplied logo asset; Codex uses the actual OpenAI knot mark. Omit zero counts. Invisible terminal-specific identity tags and stable one-to-one assignment prevent duplicate visible titles from merging windows. |
 | Clock | Center `HH:mm` and an abbreviated weekday/date. Read-only. |
 | Telemetry | Show CPU, RAM, disk I/O busy-time, and GPU as percentages in fixed label/value columns. Disk I/O is the busiest physical disk's busy-time over the trailing 30 seconds; the tooltip carries the device and read/write rates. Values below 50% use normal text, 50–75% use Gruvbox yellow, and values above 75% use Gruvbox red. |
 | Laptop status | When a sysfs battery identifies the host as a laptop, append Wi-Fi signal/status and battery percentage. Disconnected/weak Wi-Fi and low battery use warning colors. Desktop hosts omit both cells. |
@@ -191,15 +191,18 @@ the active Hyprland theme.
 - F9 reservation behavior: the reserved-aware scratchpad assertions pass for
   both a 40 px visible reservation (y=52) and a hidden reservation (y=12).
 - Impeccable detector: no findings.
-- Behavior tests: 18 Python tests plus 6 QML contract tests passed. The QML
+- Behavior tests: 24 Python tests plus 6 QML contract tests passed. The Python
+  suite covers Ghostty bulk AT-SPI parsing, tab and agent extraction, live-title
+  compatibility, malformed/huge payloads, transient discovery failure, and
+  duplicate-window assignment. The QML
   tests cover all color boundaries and prove the numeric column has identical
   coordinates for 5%, 55%, 100%, temperature, and disconnected Wi-Fi states.
   They also reject empty workspaces and bound malformed/huge metric payloads.
   Pyrefly: 0 errors. Lua template: syntax valid.
-- Reviewed source-manifest SHA-256: `cd117f8d9263a86de45a17b031b4f7fb1e88cbee10e6214183d7a97cf9b24465`
-  on Git base `8e7434753b0c1539fbee9ec4d5abcfc851901528`.
+- Current source-manifest SHA-256: `bc8608ae64796f4b78bcdb4131de712beb11fa1a3f9b995b8b2828fed4a6ffca`
+  on Git base `082600d19649ebf56cf2adcd55c3834841b16f77`.
   Reproduce it with:
-  `sha256sum dot_config/quickshell/statusbar/*.qml dot_config/quickshell/statusbar/*.js dot_config/quickshell/statusbar/assets/* dot_local/lib/hypr_status_stream.py dot_local/bin/executable_hypr-status-stream dot_config/hypr/scratchpad.lua dot_config/hypr/hyprland.lua.tmpl dot_config/hypr/desktop_test.lua dot_config/wezterm/wezterm_window_identity.lua dot_config/wezterm/wezterm_windowing.lua scripts/test_hypr_status_stream.py scripts/tst_statusbar.qml .impeccable/fixtures/statusbar_laptop_hot.py | sha256sum`.
+  `sha256sum dot_config/quickshell/statusbar/*.qml dot_config/quickshell/statusbar/*.js dot_config/quickshell/statusbar/assets/* dot_local/lib/ghostty_status.py dot_local/lib/hypr_status_stream.py dot_local/bin/executable_hypr-status-stream dot_config/hypr/scratchpad.lua dot_config/hypr/hyprland.lua.tmpl dot_config/hypr/desktop_test.lua dot_config/wezterm/wezterm_window_identity.lua dot_config/wezterm/wezterm_windowing.lua scripts/test_hypr_status_stream.py scripts/tst_statusbar.qml .impeccable/fixtures/statusbar_laptop_hot.py | sha256sum`.
 
 ## Discrepancy ledger
 

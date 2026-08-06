@@ -7,18 +7,25 @@
 from __future__ import annotations
 
 import argparse
-from collections import defaultdict, deque
-from dataclasses import dataclass
-from functools import lru_cache
 import json
 import os
-from pathlib import Path
 import re
 import subprocess
 import sys
 import time
-from typing import Any, Callable, Iterable, Mapping, Sequence
+from collections import defaultdict, deque
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
+from typing import Any
 
+from ghostty_status import (
+    GhosttyDiscovery,
+    GhosttyWindow,
+    assign_ghostty_windows,
+    is_ghostty_class,
+)
 
 JsonObject = dict[str, Any]
 CommandRunner = Callable[[Sequence[str]], str]
@@ -84,7 +91,15 @@ GPU_HWMON_NAMES = frozenset({"amdgpu", "nouveau", "nvidia"})
 HOT_TEMPERATURE_C = 75
 TITLE_PREFIX = re.compile(r"^(?:\[Z\]\s+)?(?:\[\d+/(\d+)\]\s+)?")
 WEZTERM_WINDOW_TAG = re.compile(r"([\U000e0020-\U000e007e]+)\U000e007f$")
-THEME_KEYS = ("accent", "accent_light", "background", "surface", "border", "text", "text_dim")
+THEME_KEYS = (
+    "accent",
+    "accent_light",
+    "background",
+    "surface",
+    "border",
+    "text",
+    "text_dim",
+)
 DEFAULT_PALETTE: Mapping[str, str] = {
     "accent": "#d4607a",
     "accent_light": "#e87898",
@@ -127,7 +142,9 @@ def parse_cpu_times(text: str) -> CpuTimes | None:
         return None
     if len(values) < 4:
         return None
-    return CpuTimes(total=sum(values), idle=values[3] + (values[4] if len(values) > 4 else 0))
+    return CpuTimes(
+        total=sum(values), idle=values[3] + (values[4] if len(values) > 4 else 0)
+    )
 
 
 def cpu_percent(previous: CpuTimes | None, current: CpuTimes | None) -> int | None:
@@ -282,7 +299,9 @@ def disk_busy_percent(
         busy = max(0, current.busy_ms - previous.busy_ms) / (elapsed * 1000.0) * 100.0
         # Kernel diskstats sectors are 512-byte units regardless of filesystem block size.
         read_mib = max(0, current.reads - previous.reads) * 512 / elapsed / 1024 / 1024
-        write_mib = max(0, current.writes - previous.writes) * 512 / elapsed / 1024 / 1024
+        write_mib = (
+            max(0, current.writes - previous.writes) * 512 / elapsed / 1024 / 1024
+        )
         measurements.append((busy, device, read_mib, write_mib))
     if not measurements:
         return None, "No physical disk activity data available"
@@ -372,7 +391,9 @@ def wezterm_windows(
     return result
 
 
-def match_wezterm_window(title: str, windows: Sequence[Mapping[str, Any]]) -> Mapping[str, Any] | None:
+def match_wezterm_window(
+    title: str, windows: Sequence[Mapping[str, Any]]
+) -> Mapping[str, Any] | None:
     tagged_id = wezterm_window_id_from_title(title)
     if tagged_id is not None:
         tagged = [window for window in windows if window.get("windowId") == tagged_id]
@@ -386,9 +407,16 @@ def match_wezterm_window(title: str, windows: Sequence[Mapping[str, Any]]) -> Ma
     suffix = [
         window
         for window in candidates
-        if any(body.endswith(candidate) or candidate.endswith(body) for candidate in window.get("titles", []))
+        if any(
+            body.endswith(candidate) or candidate.endswith(body)
+            for candidate in window.get("titles", [])
+        )
     ]
-    return suffix[0] if len(suffix) == 1 else (candidates[0] if len(candidates) == 1 else None)
+    return (
+        suffix[0]
+        if len(suffix) == 1
+        else (candidates[0] if len(candidates) == 1 else None)
+    )
 
 
 def assign_wezterm_windows(
@@ -495,7 +523,7 @@ def is_wezterm_class(app_class: str) -> bool:
 
 def is_terminal_class(app_class: str) -> bool:
     normalized = app_class.casefold()
-    return is_wezterm_class(normalized) or normalized == "com.mitchellh.ghostty"
+    return is_wezterm_class(normalized) or is_ghostty_class(normalized)
 
 
 def build_workspaces(
@@ -503,6 +531,7 @@ def build_workspaces(
     monitors: Sequence[Mapping[str, Any]],
     wezterm: Sequence[Mapping[str, Any]],
     previous: Sequence[Mapping[str, Any]] = (),
+    ghostty: Sequence[GhosttyWindow] = (),
 ) -> list[JsonObject]:
     monitor_names = {monitor.get("id"): monitor.get("name", "") for monitor in monitors}
     previous_clients = {
@@ -512,11 +541,13 @@ def build_workspaces(
         if isinstance(client, Mapping)
     }
     wezterm_clients = [
-        client
-        for client in clients
-        if is_wezterm_class(str(client.get("class", "")))
+        client for client in clients if is_wezterm_class(str(client.get("class", "")))
     ]
     matched_wezterm = assign_wezterm_windows(wezterm_clients, wezterm, previous_clients)
+    ghostty_clients = [
+        client for client in clients if is_ghostty_class(str(client.get("class", "")))
+    ]
+    matched_ghostty = assign_ghostty_windows(ghostty_clients, ghostty, previous_clients)
     grouped: dict[tuple[int, str], list[JsonObject]] = defaultdict(list)
     for client in clients:
         workspace = client.get("workspace") or {}
@@ -550,6 +581,17 @@ def build_workspaces(
                         app[field] = int(stale.get(field, app[field]))
                 else:
                     app["tabs"] = parse_tab_count(str(client.get("title", "")))
+        elif is_ghostty_class(app_class):
+            ghostty_window = matched_ghostty.get(app["address"])
+            if ghostty_window:
+                for field in ("tabs", "claude", "codex"):
+                    app[field] = int(getattr(ghostty_window, field))
+                app["ghosttyWindowId"] = ghostty_window.identity
+            else:
+                stale = previous_clients.get(app["address"])
+                if stale:
+                    for field in ("tabs", "claude", "codex"):
+                        app[field] = int(stale.get(field, app[field]))
         grouped[(workspace_id, monitor_name)].append(app)
 
     result: list[JsonObject] = []
@@ -609,6 +651,7 @@ class StatusCollector:
         self.workspace_sample_at = float("-inf")
         self.cached_wifi = WifiStatus(False, "", None, "")
         self.wifi_sample_at = float("-inf")
+        self.ghostty_discovery = GhosttyDiscovery(runner)
 
     def _read(self, path: Path) -> str:
         try:
@@ -698,7 +741,9 @@ class StatusCollector:
         for sensor in hwmon_paths:
             name = self._read(sensor / "name").strip().casefold()
             if name in GPU_HWMON_NAMES:
-                temperatures.extend(self._temperature_values(sensor.glob("temp*_input")))
+                temperatures.extend(
+                    self._temperature_values(sensor.glob("temp*_input"))
+                )
 
         gpu = max(utilization) if utilization else None
         temperature = max(temperatures) if temperatures else None
@@ -770,7 +815,8 @@ class StatusCollector:
             clients,
             monitors,
             wezterm_windows(rows or [], tty_counts),
-            self.cached_workspaces,
+            previous=self.cached_workspaces,
+            ghostty=self.ghostty_discovery.windows(clients),
         )
         self.workspace_sample_at = now
         return self.cached_workspaces
@@ -797,7 +843,9 @@ class StatusCollector:
         wifi = self._wifi(now) if battery.is_laptop else WifiStatus(False, "", None, "")
         gpu, gpu_temperature = self._gpu_stats()
         battery_tooltip = (
-            f"Battery {battery.state.casefold()}" if battery.state else "Battery status unavailable"
+            f"Battery {battery.state.casefold()}"
+            if battery.state
+            else "Battery status unavailable"
         )
         wifi_tooltip = (
             f"{wifi.ssid} · {wifi.device}" if wifi.connected else "Wi-Fi disconnected"
@@ -832,7 +880,9 @@ def emit_stream(collector: StatusCollector, interval: float) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--once", action="store_true", help="emit one snapshot and exit")
+    parser.add_argument(
+        "--once", action="store_true", help="emit one snapshot and exit"
+    )
     parser.add_argument("--interval", type=float, default=1.0)
     args = parser.parse_args(argv)
     collector = StatusCollector()
