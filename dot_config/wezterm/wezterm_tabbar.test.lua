@@ -113,34 +113,69 @@ eq(
 )
 
 eq(
-  'codex/unnamed thread uses app label',
+  'codex/blank unnamed thread uses cwd',
   render {
     tab_id = 2,
     process = '/usr/bin/codex',
     user_vars = { agent_kind = 'codex' },
   },
-  '  ⬢︎ Codex '
+  '  ⬢︎ chezmoi '
 )
 
 eq(
-  'codex/startup before first hook uses idle marker',
+  'codex/startup before first hook uses marker and cwd',
   render {
     tab_id = 3,
     process = '/usr/bin/codex',
   },
-  '  ⬢︎ Codex '
+  '  ⬢︎ chezmoi '
+)
+
+local thread_id = '019fd540-6ed7-72a1-8ead-1234567890ab'
+eq(
+  'codex/default thread id uses cwd',
+  render {
+    tab_id = 4,
+    title = thread_id,
+    process = '/usr/bin/codex',
+    cwd = 'file://host/work/my-project/',
+    user_vars = { agent_kind = 'codex', agent_session_id = thread_id },
+  },
+  '  ⬢︎ my-project '
+)
+
+eq(
+  'codex/default thread id before first hook uses cwd',
+  render {
+    tab_id = 5,
+    title = thread_id,
+    process = '/usr/bin/codex',
+  },
+  '  ⬢︎ chezmoi '
+)
+
+local next_thread_id = '119fd540-6ed7-72a1-8ead-1234567890ab'
+eq(
+  'codex/re-entered session ignores stale previous thread id',
+  render {
+    tab_id = 6,
+    title = next_thread_id,
+    process = '/usr/bin/codex',
+    user_vars = { agent_kind = 'codex', agent_session_id = thread_id },
+  },
+  '  ⬢︎ chezmoi '
 )
 
 clock_ms = 0
 local working_codex_first = rendered {
-  tab_id = 4,
+  tab_id = 7,
   title = 'Terminal tab titles',
   process = '/usr/bin/codex',
   user_vars = { agent_kind = 'codex', agent_status = 'working' },
 }
 clock_ms = 400
 local working_codex_second = rendered {
-  tab_id = 4,
+  tab_id = 7,
   title = 'Terminal tab titles',
   process = '/usr/bin/codex',
   user_vars = { agent_kind = 'codex', agent_status = 'working' },
@@ -153,7 +188,7 @@ eq('codex/working marker animates/second color', working_codex_second.marker_fg,
 eq(
   'codex/stale agent identity returns to shell caret',
   render {
-    tab_id = 5,
+    tab_id = 8,
     title = 'Terminal tab titles',
     process = '/usr/bin/zsh',
     user_vars = { agent_kind = 'codex' },

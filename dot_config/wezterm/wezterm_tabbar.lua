@@ -4,6 +4,44 @@ local compute_tab_title = require('tabtitle').compute_tab_title
 
 local M = {}
 
+local function cwd_basename(cwd)
+  if not cwd then return '' end
+
+  local path
+  if type(cwd) == 'userdata' then
+    -- Url object. file_path (already decoded) is nil when the OSC-7 host !=
+    -- local host, so fall back to the percent-encoded .path and decode that.
+    -- Never call string methods on the userdata, or the handler errors and
+    -- WezTerm shows the raw full-path title.
+    path = cwd.file_path
+    if not path or path == '' then
+      path = (cwd.path or ''):gsub('%%(%x%x)', function(h)
+        return string.char(tonumber(h, 16))
+      end)
+    end
+  else
+    -- Legacy string form: "file://host/path".
+    path = tostring(cwd):gsub('^file://[^/]*', '')
+  end
+
+  path = path:gsub('[/\\]+$', '')
+  return path:match('[^/\\]+$') or path
+end
+
+local function looks_like_uuid(value)
+  return type(value) == 'string'
+    and value:match(
+      '^%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x$'
+    ) ~= nil
+end
+
+local function codex_title_is_default(title)
+  -- agent_session_id is deliberately not consulted here: pane user variables
+  -- survive the Codex process, so after quit/re-entry it still identifies the
+  -- previous thread while the title already contains the new thread's UUID.
+  return title == '' or title == '_' or looks_like_uuid(title)
+end
+
 function M.setup(deps)
   local agent = deps.agent
   local STATUS_UPDATE_INTERVAL_MS = deps.status_update_interval_ms
@@ -215,11 +253,11 @@ function M.setup(deps)
     local is_claude = agent_owns_title and agent == 'claude'
     local is_codex = agent_owns_title and agent == 'codex'
 
-    -- An unnamed Codex thread emits no `thread` item. Keep the tab identifiable
-    -- without falling back to cwd; /rename replaces this as soon as Codex emits
-    -- the saved thread name.
-    if is_codex and (title == '' or title == '_') then
-      title = 'Codex'
+    -- The `thread` title item is the saved name after /rename, but an unnamed
+    -- thread is represented by its UUID (or briefly blank during startup). Keep
+    -- Codex's marker/status styling and replace only that sentinel with the cwd.
+    if is_codex and codex_title_is_default(title) then
+      title = cwd_basename(pane_info.current_working_dir)
     end
 
     -- On exit Claude blanks its pane title (renders as a lone "_") for a frame
@@ -239,26 +277,7 @@ function M.setup(deps)
     -- Outside an active agent, show "cwd" or "cwd: command" if a process is
     -- running.
     if not agent_owns_title then
-      local cwd = pane_info.current_working_dir
-      local basename = ''
-      if cwd then
-        local path
-        if type(cwd) == 'userdata' then
-          -- Url object. file_path (already decoded) is nil when the OSC-7 host !=
-          -- local host, so fall back to the percent-encoded .path and decode that.
-          -- Never call string methods on the userdata, or the handler errors and
-          -- wezterm shows the raw full-path title.
-          path = cwd.file_path
-          if not path or path == '' then
-            path = (cwd.path or ''):gsub('%%(%x%x)', function(h) return string.char(tonumber(h, 16)) end)
-          end
-        else
-          -- Legacy string form: "file://host/path"
-          path = tostring(cwd):gsub('^file://[^/]*', '')
-        end
-        path = path:gsub('[/\\]+$', '')
-        basename = path:match('[^/\\]+$') or path
-      end
+      local basename = cwd_basename(pane_info.current_working_dir)
 
       if proc_name ~= '' and not SHELLS[proc_name] then
         if APP_ICONS[proc_name] then
