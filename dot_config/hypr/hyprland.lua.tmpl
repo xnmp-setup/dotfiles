@@ -657,7 +657,7 @@ hl.bind("ALT + F4",             hl.dsp.window.close())
 hl.bind("CTRL + Escape",        hl.dsp.window.close())
 hl.bind(mainMod .. " + Escape", hl.dsp.window.close())
 hl.bind(mainMod .. " + F",      hl.dsp.window.fullscreen({ mode = "fullscreen" }))
-hl.bind(mainMod .. " + grave",  hl.dsp.focus({ workspace = "previous" }))
+hl.bind(mainMod .. " + grave",  hl.dsp.focus({ workspace = "previous_per_monitor" }))
 
 -- Media Keys
 hl.bind("XF86AudioPlay", hl.dsp.exec_cmd("playerctl play-pause"), { locked = true })
