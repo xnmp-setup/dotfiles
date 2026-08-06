@@ -194,13 +194,29 @@ function M.setup(deps)
       end
     end
 
-    -- Which agent (if any) owns this pane. `agent` drives the status marker for
-    -- both Claude and Codex; `is_claude` additionally drives the TITLE source,
-    -- because only Claude's pane title is a useful label (its current task).
-    -- Codex titles its pane with its own run-state text, which duplicates what our
-    -- marker already says, so codex tabs take the normal cwd path below.
+    -- Which agent (if any) owns this pane. Both agents own their pane title while
+    -- their process is in the foreground. Codex is configured with the `thread`
+    -- title item, so /rename updates this value without a filesystem read in this
+    -- GUI-thread callback. Gate ownership on the foreground process so a stale
+    -- agent_kind user var cannot leave the renamed title behind after returning
+    -- to the shell.
     local agent = agent_of_pane(proc, pane_info.user_vars)
-    local is_claude = agent == 'claude'
+
+    -- Foreground process basename, shared by the title and marker branches
+    -- below (it was previously computed twice per render).
+    local proc_name = (proc:match('[^/\\]+$') or ''):gsub('%.exe$', '')
+    local agent_owns_title = agent ~= nil
+      and proc_name ~= ''
+      and not SHELLS[proc_name]
+    local is_claude = agent_owns_title and agent == 'claude'
+    local is_codex = agent_owns_title and agent == 'codex'
+
+    -- An unnamed Codex thread emits no `thread` item. Keep the tab identifiable
+    -- without falling back to cwd; /rename replaces this as soon as Codex emits
+    -- the saved thread name.
+    if is_codex and (title == '' or title == '_') then
+      title = 'Codex'
+    end
 
     -- On exit Claude blanks its pane title (renders as a lone "_") for a frame
     -- before the shell repaints. proc still reads "claude" that frame, so the
@@ -210,16 +226,15 @@ function M.setup(deps)
     -- away, instead of holding the orange claude styling until the shell repaints.
     if is_claude and (title == '' or title == '_') then
       is_claude = false
+      agent_owns_title = false
       agent = nil
       proc = ''  -- so the branch below takes the plain-cwd path, not "cwd: _"
+      proc_name = ''
     end
 
-    -- Foreground process basename, shared by the title and marker branches
-    -- below (it was previously computed twice per render).
-    local proc_name = (proc:match('[^/\\]+$') or ''):gsub('%.exe$', '')
-
-    -- For non-claude tabs, show "cwd" or "cwd: command" if a process is running
-    if not is_claude then
+    -- Outside an active agent, show "cwd" or "cwd: command" if a process is
+    -- running.
+    if not agent_owns_title then
       local cwd = pane_info.current_working_dir
       local basename = ''
       if cwd then

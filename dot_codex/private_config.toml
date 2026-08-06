@@ -9,9 +9,10 @@ model_reasoning_effort = "medium"
 approvals_reviewer = "auto_review"
 
 [tui]
-# Preserve Codex's native title in other terminals. The Ghostty shell wrapper
-# disables it per invocation while its custom OSC 2 renderer is active.
-terminal_title = ["spinner", "app-name", "project"]
+# Publish the saved chat name as the native pane title. WezTerm consumes it
+# directly; the Ghostty wrapper resolves the same name from the rename index
+# while its custom OSC 2 renderer is active.
+terminal_title = ["thread"]
 
 # Keep the transcript available without intercepting terminal scroll keys.
 [tui.keymap.global]

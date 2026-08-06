@@ -175,7 +175,10 @@ __ghostty_run_agent() {
       title="${PWD:t}"
       ;;
     codex)
-      title="${PWD:t}"
+      # Match Codex's native `thread` title: show a stable app label until the
+      # session is explicitly named, then the animator resolves /rename updates
+      # from session_index.jsonl.
+      title=Codex
       # Keep Codex's normal title behavior globally; suppress it only for this
       # Ghostty-owned invocation so there is exactly one OSC 2 writer.
       agent_args=(-c 'tui.terminal_title=[]' "${agent_args[@]}")
