@@ -216,10 +216,11 @@ function M.setup(deps)
     local title = pane_info.title or ''
     local proc = pane_info.foreground_process_name or ''
 
-    -- An active tab in an unfocused window should look inactive: fold the window's
-    -- focus state into is_active so all the styling below (intensity, underline,
-    -- bg tint) dims to match the greyed-out window contents. focus default is nil
-    -- (treated as focused) so tabs don't dim before the first focus event.
+    -- Window focus controls emphasis such as the underline and marker animation.
+    -- It must not control the title palette: WezTerm keeps the selected button's
+    -- `active_tab` background even when the window loses focus, so using the
+    -- inactive foreground there can destroy contrast (notably Nord's pale active
+    -- surface). Focus defaults to nil/true until the first focus event.
     local window_focused = window_focus[tab.window_id] ~= false
     local is_active = tab.is_active and window_focused
 
@@ -349,6 +350,7 @@ function M.setup(deps)
     local palette = (cfg.colors or {}).tab_bar or {}
     local active_title_fg = (palette.active_tab or {}).fg_color or '#ffffff'
     local inactive_title_fg = (palette.inactive_tab or {}).fg_color or '#aaaaaa'
+    local title_palette_fg = tab.is_active and active_title_fg or inactive_title_fg
 
     local marker, marker_fg, title_fg
     local is_working = false
@@ -386,7 +388,7 @@ function M.setup(deps)
       if status == 'attention' then
         title_fg = '#F58A82'
       else
-        title_fg = is_active and active_title_fg or inactive_title_fg
+        title_fg = title_palette_fg
       end
     else
       -- Non-agent tabs: default to a terminal prompt glyph (❯ U+276F, text-
@@ -396,7 +398,7 @@ function M.setup(deps)
       marker = APP_ICONS[proc_name] or '❯'
       -- Focused: rich saturated blue. Unfocused: muted slate (was grey).
       marker_fg = is_active and '#4a90e2' or '#5a7a9a'
-      title_fg = is_active and active_title_fg or inactive_title_fg
+      title_fg = title_palette_fg
     end
 
     -- Truncate via the pure helper. Use a conservative fixed budget rather than
@@ -433,10 +435,10 @@ function M.setup(deps)
   end)
 
   -- ---------- Dim unfocused windows' tab titles ----------
-  -- Record per-window focus state so format-tab-title renders an unfocused
-  -- window's active tab with the dulled inactive styling (it gates underline /
-  -- intensity on `tab.is_active and window_focused`), then force the tab bar to
-  -- repaint immediately.
+  -- Record per-window focus state so format-tab-title removes focus-only emphasis
+  -- (underline, marker brightness and animation), then force the tab bar to
+  -- repaint immediately. The selected title keeps the active palette because
+  -- WezTerm also keeps its active button background.
   --
   -- format-tab-title recomputing does not itself repaint the GUI surface, so write
   -- a focus-specific zero-width right status to invalidate the tab bar. This uses

@@ -64,8 +64,8 @@ local function rendered(spec)
   }
   local tab = {
     tab_id = spec.tab_id or 1,
-    window_id = 1,
-    is_active = true,
+    window_id = spec.window_id or 1,
+    is_active = spec.is_active ~= false,
     active_pane = active_pane,
     panes = { active_pane },
   }
@@ -73,13 +73,14 @@ local function rendered(spec)
     tab,
     { tab },
     { active_pane },
-    { colors = { tab_bar = {} } },
+    spec.config or { colors = { tab_bar = {} } },
     false,
     24
   )
   local text = {}
   local marker
   local marker_fg
+  local title_fg
   local current_fg
   for _, run in ipairs(runs) do
     if run.Foreground then current_fg = run.Foreground.Color end
@@ -88,12 +89,15 @@ local function rendered(spec)
       if not marker then
         marker = run.Text:match('^  (.-) $')
         marker_fg = current_fg
+      else
+        title_fg = current_fg
       end
     end
   end
   return {
     marker = marker,
     marker_fg = marker_fg,
+    title_fg = title_fg,
     text = table.concat(text),
   }
 end
@@ -101,6 +105,34 @@ end
 local function render(spec)
   return rendered(spec).text
 end
+
+-- Fancy-tab backgrounds follow tab selection, not window focus. A selected tab
+-- must therefore retain the active foreground when the window loses focus;
+-- otherwise light active surfaces such as Nord's become low-contrast grey-on-grey.
+local nord_config = {
+  colors = {
+    tab_bar = {
+      active_tab = { bg_color = '#484e59', fg_color = '#d8dee9' },
+      inactive_tab = { bg_color = '#2e3440', fg_color = '#9ca3ae' },
+    },
+  },
+}
+local unfocused_window = {
+  is_focused = function() return false end,
+  window_id = function() return 91 end,
+  set_right_status = function() end,
+}
+callbacks['window-focus-changed'](unfocused_window, {})
+eq(
+  'selected title keeps foreground matched to its active background when window is unfocused',
+  rendered { window_id = 91, config = nord_config }.title_fg,
+  '#d8dee9'
+)
+eq(
+  'unselected title uses the inactive palette',
+  rendered { window_id = 91, is_active = false, config = nord_config }.title_fg,
+  '#9ca3ae'
+)
 
 eq(
   'codex/renamed thread replaces cwd',

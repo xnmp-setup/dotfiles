@@ -30,19 +30,20 @@ function M.mix(from, to, t)
 end
 
 -- Colors for the fancy tab bar buttons, derived from a color scheme table.
--- selection_bg is the scheme author's own "highlighted surface" color, which is
--- exactly what an active tab is; when a scheme omits it (some builtins do) fall
--- back to nudging the background toward the foreground, which works for light
--- and dark schemes alike without branching on luminance.
+-- Terminal selection colors are a poor fit here: they are designed for a small,
+-- temporary text highlight and are often inverted or near-white (Nord), which
+-- makes a persistent tab button visually overpower the entire bar. Build a quiet
+-- raised surface from the scheme's background and foreground instead. The same
+-- blend works in both directions for dark and light schemes.
 function M.tab_bar_colors(scheme)
   local bg = scheme.background or '#000000'
   local fg = scheme.foreground or '#ffffff'
-  local active_bg = scheme.selection_bg or M.mix(bg, fg, 0.15)
+  local active_bg = M.mix(bg, fg, 0.15)
   return {
     background = bg,
     -- Active tab a touch lighter than the bar; inactive matches the bar; hover
     -- sits halfway so it reads as a preview of selecting the tab.
-    active_tab   = { bg_color = active_bg, fg_color = scheme.selection_fg or fg },
+    active_tab   = { bg_color = active_bg, fg_color = fg },
     inactive_tab = { bg_color = bg, fg_color = M.mix(fg, bg, 0.35) },
     inactive_tab_hover = { bg_color = M.mix(bg, active_bg, 0.5), fg_color = fg },
     new_tab = { bg_color = bg, fg_color = M.mix(fg, bg, 0.5) },
@@ -162,7 +163,7 @@ function M.apply(config)
   -- `chezmoi apply` resets the theme to whatever is written here.
   -- Keep this line in sync with your current theme (or re-pick from the palette
   -- after applying).
-  config.color_scheme = 'Gruvbox Material (Gogh)'
+  config.color_scheme = 'nord'
   config.font_size = 14
   config.window_background_opacity = 0.92
   config.window_padding = { left = 10, right = 10, top = 6, bottom = 6 }

@@ -46,17 +46,28 @@ eq('mix returns the start color for a malformed end', appearance.mix('#123456', 
 local dark = { background = '#0e1330', foreground = '#d8dce8', selection_bg = '#2a3060', selection_fg = '#f0f2fa' }
 local dc = appearance.tab_bar_colors(dark)
 eq('bar background is the scheme background', dc.background, '#0e1330')
-eq('active tab uses the scheme selection background', dc.active_tab.bg_color, '#2a3060')
-eq('active tab uses the scheme selection foreground', dc.active_tab.fg_color, '#f0f2fa')
+eq('active tab is a restrained lift from the bar', dc.active_tab.bg_color, '#2c314c')
+eq('active tab uses the scheme foreground', dc.active_tab.fg_color, '#d8dce8')
 eq('inactive tab blends into the bar', dc.inactive_tab.bg_color, '#0e1330')
-eq('hover sits between the bar and the active tab', dc.inactive_tab_hover.bg_color, '#1c2248')
+eq('hover sits between the bar and the active tab', dc.inactive_tab_hover.bg_color, '#1d223e')
 
--- A light scheme must not get a darkened-for-dark-themes active tab: it takes
--- its own selection color, so contrast direction follows the scheme.
+-- A light scheme is nudged toward its dark foreground, so contrast direction
+-- follows the scheme without a dark/light special case.
 local light = { background = '#fdf6e3', foreground = '#3b4252', selection_bg = '#eee8d5', selection_fg = '#3b4252' }
 local lc = appearance.tab_bar_colors(light)
-eq('light scheme active tab is its selection color', lc.active_tab.bg_color, '#eee8d5')
+eq('light scheme active tab is subtly darkened', lc.active_tab.bg_color, '#e0dbcd')
 eq('light scheme bar background is its background', lc.background, '#fdf6e3')
+
+-- Nord's text-selection surface is nearly white. It must not leak into the tab
+-- bar, where it becomes a glaring persistent block against the dark chrome.
+local nord = appearance.tab_bar_colors {
+  background = '#2e3440',
+  foreground = '#d8dee9',
+  selection_bg = '#eceff4',
+  selection_fg = '#4c566a',
+}
+eq('Nord active tab stays a dark raised surface', nord.active_tab.bg_color, '#484e59')
+eq('Nord active title stays light', nord.active_tab.fg_color, '#d8dee9')
 
 -- Schemes lacking selection colors still yield a distinguishable active tab.
 local bare = appearance.tab_bar_colors({ background = '#000000', foreground = '#ffffff' })
