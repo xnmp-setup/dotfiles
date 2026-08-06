@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Controls
 import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Widgets
@@ -227,8 +226,4 @@ Rectangle {
         onRenameRequested: chip.renameWorkspace()
     }
 
-    ToolTip.visible: pointer.containsMouse
-    ToolTip.text: "Workspace " + displayName + " · "
-        + workspaceData.clients.length + (workspaceData.clients.length === 1 ? " window" : " windows")
-    ToolTip.delay: 450
 }

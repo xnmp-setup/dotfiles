@@ -10,10 +10,18 @@ Menu {
 
     signal renameRequested
 
+    function dismissOnFocusLoss(hasFocus: bool): void {
+        if (opened && !hasFocus)
+            close();
+    }
+
     width: 238
     padding: 6
     modal: false
-    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
+    focus: true
+    popupType: Popup.Window
+    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+    onActiveFocusChanged: dismissOnFocusLoss(activeFocus)
 
     background: Rectangle {
         color: menu.themeColors.surface

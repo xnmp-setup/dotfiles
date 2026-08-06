@@ -9,7 +9,7 @@ Hyprland monitor.
 | --- | --- |
 | Visible | Show occupied workspaces only. Each workspace is one bounded control containing its current name and one icon per open window. Clicking it focuses that workspace. Long names are bounded and elided. |
 | Active workspace | Distinguishable by stronger fill and a bottom accent, not color alone. |
-| Rename workspace | Right-click any workspace and choose `Rename workspace`; the menu shows the `Alt+F2` shortcut reminder. `Alt+F2` renames the focused workspace. The single-instance prompt is prefilled with the current name, dismisses with Escape, and uses empty input to reset to the numeric ID. |
+| Rename workspace | Right-click any workspace and choose `Rename workspace`; no hover popup competes with the click target. The menu shows the `Alt+F2` shortcut reminder and dismisses on Escape, outside press, or focus moving to another application. `Alt+F2` renames the focused workspace. The single-instance prompt is prefilled with the current name, dismisses with Escape, and uses empty input to reset to the numeric ID. |
 | Terminal window | Show the terminal icon and number of tabs for both WezTerm and Ghostty OS windows. WezTerm uses its pane-list API; Ghostty uses the GTK AT-SPI tab hierarchy. |
 | Agent sessions | Show per-workspace running Claude and Codex session counts across WezTerm and Ghostty. Claude uses the supplied logo asset; Codex uses the actual OpenAI knot mark. Omit zero counts. Invisible terminal-specific identity tags and stable one-to-one assignment prevent duplicate visible titles from merging windows. |
 | Clock | Center `HH:mm` and an abbreviated weekday/date. Read-only. |
@@ -206,8 +206,8 @@ the active Hyprland theme.
   Escape/outside-click dismissal. A live temporary rename was observed in
   Hyprland, the status stream, and the rendered chip before automatic restoration.
   Pyrefly: 0 errors. Lua template: syntax valid.
-- Current source-manifest SHA-256: `0354177d9c765bf0b16864692f1bbc721837b484da9b6bc7092382ef3b7d7048`
-  on Git base `7e97a1e67323c9471b3bfdfae1477fedfc1e94fa`.
+- Current source-manifest SHA-256: `624352af16238bb00d6de9467ae031a89a60d896f00c41d3a655ecedc2d79227`
+  on Git base `6bfc9afd2eb1dd490d52979f43e014bbc2157731`.
   Reproduce it with:
   `sha256sum dot_config/quickshell/statusbar/*.qml dot_config/quickshell/statusbar/*.js dot_config/quickshell/statusbar/assets/* dot_local/lib/ghostty_status.py dot_local/lib/hypr_status_stream.py dot_local/bin/executable_hypr-status-stream dot_local/bin/executable_rename-hypr-workspace dot_config/hypr/scratchpad.lua dot_config/hypr/hyprland.lua.tmpl dot_config/hypr/desktop_test.lua dot_config/wezterm/wezterm_window_identity.lua dot_config/wezterm/wezterm_windowing.lua scripts/test_hypr_status_stream.py scripts/rename-hypr-workspace.test.sh scripts/tst_statusbar.qml .impeccable/fixtures/statusbar_laptop_hot.py | sha256sum`.
 

@@ -62,12 +62,15 @@ TestCase {
         verify(menu !== null);
         compare(menu.shortcutLabel, "Alt+F2");
         compare(menu.modal, false);
+        compare(menu.focus, true);
+        compare(menu.popupType, Popup.Window);
         verify((menu.closePolicy & Popup.CloseOnEscape) !== 0);
-        verify((menu.closePolicy & Popup.CloseOnPressOutsideParent) !== 0);
+        verify((menu.closePolicy & Popup.CloseOnPressOutside) !== 0);
 
         menu.open();
         tryCompare(menu, "visible", true);
-        menu.close();
+        tryCompare(menu, "activeFocus", true);
+        menu.dismissOnFocusLoss(false);
         tryCompare(menu, "visible", false);
     }
 
