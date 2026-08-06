@@ -1,0 +1,8 @@
+# The status bar lives in its own repository and is cloned here, then wired
+# into place with symlinks (see dot_config/quickshell and dot_local). Needs
+# git and network on first apply; afterwards an offline apply keeps the
+# existing clone and only the refresh is skipped.
+[".local/share/quickshell-statusbar"]
+    type = "git-repo"
+    url = "https://github.com/xnmp-setup/quickshell-statusbar.git"
+    refreshPeriod = "168h"

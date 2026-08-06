@@ -1,0 +1,1 @@
+../share/quickshell-statusbar/lib/hypr_status_stream.py

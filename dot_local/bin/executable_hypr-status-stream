@@ -1,5 +1,0 @@
-#!/bin/sh
-set -eu
-
-exec "${HOME}/.local/bin/uv" run --script \
-  "${HOME}/.local/lib/hypr_status_stream.py" "$@"

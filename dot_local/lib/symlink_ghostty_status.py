@@ -1,0 +1,1 @@
+../share/quickshell-statusbar/lib/ghostty_status.py

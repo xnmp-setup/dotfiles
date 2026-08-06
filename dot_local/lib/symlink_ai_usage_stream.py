@@ -1,0 +1,1 @@
+../share/quickshell-statusbar/lib/ai_usage_stream.py
