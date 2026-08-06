@@ -9,6 +9,7 @@ Item {
     required property var themeColors
     property bool compact: false
     property bool last: false
+    property double nowEpoch: Date.now() / 1000
     readonly property string providerName: provider === "claude" ? "CLAUDE" : "CODEX"
     readonly property var percent: usage ? usage.percent : null
     readonly property var resetsAt: usage ? usage.resetsAt : null
@@ -17,7 +18,7 @@ Item {
         : percent + "%"
     readonly property string resetText: resetsAt === null || resetsAt === undefined
         ? "waiting"
-        : "↻ " + Qt.formatDateTime(new Date(resetsAt * 1000), "d MMM HH:mm")
+        : "↻ " + countdownText(resetsAt)
     readonly property color displayColor: percentageColor()
     readonly property real percentColumnX: percentLabel.mapToItem(root, 0, 0).x
     readonly property real resetColumnX: resetLabel.mapToItem(root, 0, 0).x
@@ -41,6 +42,22 @@ Item {
             new Date(timestamp * 1000),
             "ddd d MMM yyyy HH:mm t"
         );
+    }
+
+    function countdownText(timestamp: var): string {
+        if (typeof timestamp !== "number" || !Number.isFinite(timestamp))
+            return "waiting";
+        const remaining = Math.max(0, Math.floor(timestamp - nowEpoch));
+        const days = Math.floor(remaining / 86400);
+        const hours = Math.floor((remaining % 86400) / 3600);
+        const minutes = Math.floor((remaining % 3600) / 60);
+        if (days > 0)
+            return days + "d " + hours + "h " + minutes + "m";
+        if (hours > 0)
+            return hours + "h " + minutes + "m";
+        if (minutes > 0)
+            return minutes + "m";
+        return "<1m";
     }
 
     function tooltipText(): string {
@@ -69,6 +86,13 @@ Item {
 
     implicitWidth: compact ? 39 : 188
     implicitHeight: 40
+
+    Timer {
+        interval: 30000
+        running: true
+        repeat: true
+        onTriggered: root.nowEpoch = Date.now() / 1000
+    }
 
     Rectangle {
         visible: !root.last

@@ -358,6 +358,21 @@ TestCase {
         compare(empty.resetText, "waiting");
     }
 
+    function test_usage_reset_is_a_live_countdown(): void {
+        const cell = createTemporaryObject(usageCellComponent, this, {
+            nowEpoch: 1800000000,
+            usage: {
+                percent: 40,
+                resetsAt: 1800445260,
+                windowMinutes: 10080
+            }
+        });
+        verify(cell !== null);
+        compare(cell.resetText, "↻ 5d 3h 41m");
+        cell.nowEpoch = 1800445260;
+        compare(cell.resetText, "↻ <1m");
+    }
+
     function test_usage_color_reflects_consumed_quota_thresholds(): void {
         const low = createTemporaryObject(usageCellComponent, this, {
             usage: { percent: 24, resetsAt: 1800000600, windowMinutes: 300 }

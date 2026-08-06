@@ -23,7 +23,7 @@ NOW = 1_800_000_000
 
 
 class ParsingTest(unittest.TestCase):
-    def test_claude_uses_five_hour_primary_and_weekly_secondary(self) -> None:
+    def test_claude_uses_weekly_consumed_quota_as_primary(self) -> None:
         parsed = usage.parse_claude_status(
             {
                 "rate_limits": {
@@ -38,9 +38,9 @@ class ParsingTest(unittest.TestCase):
                 }
             }
         )
-        self.assertEqual(parsed.primary, usage.UsageWindow(76, NOW + 300, 300))
+        self.assertEqual(parsed.primary, usage.UsageWindow(41, NOW + 86_400, 10_080))
         self.assertEqual(
-            parsed.secondary, usage.UsageWindow(59, NOW + 86_400, 10_080)
+            parsed.secondary, usage.UsageWindow(24, NOW + 300, 300)
         )
 
     def test_codex_ignores_notifications_and_prefers_named_codex_bucket(self) -> None:
@@ -112,13 +112,35 @@ class CacheTest(unittest.TestCase):
                 )
             )
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(json.loads(path.read_text())["version"], 2)
             current = usage.read_claude_cache(path, now=NOW)
-            self.assertEqual(current.primary.percent, 82)
-            self.assertEqual(current.primary.window_minutes, 300)
-            after_primary_reset = usage.read_claude_cache(path, now=NOW + 61)
-            self.assertIsNone(after_primary_reset.primary)
-            self.assertEqual(after_primary_reset.secondary.percent, 48)
+            self.assertEqual(current.primary.percent, 52)
+            self.assertEqual(current.primary.window_minutes, 10_080)
+            self.assertEqual(current.secondary.percent, 18)
+            after_hourly_reset = usage.read_claude_cache(path, now=NOW + 61)
+            self.assertEqual(after_hourly_reset.primary.percent, 52)
+            self.assertIsNone(after_hourly_reset.secondary)
             self.assertIsNone(usage.read_claude_cache(path, now=NOW + 601))
+
+    def test_legacy_cache_is_migrated_to_weekly_consumed_quota(self) -> None:
+        legacy = {
+            "version": 1,
+            "observedAt": NOW,
+            "usage": {
+                "percent": 89,
+                "resetsAt": NOW + 60,
+                "windowMinutes": 300,
+                "secondaryPercent": 60,
+                "secondaryResetsAt": NOW + 600,
+                "secondaryWindowMinutes": 10_080,
+            },
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "claude.json"
+            path.write_text(json.dumps(legacy))
+            current = usage.read_claude_cache(path, now=NOW)
+            self.assertEqual(current.primary, usage.UsageWindow(40, NOW + 600, 10_080))
+            self.assertEqual(current.secondary, usage.UsageWindow(11, NOW + 60, 300))
 
     def test_absent_rate_limits_do_not_overwrite_last_good_cache(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

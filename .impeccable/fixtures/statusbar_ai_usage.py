@@ -10,28 +10,31 @@ import json
 import time
 
 
-SNAPSHOT = {
-    "claude": {
-        "percent": 76,
-        "resetsAt": 1_786_019_400,
-        "windowMinutes": 300,
-        "secondaryPercent": 59,
-        "secondaryResetsAt": 1_786_161_402,
-        "secondaryWindowMinutes": 10_080,
-    },
-    "codex": {
-        "percent": 65,
-        "resetsAt": 1_786_161_402,
-        "windowMinutes": 10_080,
-        "secondaryPercent": None,
-        "secondaryResetsAt": None,
-        "secondaryWindowMinutes": None,
-    },
-}
+def snapshot(now: int) -> dict[str, object]:
+    weekly_reset = now + 5 * 86_400 + 3 * 3_600 + 42 * 60
+    hourly_reset = now + 3 * 3_600 + 42 * 60
+    return {
+        "claude": {
+            "percent": 40,
+            "resetsAt": weekly_reset,
+            "windowMinutes": 10_080,
+            "secondaryPercent": 11,
+            "secondaryResetsAt": hourly_reset,
+            "secondaryWindowMinutes": 300,
+        },
+        "codex": {
+            "percent": 65,
+            "resetsAt": weekly_reset,
+            "windowMinutes": 10_080,
+            "secondaryPercent": None,
+            "secondaryResetsAt": None,
+            "secondaryWindowMinutes": None,
+        },
+    }
 
 
 def main() -> None:
-    encoded = json.dumps(SNAPSHOT, separators=(",", ":"))
+    encoded = json.dumps(snapshot(int(time.time())), separators=(",", ":"))
     while True:
         print(encoded, flush=True)
         time.sleep(30)

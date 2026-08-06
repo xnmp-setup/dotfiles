@@ -25,6 +25,7 @@ MAX_CACHE_BYTES = 65_536
 MAX_RESET_TIMESTAMP = 4_102_444_800  # 2100-01-01 UTC
 DEFAULT_STREAM_INTERVAL = 30.0
 DEFAULT_CODEX_REFRESH_INTERVAL = 300.0
+CLAUDE_CACHE_VERSION = 2
 
 JsonObject = dict[str, Any]
 CodexFetcher = Callable[[], "ProviderUsage | None"]
@@ -70,7 +71,6 @@ def usage_window(
     percent_key: str,
     reset_key: str,
     default_window_minutes: int | None = None,
-    percent_is_remaining: bool = False,
 ) -> UsageWindow | None:
     if not isinstance(raw, Mapping):
         return None
@@ -79,8 +79,6 @@ def usage_window(
     window_minutes = bounded_integer(raw.get("windowDurationMins"), 1, 525_600)
     if percent is None or resets_at is None:
         return None
-    if percent_is_remaining:
-        percent = 100 - percent
     return UsageWindow(
         percent=percent,
         resets_at=resets_at,
@@ -95,18 +93,16 @@ def parse_claude_status(data: object) -> ProviderUsage | None:
     if not isinstance(limits, Mapping):
         return None
     primary = usage_window(
-        limits.get("five_hour"),
-        percent_key="used_percentage",
-        reset_key="resets_at",
-        default_window_minutes=300,
-        percent_is_remaining=True,
-    )
-    secondary = usage_window(
         limits.get("seven_day"),
         percent_key="used_percentage",
         reset_key="resets_at",
         default_window_minutes=10_080,
-        percent_is_remaining=True,
+    )
+    secondary = usage_window(
+        limits.get("five_hour"),
+        percent_key="used_percentage",
+        reset_key="resets_at",
+        default_window_minutes=300,
     )
     return ProviderUsage(primary=primary, secondary=secondary) if primary or secondary else None
 
@@ -188,6 +184,25 @@ def provider_from_payload(raw: object) -> ProviderUsage | None:
     return ProviderUsage(primary=primary, secondary=secondary) if primary or secondary else None
 
 
+def migrate_claude_cache_v1(usage: ProviderUsage | None) -> ProviderUsage | None:
+    """Convert the legacy remaining-percent, hourly-first cache contract."""
+
+    def as_used(window: UsageWindow | None) -> UsageWindow | None:
+        if window is None:
+            return None
+        return UsageWindow(
+            percent=100 - window.percent,
+            resets_at=window.resets_at,
+            window_minutes=window.window_minutes,
+        )
+
+    if usage is None:
+        return None
+    primary = as_used(usage.secondary)
+    secondary = as_used(usage.primary)
+    return ProviderUsage(primary=primary, secondary=secondary) if primary or secondary else None
+
+
 def default_claude_cache_path() -> Path:
     runtime_root = os.environ.get("XDG_RUNTIME_DIR", "").strip()
     if runtime_root:
@@ -205,7 +220,7 @@ def write_claude_cache(
 ) -> None:
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     payload = {
-        "version": 1,
+        "version": CLAUDE_CACHE_VERSION,
         "observedAt": int(observed_at if observed_at is not None else time.time()),
         "usage": provider_payload(usage),
     }
@@ -268,9 +283,13 @@ def read_claude_cache(path: Path, *, now: float | None = None) -> ProviderUsage 
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError, TypeError):
         return None
-    if not isinstance(raw, Mapping) or raw.get("version") != 1:
+    if not isinstance(raw, Mapping):
         return None
     usage = provider_from_payload(raw.get("usage"))
+    if raw.get("version") == 1:
+        usage = migrate_claude_cache_v1(usage)
+    elif raw.get("version") != CLAUDE_CACHE_VERSION:
+        return None
     return expire_provider(usage, now if now is not None else time.time())
 
 

@@ -14,7 +14,7 @@ Hyprland monitor.
 | Agent sessions | Show per-workspace running Claude and Codex session counts across WezTerm and Ghostty. Claude uses the supplied logo asset; Codex uses the actual OpenAI knot mark. Omit zero counts. Invisible terminal-specific identity tags and stable one-to-one assignment prevent duplicate visible titles from merging windows. |
 | Clock | Center `HH:mm` and an abbreviated weekday/date. Read-only. |
 | Telemetry | Show CPU, RAM, disk I/O busy-time, and GPU as percentages in fixed label/value columns. Disk I/O is the busiest physical disk's busy-time over the trailing 30 seconds; the tooltip carries the device and read/write rates. Values below 50% use normal text, 50–75% use Gruvbox yellow, and values above 75% use Gruvbox red. |
-| AI quota | Append Claude Code and Codex as individual horizontal metric cells at the far right. Each shows consumed quota percentage and an absolute reset date inline; tooltips retain the full timezone and secondary window. Values below 75% use normal text, 75–89% yellow, and 90%+ red. At the unsupported 1920 px maximum-telemetry extreme, the two cells compact to provider mark plus percentage and retain reset details in tooltips. |
+| AI quota | Append Claude Code and Codex as individual horizontal metric cells at the far right. Each shows consumed weekly quota and a live reset countdown inline; tooltips retain the exact reset time and secondary window. Claude's five-hour quota remains available in its tooltip. Values below 75% use normal text, 75–89% yellow, and 90%+ red. At the unsupported 1920 px maximum-telemetry extreme, the two cells compact to provider mark plus percentage and retain reset details in tooltips. |
 | Laptop status | When a sysfs battery identifies the host as a laptop, append Wi-Fi signal/status and battery percentage. Disconnected/weak Wi-Fi and low battery use warning colors. Desktop hosts omit both cells. |
 | Thermal warnings | Omit CPU/GPU temperature cells below 75°C. Show 75–84°C in yellow and 85°C+ in red. |
 | Hidden | `Ctrl+Alt+U` toggles every bar off and releases its reserved space; the same key restores it. |
@@ -147,7 +147,8 @@ geometry explicitly below; this variance was recorded before implementation.
   and a fixed 38 px left-aligned value column using tabular monospaced numerals.
 - Claude Code and Codex quota cells follow the same 40 px horizontal rail and
   18 px dividers as telemetry. Each full cell is 188 px wide: provider mark,
-  right-aligned provider label, fixed percentage column, and bounded reset date.
+  right-aligned provider label, fixed percentage column, and bounded live reset
+  countdown.
 - Minimum pointer target is the full 34 px-high workspace control, a documented
   desktop-panel exception to the 44 px touch target.
 
@@ -182,9 +183,9 @@ the active Hyprland theme.
   (`95f8219ed04273e0fb6f16ae9d3d19968e44d5b7a9e48362fe20b81734de88d9`)
 - Inline AI-quota detail with laptop/hot telemetry:
   `.impeccable/captures/ai-usage-statusbar-detail.png`
-  (`9aa48248c20add47963ee2bf3d649a6a617baaca7e77fd5a7d8001f6b90af977`,
-  1000x40 physical pixels). The deterministic fixture shows Claude at 76% used
-  in warning yellow and Codex at 65% used in normal text, with both reset dates.
+  (`c4ac5dba0e4a1b841c82d4bc72b6cff0fef1f888d1827e7e6f16e942b1ed1d46`,
+  1000x40 physical pixels). The fixture shows Claude's weekly quota at 40% used
+  and Codex at 65% used, both in normal text with live reset countdowns.
 - Immediate workspace-2 event capture:
   `.impeccable/captures/workspace-2-event-highlight.png`
   (`139febe707f2f9bb2110fbb8c025125533d276bc92c9064df2ac66d1ddbdad4d`)
@@ -201,7 +202,7 @@ the active Hyprland theme.
 - F9 reservation behavior: the reserved-aware scratchpad assertions pass for
   both a 40 px visible reservation (y=52) and a hidden reservation (y=12).
 - Impeccable detector: no findings.
-- Behavior tests: 33 Python tests plus 17 QML contract tests and the workspace
+- Behavior tests: 34 Python tests plus 18 QML contract tests and the workspace
   rename integration suite passed. The Python
   suite covers Ghostty bulk AT-SPI parsing, tab and agent extraction, live-title
   compatibility, malformed/huge payloads, transient discovery failure, and
@@ -220,8 +221,8 @@ the active Hyprland theme.
   focus-grab activation, active `TextInput` focus, and Escape dismissal were
   also verified live with a real Wayland key event. Pyrefly: 0 errors. Lua
   template: syntax valid.
-- Current source-manifest SHA-256: `dd1823d3dc92d25f3c8a47bfdd6bfbb418a0fb95c83d6c3c03b33a13bebfb87c`
-  on Git base `a697d4c`.
+- Current source-manifest SHA-256: `68885f51625a131db6a144fc0a38b0d18620ae5838fed4f584ec5896c02ac3ec`
+  on Git base `ffc5e0d`.
   Reproduce it with:
   `sha256sum dot_config/quickshell/statusbar/*.qml dot_config/quickshell/statusbar/*.js dot_config/quickshell/statusbar/assets/* dot_claude/executable_statusline.sh dot_local/lib/ai_usage_stream.py dot_local/lib/ghostty_status.py dot_local/lib/hypr_status_stream.py dot_local/bin/executable_ai-usage-stream dot_local/bin/executable_hypr-status-stream dot_local/bin/executable_rename-hypr-workspace dot_config/hypr/scratchpad.lua dot_config/hypr/hyprland.lua.tmpl dot_config/hypr/desktop_test.lua dot_config/wezterm/wezterm_window_identity.lua dot_config/wezterm/wezterm_windowing.lua scripts/test_ai_usage_stream.py scripts/test_hypr_status_stream.py scripts/rename-hypr-workspace.test.sh scripts/tst_statusbar.qml .impeccable/fixtures/statusbar_ai_usage.py .impeccable/fixtures/statusbar_laptop_hot.py | sha256sum`.
 
