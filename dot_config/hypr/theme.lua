@@ -52,25 +52,33 @@ end
 
 --- A groupbar tab fill. The groupbar renders its fill as a vertical cairo
 --- ramp stretched over the tab rect: the angle is ignored, the FIRST colour
---- lands at the bottom, stops are evenly spaced, and the ramp pads past its
---- end stops. Transparent stops carve gaps into the fill — the only per-tab
---- shaping there is, since gaps_out is global to the bar — but a carved edge
---- is always square; only the rect's real edges get gradient_rounding. So
---- pills keep their real (rounded) top, and only the bottom is ever carved:
---- a `detached` tab gets transparent bottom stops (~4px of the bar) so its
---- pill floats above the window, while the focused tab keeps its body all
---- the way down and touches it. The FIRST stop doubles as the colour of the
---- indicator strip tucked under the pill (see the groupbar comment in
---- hyprland.lua): opaque there it squares the focused pill's bottom
---- corners; transparent here it vanishes under detached pills.
+--- lands at the bottom, stops are spaced evenly across the rect, and the ramp
+--- pads past its end stops. Transparent stops therefore carve the bottom of
+--- the fill away — the only per-tab shaping there is, since every other
+--- groupbar geometry knob is global to the bar. A carved edge is square while
+--- the rect's real edges get gradient_rounding, so carving is also how a pill
+--- gets a square bottom under a rounded top: hang the rect below the bar by
+--- more than the corner radius and carve everything that hangs over, and the
+--- real (rounded) bottom corners are cut off along with it.
+---
+--- Stops sit half a pixel apart, which is what makes the carve line land on a
+--- pixel boundary instead of straddling one. Cairo interpolates between
+--- adjacent stops, so the fill ramps from clear to opaque over that half
+--- pixel; each screen row samples the ramp at its centre, and with the last
+--- clear stop at `carve - 0.5` the row below the line reads 0 and the row
+--- above reads 1. A whole-pixel spacing would put a half-lit row on the
+--- window's border instead. (Cairo works in the texture's own space, not the
+--- screen's; the two coincide because the fill is stretched to the rect.)
+---
 --- @param hex string        body colour of the pill
 --- @param alpha string|nil  alpha for the body of the pill
---- @param detached boolean  lift the pill off the window's top edge
-function M.tab_fill(hex, alpha, detached)
+--- @param height number     height of the tab rect in px (group:groupbar:height)
+--- @param carve number      px carved off the bottom of the rect
+function M.tab_fill(hex, alpha, height, carve)
     local clear, body = M.rgba(hex, "00"), M.rgba(hex, alpha)
     local stops = {}
-    for i = 1, 16 do
-        stops[i] = (detached and i <= 2) and clear or body
+    for i = 1, height * 2 - 1 do -- stop i sits i/2 px above the rect's bottom
+        stops[i] = i <= carve * 2 - 1 and clear or body
     end
     return { colors = stops, angle = 0 }
 end
