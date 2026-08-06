@@ -12,7 +12,7 @@ macos-window-buttons = hidden
 window-theme = ghostty
 gtk-titlebar = false
 gtk-titlebar-style = native
-gtk-toolbar-style = flat
+gtk-toolbar-style = raised
 gtk-wide-tabs = false
 gtk-custom-css = ~/.config/ghostty/tabs.css
 # The zsh title hook owns OSC 2. Disable only Ghostty's competing path-title
