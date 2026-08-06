@@ -1,0 +1,14 @@
+# Intentionally extensionless: Vicinae 0.19 filters out text/x-shellscript
+# before parsing directives on systems where that MIME type is executable.
+# @vicinae.schemaVersion 1
+# @vicinae.title Set Desktop Theme
+# @vicinae.mode fullOutput
+# @vicinae.icon 🎨
+# @vicinae.argument1 { "type": "text", "placeholder": "Theme slug (for example, cosmic-dusk)" }
+# @vicinae.keywords ["appearance", "colors", "set-theme"]
+# @vicinae.description Apply a theme to desktop applications and the wallpaper
+# @vicinae.exec ["/usr/bin/env", "bash"]
+
+set -euo pipefail
+
+exec bash "$HOME/.local/share/chezmoi/scripts/set-theme.sh" "$1"
