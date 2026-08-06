@@ -7,7 +7,14 @@ ToolTip {
 
     required property var workspaceData
     required property var themeColors
+    // Pointer x in parent coordinates; negative keeps the default placement.
+    property real pointerX: -1
     readonly property color surfaceColor: themeColors.surface
+
+    x: pointerX >= 0
+        ? pointerX - width / 2
+        : parent ? (parent.width - width) / 2 : 0
+    y: parent ? parent.height + 6 : 0
     readonly property int visibleClientCount: Math.min(workspaceData.clients.length, 8)
     readonly property string windowSummary: workspaceData.clients.length
         + (workspaceData.clients.length === 1 ? " window" : " windows")

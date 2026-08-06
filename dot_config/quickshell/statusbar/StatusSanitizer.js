@@ -101,6 +101,8 @@ function normalizeMetrics(base, raw) {
         metrics.laptop = raw.laptop;
     if (typeof raw.wifiConnected === "boolean")
         metrics.wifiConnected = raw.wifiConnected;
+    if ("batteryState" in raw)
+        metrics.batteryState = safeString(raw.batteryState, metrics.batteryState, 32);
     for (const key of ["ioTooltip", "batteryTooltip", "wifiTooltip"]) {
         if (key in raw)
             metrics[key] = safeString(raw[key], metrics[key], 512);

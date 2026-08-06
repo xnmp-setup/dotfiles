@@ -8,6 +8,8 @@ Item {
     required property var themeColors
     property bool compact: false
     property bool last: false
+    // Recent quota-consumed samples for the hover graph.
+    property var history: []
     property double nowEpoch: Date.now() / 1000
     readonly property string providerName: provider === "claude" ? "CLAUDE" : "CODEX"
     readonly property var percent: usage ? usage.percent : null
@@ -170,5 +172,7 @@ Item {
         visible: hoverHandler.hovered
         text: root.tooltipText()
         themeColors: root.themeColors
+        history: root.history
+        pointerX: hoverHandler.point.position.x
     }
 }

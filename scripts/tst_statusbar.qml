@@ -4,6 +4,8 @@ import QtTest
 import "../dot_config/quickshell/statusbar"
 import "../dot_config/quickshell/statusbar/StatusLayout.js" as StatusLayout
 import "../dot_config/quickshell/statusbar/StatusSanitizer.js" as Sanitizer
+import "../dot_config/quickshell/statusbar/StatusGraph.js" as StatusGraph
+import "../dot_config/quickshell/statusbar/StatusIcons.js" as StatusIcons
 
 TestCase {
     id: testCase
@@ -237,6 +239,84 @@ TestCase {
         tryCompare(row, "implicitWidth", 20);
     }
 
+    function test_hot_temperature_widens_cell_and_renders_next_to_value(): void {
+        const cool = createTemporaryObject(metricComponent, this, { value: 42 });
+        const hot = createTemporaryObject(metricComponent, this, {
+            value: 42,
+            temperature: 78
+        });
+        const critical = createTemporaryObject(metricComponent, this, {
+            value: 42,
+            temperature: 91
+        });
+        verify(cool !== null);
+        verify(hot !== null);
+        verify(critical !== null);
+        compare(cool.implicitWidth, 96);
+        compare(cool.temperatureText, "");
+        compare(hot.implicitWidth, 130);
+        compare(hot.temperatureText, "78°");
+        compare(critical.temperatureText, "91°");
+    }
+
+    function test_moving_average_smooths_and_keeps_alignment(): void {
+        compare(StatusGraph.movingAverage([], 3), []);
+        compare(StatusGraph.movingAverage([10], 3), [10]);
+        compare(StatusGraph.movingAverage([0, 10, 20, 30], 3), [0, 5, 10, 20]);
+        const withGap = StatusGraph.movingAverage([10, null, 20], 3);
+        compare(withGap.length, 3);
+        compare(withGap[0], 10);
+        compare(withGap[2], 15);
+    }
+
+    function test_graph_bounds_pad_flat_series_and_ignore_junk(): void {
+        compare(StatusGraph.bounds([]), null);
+        compare(StatusGraph.bounds(["broken", null]), null);
+        const flat = StatusGraph.bounds([50, 50, 50]);
+        compare(flat.min, 48);
+        compare(flat.max, 52);
+        const spread = StatusGraph.bounds([5, 90, null, 30]);
+        compare(spread.min, 5);
+        compare(spread.max, 90);
+    }
+
+    function test_tooltip_graph_needs_two_numeric_samples(): void {
+        const bare = createTemporaryObject(themedTooltipComponent, this);
+        const sparse = createTemporaryObject(themedTooltipComponent, this, {
+            history: [42, null, "junk"]
+        });
+        const graphed = createTemporaryObject(themedTooltipComponent, this, {
+            history: [42, 55, 61],
+            smoothed: true
+        });
+        verify(bare !== null);
+        verify(sparse !== null);
+        verify(graphed !== null);
+        compare(bare.showsGraph, false);
+        compare(sparse.showsGraph, false);
+        compare(graphed.showsGraph, true);
+    }
+
+    function test_wifi_icon_tracks_connection_and_strength(): void {
+        compare(StatusIcons.wifiIcon(false, 80), "\u{f092d}");
+        compare(StatusIcons.wifiIcon(true, null), "\u{f092f}");
+        compare(StatusIcons.wifiIcon(true, 2), "\u{f092f}");
+        compare(StatusIcons.wifiIcon(true, 15), "\u{f091f}");
+        compare(StatusIcons.wifiIcon(true, 40), "\u{f0922}");
+        compare(StatusIcons.wifiIcon(true, 60), "\u{f0925}");
+        compare(StatusIcons.wifiIcon(true, 95), "\u{f0928}");
+    }
+
+    function test_battery_icon_tracks_charge_and_charging_state(): void {
+        compare(StatusIcons.batteryIcon(50, "charging"), "\u{f0084}");
+        compare(StatusIcons.batteryIcon(null, "discharging"), "\u{f008e}");
+        compare(StatusIcons.batteryIcon(2, "discharging"), "\u{f0083}");
+        compare(StatusIcons.batteryIcon(10, "discharging"), "\u{f007a}");
+        compare(StatusIcons.batteryIcon(54, "discharging"), "\u{f007e}");
+        compare(StatusIcons.batteryIcon(90, "full"), "\u{f0082}");
+        compare(StatusIcons.batteryIcon(97, "full"), "\u{f0079}");
+    }
+
     function test_numeric_column_does_not_move_with_digit_count(): void {
         const oneDigit = metricAt(5);
         const twoDigits = metricAt(55);
@@ -340,6 +420,7 @@ TestCase {
             gpu: 30,
             laptop: false,
             battery: null,
+            batteryState: "",
             wifi: null,
             wifiConnected: false,
             cpuTemp: null,
@@ -355,6 +436,7 @@ TestCase {
             gpu: { percent: 90 },
             laptop: "yes",
             battery: -50,
+            batteryState: { status: "charging" },
             wifi: 61,
             wifiConnected: true,
             cpuTemp: 20,
@@ -367,6 +449,7 @@ TestCase {
         compare(normalized.gpu, 30);
         compare(normalized.laptop, false);
         compare(normalized.battery, 0);
+        compare(normalized.batteryState, "");
         compare(normalized.wifi, 61);
         compare(normalized.wifiConnected, true);
         compare(normalized.cpuTemp, null);
@@ -472,7 +555,7 @@ TestCase {
     function test_2560_layout_keeps_maximum_telemetry_clear_of_clock(): void {
         const width = 2560;
         const clockWidth = 180;
-        const metricCount = 8;
+        const metricCount = 6;
         const metricWidth = 96;
         const rightMargin = 12;
         const minimumGap = 12;
@@ -491,7 +574,8 @@ TestCase {
     function test_2560_layout_keeps_full_usage_cluster_clear_of_clock(): void {
         const width = 2560;
         const clockWidth = 180;
-        const rightRegionWidth = 8 * 96 + 2 * 188;
+        // Six cells, both hot-temperature extensions, both full usage cells.
+        const rightRegionWidth = 6 * 96 + 2 * 34 + 2 * 188;
         verify(StatusLayout.rightRegionClearsClock(
             width,
             clockWidth,
@@ -504,8 +588,8 @@ TestCase {
     function test_1920_layout_uses_compact_usage_without_covering_clock(): void {
         const width = 1920;
         const clockWidth = 180;
-        const fullRegionWidth = 8 * 96 + 2 * 188;
-        const compactRegionWidth = 8 * 96 + 2 * 39;
+        const fullRegionWidth = 6 * 96 + 2 * 34 + 2 * 188;
+        const compactRegionWidth = 6 * 96 + 2 * 34 + 2 * 39;
         verify(!StatusLayout.rightRegionClearsClock(
             width,
             clockWidth,

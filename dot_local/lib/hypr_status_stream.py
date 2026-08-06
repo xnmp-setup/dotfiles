@@ -1105,6 +1105,7 @@ class StatusCollector:
                 "ioTooltip": io_tooltip,
                 "laptop": battery.is_laptop,
                 "battery": battery.percent,
+                "batteryState": battery.state.casefold(),
                 "batteryTooltip": battery_tooltip,
                 "wifi": wifi.strength,
                 "wifiConnected": wifi.connected,

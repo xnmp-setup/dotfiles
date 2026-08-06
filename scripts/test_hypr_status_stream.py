@@ -86,6 +86,19 @@ class MetricsTest(unittest.TestCase):
         self.assertEqual(laptop.percent, 80)
         self.assertEqual(laptop.state, "Discharging")
 
+    def test_battery_state_is_emitted_casefolded_for_icon_selection(self) -> None:
+        charging = status.summarize_batteries(
+            [{"capacity": "45", "status": "Charging"}]
+        )
+        self.assertEqual(charging.state.casefold(), "charging")
+        mixed = status.summarize_batteries(
+            [
+                {"capacity": "45", "status": "Charging"},
+                {"capacity": "50", "status": "Discharging"},
+            ]
+        )
+        self.assertEqual(mixed.state.casefold(), "mixed")
+
     def test_wifi_parser_preserves_escaped_ssids_and_ignores_inactive_rows(
         self,
     ) -> None:

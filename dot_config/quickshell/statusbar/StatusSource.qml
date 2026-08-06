@@ -14,6 +14,7 @@ Scope {
         ioTooltip: "Collecting a 30-second disk activity window",
         laptop: false,
         battery: null,
+        batteryState: "",
         batteryTooltip: "Battery status unavailable",
         wifi: null,
         wifiConnected: false,
@@ -49,7 +50,37 @@ Scope {
         text: "#d8dce8",
         text_dim: "#8088b4"
     })
+    // Rolling per-series samples, oldest first, for the tooltip graphs.
+    // Metrics arrive every second; usage arrives every 30 seconds.
+    property var history: ({
+        cpu: [],
+        ram: [],
+        io: [],
+        gpu: [],
+        wifi: [],
+        battery: [],
+        claude: [],
+        codex: []
+    })
+    readonly property int historyLimit: 180
     property string lastWorkspaceJson: "[]"
+
+    function pushHistory(updates: var): void {
+        const next = {};
+        for (const key in history) {
+            const series = history[key];
+            const value = updates[key];
+            if (typeof value === "number" && Number.isFinite(value)) {
+                const appended = series.concat([value]);
+                next[key] = appended.length > historyLimit
+                    ? appended.slice(appended.length - historyLimit)
+                    : appended;
+            } else {
+                next[key] = series;
+            }
+        }
+        history = next;
+    }
 
     function accept(line: string): void {
         let snapshot;
@@ -60,8 +91,17 @@ Scope {
         }
         if (snapshot === null || typeof snapshot !== "object")
             return;
-        if (snapshot.metrics !== null && typeof snapshot.metrics === "object")
+        if (snapshot.metrics !== null && typeof snapshot.metrics === "object") {
             root.metrics = Sanitizer.normalizeMetrics(root.metrics, snapshot.metrics);
+            root.pushHistory({
+                cpu: root.metrics.cpu,
+                ram: root.metrics.ram,
+                io: root.metrics.io,
+                gpu: root.metrics.gpu,
+                wifi: root.metrics.wifiConnected ? root.metrics.wifi : null,
+                battery: root.metrics.battery
+            });
+        }
         if (snapshot.palette !== null && typeof snapshot.palette === "object")
             root.themeColors = Sanitizer.mergeObject(root.themeColors, snapshot.palette);
         if (Array.isArray(snapshot.workspaces)) {
@@ -84,6 +124,10 @@ Scope {
         if (snapshot === null || typeof snapshot !== "object" || Array.isArray(snapshot))
             return;
         root.usage = Sanitizer.normalizeUsage(root.usage, snapshot);
+        root.pushHistory({
+            claude: root.usage.claude.percent,
+            codex: root.usage.codex.percent
+        });
     }
 
     Process {
