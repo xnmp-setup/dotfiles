@@ -415,9 +415,9 @@ function M.setup(deps)
     local result = {
       { Attribute = { Intensity = intensity } },
       { Attribute = { Underline = underline } },
-      { Foreground = { Color = marker_fg } },
-      { Text = '  ' .. marker .. ' ' },
     }
+    result[#result + 1] = { Foreground = { Color = marker_fg } }
+    result[#result + 1] = { Text = '  ' .. marker .. ' ' }
     if is_working then
       local phase = math.floor(now / SHIMMER_MS)
       for _, run in ipairs(shimmer_runs(title, phase, is_active)) do
@@ -428,7 +428,6 @@ function M.setup(deps)
       result[#result + 1] = { Foreground = { Color = title_fg } }
       result[#result + 1] = { Text = title .. ' ' }
     end
-
     last_tab_title[tab.tab_id] = { result = result, seen = os.time() }
     return result
   end)
