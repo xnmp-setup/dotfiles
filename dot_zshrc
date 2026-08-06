@@ -87,6 +87,7 @@ export PATH="$HOME/.cargo/bin:$PATH"
 export PATH="$HOME/.local/bin:$PATH"
 export CLAUDE_CODE_ENABLE_LSP=1
 export CLAUDE_CODE_NO_FLICKER=1
+export CLAUDE_CODE_SCROLL_SPEED=4
 [[ -x "$HOME/.atuin/bin/atuin" ]] && export PATH="$HOME/.atuin/bin:$PATH"
 
 # --- fpath (must be before compinit) ---

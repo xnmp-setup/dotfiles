@@ -1,7 +1,11 @@
 {
   "respectGitignore": false,
   "cleanupPeriodDays": 365,
-  "model": "sonnet",
+  "env": {
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "40",
+    "CLAUDE_CODE_SCROLL_SPEED": "4"
+  },
+  "model": "opus",
   "hooks": {
     "PreToolUse": [
       {
@@ -116,11 +120,13 @@
       }
     }
   },
-  "env": {
-    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "40"
-  },
   "effortLevel": "medium",
+  "voice": {
+    "enabled": true,
+    "mode": "hold"
+  },
   "skipDangerousModePermissionPrompt": true,
   "theme": "dark",
-  "agentPushNotifEnabled": true
+  "agentPushNotifEnabled": true,
+  "voiceEnabled": true
 }
