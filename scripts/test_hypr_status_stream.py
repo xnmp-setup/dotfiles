@@ -367,6 +367,31 @@ class WorkspaceTest(unittest.TestCase):
         result = status.build_workspaces(clients, [{"id": 0, "name": "DP-2"}], [])
         self.assertEqual([workspace["id"] for workspace in result], [2, 3])
 
+    def test_renamed_workspace_uses_hyprlands_live_name(self) -> None:
+        clients = [
+            {
+                "class": "firefox",
+                "workspace": {"id": 2, "name": "research notes"},
+                "monitor": 0,
+            },
+            {
+                "class": "ghostty",
+                "workspace": {"id": 2, "name": "research notes"},
+                "monitor": 0,
+            },
+        ]
+
+        result = status.build_workspaces(clients, [{"id": 0, "name": "DP-2"}], [])
+
+        self.assertEqual(result[0]["name"], "research notes")
+
+    def test_missing_workspace_name_falls_back_to_numeric_id(self) -> None:
+        clients = [{"class": "firefox", "workspace": {"id": 2}, "monitor": 0}]
+
+        result = status.build_workspaces(clients, [{"id": 0, "name": "DP-2"}], [])
+
+        self.assertEqual(result[0]["name"], "2")
+
     def test_duplicate_titles_do_not_guess_wrong_wezterm_window(self) -> None:
         windows = [
             {"tabs": 2, "titles": ["same"], "codex": 1},

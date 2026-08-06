@@ -549,6 +549,7 @@ def build_workspaces(
     ]
     matched_ghostty = assign_ghostty_windows(ghostty_clients, ghostty, previous_clients)
     grouped: dict[tuple[int, str], list[JsonObject]] = defaultdict(list)
+    workspace_names: dict[tuple[int, str], str] = {}
     for client in clients:
         workspace = client.get("workspace") or {}
         try:
@@ -558,6 +559,9 @@ def build_workspaces(
         if workspace_id <= 0 or not client.get("mapped", True):
             continue
         monitor_name = str(monitor_names.get(client.get("monitor"), ""))
+        workspace_key = (workspace_id, monitor_name)
+        workspace_name = str(workspace.get("name") or workspace_id)
+        workspace_names.setdefault(workspace_key, workspace_name)
         app_class = str(client.get("class", ""))
         app: JsonObject = {
             "address": str(client.get("address", "")),
@@ -592,14 +596,14 @@ def build_workspaces(
                 if stale:
                     for field in ("tabs", "claude", "codex"):
                         app[field] = int(stale.get(field, app[field]))
-        grouped[(workspace_id, monitor_name)].append(app)
+        grouped[workspace_key].append(app)
 
     result: list[JsonObject] = []
     for (workspace_id, monitor_name), apps in sorted(grouped.items()):
         result.append(
             {
                 "id": workspace_id,
-                "name": str(workspace_id),
+                "name": workspace_names[(workspace_id, monitor_name)],
                 "monitor": monitor_name,
                 "clients": apps,
                 "claude": sum(app["claude"] for app in apps),

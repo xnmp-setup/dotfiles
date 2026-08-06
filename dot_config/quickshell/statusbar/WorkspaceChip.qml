@@ -16,9 +16,21 @@ Rectangle {
         workspace => workspace.id === workspaceData.id
     )
     readonly property bool active: liveWorkspace ? liveWorkspace.active : workspaceData.active === true
+    readonly property string displayName: workspaceData.name
     readonly property color accent: themeColors.accent
     readonly property color textPrimary: themeColors.text
     readonly property color textSecondary: themeColors.text_dim
+
+    function renameWorkspace(): void {
+        Quickshell.execDetached([
+            Quickshell.env("HOME") + "/.local/bin/rename-hypr-workspace",
+            String(chip.workspaceData.id)
+        ]);
+    }
+
+    function openRenameMenu(): void {
+        contextMenu.popup();
+    }
 
     implicitWidth: content.implicitWidth + (segmented ? 14 : 18)
     implicitHeight: 34
@@ -49,9 +61,11 @@ Rectangle {
         spacing: chip.segmented ? 7 : 8
 
         Rectangle {
+            id: workspaceNameTile
+
             visible: chip.segmented
             anchors.verticalCenter: parent.verticalCenter
-            width: 22
+            width: Math.min(140, Math.max(22, workspaceNameSegmented.implicitWidth + 10))
             height: 24
             radius: 3
             color: chip.active
@@ -59,23 +73,32 @@ Rectangle {
                 : Qt.darker(chip.themeColors.surface, 1.18)
 
             Text {
+                id: workspaceNameSegmented
+
                 anchors.centerIn: parent
-                text: chip.workspaceData.name
+                width: workspaceNameTile.width - 10
+                text: chip.displayName
                 color: chip.active ? "#ffffff" : chip.textPrimary
                 font.family: "Inter"
                 font.pixelSize: 14
                 font.weight: Font.DemiBold
+                elide: Text.ElideRight
+                horizontalAlignment: Text.AlignHCenter
             }
         }
 
         Text {
+            id: workspaceNameInstrument
+
             visible: !chip.segmented
             anchors.verticalCenter: parent.verticalCenter
-            text: chip.workspaceData.name
+            width: Math.min(140, implicitWidth)
+            text: chip.displayName
             color: chip.active ? "#ffffff" : chip.textPrimary
             font.family: "Inter"
             font.pixelSize: 15
             font.weight: Font.DemiBold
+            elide: Text.ElideRight
         }
 
         Rectangle {
@@ -179,17 +202,33 @@ Rectangle {
     MouseArea {
         id: pointer
         anchors.fill: parent
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: Quickshell.execDetached([
-            "hyprctl",
-            "dispatch",
-            "hl.dsp.focus({ workspace = " + chip.workspaceData.id + " })"
-        ])
+        onClicked: mouse => {
+            if (mouse.button === Qt.RightButton) {
+                chip.openRenameMenu();
+                return;
+            }
+            Quickshell.execDetached([
+                "hyprctl",
+                "dispatch",
+                "hl.dsp.focus({ workspace = " + chip.workspaceData.id + " })"
+            ]);
+        }
+    }
+
+    WorkspaceContextMenu {
+        id: contextMenu
+
+        x: 0
+        y: chip.height + 4
+        themeColors: chip.themeColors
+        onRenameRequested: chip.renameWorkspace()
     }
 
     ToolTip.visible: pointer.containsMouse
-    ToolTip.text: "Workspace " + workspaceData.name + " · "
+    ToolTip.text: "Workspace " + displayName + " · "
         + workspaceData.clients.length + (workspaceData.clients.length === 1 ? " window" : " windows")
     ToolTip.delay: 450
 }

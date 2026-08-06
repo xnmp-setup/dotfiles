@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly max_name_length=32
+workspace_id="${1:-}"
+runtime_dir="${XDG_RUNTIME_DIR:-/tmp}"
+
+exec {rename_lock_fd}> "$runtime_dir/rename-hypr-workspace.lock"
+flock --nonblock "$rename_lock_fd" || exit 0
+
+notify_invalid_name() {
+  command -v notify-send >/dev/null 2>&1 || return 0
+  notify-send \
+    "Workspace was not renamed" \
+    "Use no more than $max_name_length characters." \
+    --urgency=normal
+}
+
+notify_rename_failure() {
+  command -v notify-send >/dev/null 2>&1 || return 0
+  notify-send \
+    "Workspace was not renamed" \
+    "Hyprland rejected the rename request." \
+    --urgency=normal
+}
+
+if [[ -z "$workspace_id" ]]; then
+  workspace_id=$(hyprctl activeworkspace -j | jq -r '.id // empty')
+fi
+
+if [[ ! "$workspace_id" =~ ^[1-9][0-9]*$ ]]; then
+  echo "Cannot rename workspace: invalid workspace ID '$workspace_id'" >&2
+  exit 2
+fi
+
+current_name=$(hyprctl workspaces -j \
+  | jq -r --argjson id "$workspace_id" \
+      'map(select(.id == $id)) | first | .name // ($id | tostring)')
+
+prompt="Rename workspace $workspace_id · empty resets · max $max_name_length"
+if ! requested_name=$(wofi \
+  --dmenu \
+  --exec-search \
+  --normal-window \
+  --lines 1 \
+  --width 520 \
+  --height 104 \
+  --prompt "$prompt" \
+  --search "$current_name" \
+  </dev/null); then
+  exit 0
+fi
+
+requested_name="${requested_name//$'\r'/}"
+requested_name="${requested_name//$'\n'/ }"
+requested_name="${requested_name#"${requested_name%%[![:space:]]*}"}"
+requested_name="${requested_name%"${requested_name##*[![:space:]]}"}"
+
+if (( ${#requested_name} > max_name_length )); then
+  notify_invalid_name
+  exit 2
+fi
+
+rename_request="hl.dsp.workspace.rename({ workspace = $workspace_id"
+if [[ -n "$requested_name" ]]; then
+  workspace_name_literal=$(WORKSPACE_RENAME_VALUE="$requested_name" \
+    lua -e 'io.write(string.format("%q", assert(os.getenv("WORKSPACE_RENAME_VALUE"))))')
+  rename_request+=", name = $workspace_name_literal"
+fi
+rename_request+=" })"
+
+if ! hyprctl dispatch "$rename_request"; then
+  notify_rename_failure
+  exit 1
+fi

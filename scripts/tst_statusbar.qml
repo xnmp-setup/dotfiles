@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import QtTest
 import "../dot_config/quickshell/statusbar"
 import "../dot_config/quickshell/statusbar/StatusLayout.js" as StatusLayout
@@ -8,13 +9,29 @@ TestCase {
     id: testCase
     name: "StatusBarMetrics"
 
-    readonly property var themeColors: ({ text: "#ebdbb2", border: "#625d51", text_dim: "#ebdbb2" })
+    readonly property var themeColors: ({
+        accent: "#fe8019",
+        accent_light: "#fea45c",
+        background: "#282828",
+        surface: "#4b4840",
+        border: "#625d51",
+        text: "#ebdbb2",
+        text_dim: "#a89984"
+    })
 
     Component {
         id: metricComponent
 
         MetricCell {
             label: "CPU"
+            themeColors: testCase.themeColors
+        }
+    }
+
+    Component {
+        id: workspaceComponent
+
+        WorkspaceContextMenu {
             themeColors: testCase.themeColors
         }
     }
@@ -38,6 +55,20 @@ TestCase {
         compare(colorAt(75), "#fabd2f");
         compare(colorAt(76), "#fb4934");
         compare(colorAt(100), "#fb4934");
+    }
+
+    function test_workspace_context_menu_exposes_rename_and_shortcut(): void {
+        const menu = createTemporaryObject(workspaceComponent, this);
+        verify(menu !== null);
+        compare(menu.shortcutLabel, "Alt+F2");
+        compare(menu.modal, false);
+        verify((menu.closePolicy & Popup.CloseOnEscape) !== 0);
+        verify((menu.closePolicy & Popup.CloseOnPressOutsideParent) !== 0);
+
+        menu.open();
+        tryCompare(menu, "visible", true);
+        menu.close();
+        tryCompare(menu, "visible", false);
     }
 
     function test_numeric_column_does_not_move_with_digit_count(): void {
