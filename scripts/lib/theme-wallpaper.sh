@@ -5,7 +5,6 @@ wallpaper_dir="$HOME/Pictures/Wallpaper"
 # Defaults are filenames relative to $wallpaper_dir. The command-line option
 # can override an association for one invocation.
 declare -A theme_wallpapers=(
-  [everforest]="autumn-river-everforest-gruvbox.jpg"
   [everforest-dark-medium]="autumn-river-everforest-gruvbox.jpg"
   [gruvbox]="gruvbox_forest-4.png"
   [cosmic-dusk]="planet_with_sunrise.png"
@@ -15,6 +14,43 @@ declare -A theme_wallpapers=(
   [horizon-dark]="saleh-gJ60sKuuYlE-unsplash.jpg"
   [catppuccin-mocha]="photo-1482784160316-6eb046863ece.avif"
 )
+
+# Expand a unique prefix only against themes with wallpaper associations. This
+# keeps an unrelated app-specific theme (for example Obsidian's "cosmic") from
+# winning over the desktop theme "cosmic-dusk". Exact associated slugs win over
+# longer matches; names outside this map retain the existing pass-through
+# behavior.
+resolve_theme_slug() {
+  local query="$1"
+  local candidate
+  local -a matches=()
+
+  for candidate in "${!theme_wallpapers[@]}"; do
+    if [[ "$candidate" == "$query" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+    [[ "$candidate" == "$query"* ]] && matches+=("$candidate")
+  done
+
+  if (( ${#matches[@]} == 0 )); then
+    printf '%s\n' "$query"
+    return 0
+  fi
+  if (( ${#matches[@]} == 1 )); then
+    printf '%s\n' "${matches[0]}"
+    return 0
+  fi
+
+  mapfile -t matches < <(printf '%s\n' "${matches[@]}" | sort)
+  local joined=""
+  for candidate in "${matches[@]}"; do
+    [[ -n "$joined" ]] && joined+=", "
+    joined+="$candidate"
+  done
+  printf "Theme prefix '%s' is ambiguous: %s\n" "$query" "$joined" >&2
+  return 1
+}
 
 list_wallpapers() {
   if [[ ! -d "$wallpaper_dir" ]]; then

@@ -5,6 +5,9 @@ set -euo pipefail
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 test_root=$(mktemp -d /tmp/set-theme-wallpaper.XXXXXX)
 
+# shellcheck source=lib/theme-wallpaper.sh
+source "$repo_root/scripts/lib/theme-wallpaper.sh"
+
 cleanup() {
   [[ "$test_root" == /tmp/set-theme-wallpaper.* ]] && rm -rf -- "$test_root"
 }
@@ -87,6 +90,33 @@ assert_contains "$test_root/.config/hypr/hyprpaper.conf" "preload = $default_pat
 assert_contains "$test_root/.config/hypr/hyprlock.conf" "path = /must/not/change.png"
 assert_contains "$test_root/hyprctl.log" "hyprpaper wallpaper DP-1, $default_path, fill"
 assert_contains "$test_root/hyprctl.log" "hyprpaper wallpaper DP-2, $default_path, fill"
+
+# Unique prefixes resolve only against wallpaper-associated desktop themes.
+# In particular, an app-specific theme named "cosmic" must not prevent the
+# intended desktop theme from resolving to cosmic-dusk.
+run_set_theme cosmic > "$test_root/prefix.out"
+assert_contains "$test_root/prefix.out" "Switching all apps to: Cosmic Dusk (cosmic-dusk)"
+assert_contains "$test_root/prefix.out" "matched theme prefix: cosmic → cosmic-dusk"
+assert_contains "$test_root/.config/hypr/hyprpaper.conf" "path = $default_path"
+
+# Exact associated slugs remain unchanged, the former Everforest alias now
+# resolves to the canonical slug, and unrelated names retain pass-through
+# behavior.
+[[ "$(resolve_theme_slug gruvbox)" == "gruvbox" ]] \
+  || fail "an exact associated theme did not remain unchanged"
+[[ "$(resolve_theme_slug everforest)" == "everforest-dark-medium" ]] \
+  || fail "the Everforest prefix did not resolve to the canonical theme"
+[[ "$(resolve_theme_slug unknown-theme)" == "unknown-theme" ]] \
+  || fail "a non-associated theme did not pass through unchanged"
+
+cp "$test_root/.config/hypr/hyprpaper.conf" "$test_root/before-ambiguous.conf"
+if run_set_theme c > "$test_root/ambiguous.out" 2>&1; then
+  fail "an ambiguous theme prefix was accepted"
+fi
+cmp -s "$test_root/before-ambiguous.conf" "$test_root/.config/hypr/hyprpaper.conf" \
+  || fail "an ambiguous theme prefix partially changed the Hyprpaper config"
+assert_contains "$test_root/ambiguous.out" \
+  "Theme prefix 'c' is ambiguous: catppuccin-mocha, cosmic-dusk"
 
 run_set_theme cosmic-dusk --wallpaper custom.photo > "$test_root/override.out"
 override_path="$test_root/Pictures/Wallpaper/custom.photo.jpg"

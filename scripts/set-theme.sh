@@ -19,6 +19,9 @@ usage() {
   cat <<'EOF'
 Usage: set-theme <theme-slug> [options]
 
+Wallpaper-associated themes accept a unique slug prefix, such as "cosmic"
+for "cosmic-dusk".
+
 Options:
   -w, --wallpaper <name-or-path>  Override the theme's associated wallpaper.
                                   An extension is optional for files in
@@ -134,6 +137,11 @@ if [[ -z "$slug" ]]; then
   exit 0
 fi
 
+requested_slug="$slug"
+if ! slug=$(resolve_theme_slug "$requested_slug"); then
+  exit 2
+fi
+
 wallpaper_request="${theme_wallpapers[$slug]:-}"
 (( wallpaper_override_set )) && wallpaper_request="$wallpaper_override"
 wallpaper_path=""
@@ -182,6 +190,9 @@ skipped=()
 reload=()
 
 echo "Switching all apps to: $title ($slug)"
+if [[ "$requested_slug" != "$slug" ]]; then
+  echo "  matched theme prefix: $requested_slug → $slug"
+fi
 
 # --- Ghostty ---
 config="$HOME/.config/ghostty/config"
