@@ -34,6 +34,7 @@ local M = {}
 -- Defaults; setup() may override the directory.
 local session_dir = wezterm.home_dir .. '/.local/share/wezterm'
 local session_file = session_dir .. '/session.json'
+local restored_local_domain = nil
 
 -- Floor on how often the layout is written. WezTerm has no "about to quit" hook,
 -- so the saved state is only ever this stale — the tradeoff is between losing a
@@ -225,8 +226,15 @@ end
 local function spawn_args_for(pane_state)
   local args = { cwd = pane_state.cwd }
   if pane_state.args then args.args = pane_state.args end
-  if domain_is_spawnable(pane_state.domain) then
-    args.domain = { DomainName = pane_state.domain }
+  -- Existing Linux snapshots name the built-in local domain. When pane
+  -- scheduling is enabled, migrate those panes into its ExecDomain on restore;
+  -- otherwise they would inherit the high-priority GUI scope indefinitely.
+  local domain_name = pane_state.domain
+  if domain_name == 'local' and restored_local_domain then
+    domain_name = restored_local_domain
+  end
+  if domain_is_spawnable(domain_name) then
+    args.domain = { DomainName = domain_name }
   end
   return args
 end
@@ -336,6 +344,7 @@ end
 -- ---------- wiring ----------
 
 -- opts.dir: directory to hold session.json (defaults to ~/.local/share/wezterm).
+-- opts.local_domain: replacement domain for legacy snapshots named "local".
 function M.setup(opts)
   opts = opts or {}
   if opts.dir then
@@ -343,6 +352,7 @@ function M.setup(opts)
     session_file = session_dir .. '/session.json'
   end
   if opts.save_interval then SAVE_INTERVAL = opts.save_interval end
+  restored_local_domain = opts.local_domain
 
   -- gui-startup fires once, before the default window is spawned. Creating panes
   -- here suppresses that default window; creating none lets it happen as usual —

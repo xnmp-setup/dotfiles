@@ -113,7 +113,7 @@ local dir = ((os.getenv('TMPDIR') or '/tmp'):gsub('/+$', ''))
   .. '/sessionstore-test-' .. os.time() .. '-' .. math.random(1, 1e6)
 os.execute('mkdir -p ' .. dir)
 local session_file = dir .. '/session.json'
-sessionstore.setup { dir = dir }
+sessionstore.setup { dir = dir, local_domain = 'cpu-limited' }
 
 local function saved_bytes()
   local fh = io.open(session_file, 'r')
@@ -325,9 +325,13 @@ do
   local restored_tab, active_pane = sessionstore.restore_tab(target_window, snapshot)
   eq('restore-single/tab returned', restored_tab, new_tab)
   eq('restore-single/base cwd', spawned_args.cwd, '/repo')
+  eq('restore-single/base local domain migrated',
+    spawned_args.domain.DomainName, 'cpu-limited')
   eq('restore-single/base resume command', table.concat(spawned_args.args, ' '),
     'codex resume 12345678-1234-4abc-9def-1234567890ab')
   eq('restore-single/split cwd', split_args.cwd, '/repo/docs')
+  eq('restore-single/split local domain migrated',
+    split_args.domain.DomainName, 'cpu-limited')
   eq('restore-single/plain split is shell', split_args.args, nil)
   eq('restore-single/active pane returned', active_pane.id, 'split')
   eq('restore-single/title', title, 'restored agent')

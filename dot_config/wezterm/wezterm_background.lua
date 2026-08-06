@@ -1,6 +1,7 @@
 -- Persistent background tabs backed by one unix mux domain per tab.
 local wezterm = require 'wezterm'
 local act = wezterm.action
+local scheduling = require 'wezterm_scheduling'
 
 local M = {}
 
@@ -58,12 +59,20 @@ function M.setup(config)
   local function bg_serve_command(name)
     local sock = BG_SOCK_DIR .. '/' .. name .. '.sock'
     local pidf = BG_SOCK_DIR .. '/' .. name .. '.pid'
-    return {
+    local command = {
       BG_MUX_BIN, '--daemonize', '--skip-config',
       '--config', "unix_domains={{name='" .. name .. "',socket_path='" .. sock .. "'}}",
       '--config', "default_domain='" .. name .. "'",
       '--config', "daemon_options={pid_file='" .. pidf .. "'}",
     }
+    -- The GUI runs at high CPU weight. Move the mux server and its background
+    -- pane processes back to the low workload weight instead of inheriting it.
+    return scheduling.scope_command(command, {
+      cpu_weight = scheduling.PANE_CPU_WEIGHT,
+      description = 'WezTerm background domain ' .. name,
+      same_dir = false,
+      unit = 'wezterm-' .. name,
+    })
   end
 
   if BG_ENABLED then

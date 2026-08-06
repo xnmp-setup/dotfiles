@@ -10,6 +10,7 @@
 
 local nary = require("nary")
 local host_capabilities = require("host_capabilities")
+local wezterm_launcher = require("wezterm_launcher")
 local is_laptop = host_capabilities.has_battery()
 
 local theme           = require("theme")
@@ -263,7 +264,7 @@ hl.on("hyprland.start", function()
     hl.exec_cmd("sh -c 'ls -d /sys/class/power_supply/BAT* >/dev/null 2>&1 && exec hypridle'")
     -- scratchpad-autohide.sh and imv-splash.sh are gone: both tailed the event
     -- socket through socat to react to focus, which is an `hl.on` handler now.
-    hl.exec_cmd("wezterm", { workspace = "1" })
+    hl.exec_cmd(wezterm_launcher.launch, { workspace = "1" })
     hl.exec_cmd("google-chrome-stable", { workspace = "1" })
     -- Obsidian is launched by the startup pairing module, once Chrome's
     -- window is up, so the two land next to each other and can be tabbed.
@@ -326,7 +327,7 @@ terminal_groups.new(hl, {
 local mainMod = "SUPER"
 
 -- Tools
-hl.bind(mainMod .. " + RETURN",   hl.dsp.exec_cmd("wezterm"))
+hl.bind(mainMod .. " + RETURN",   hl.dsp.exec_cmd(wezterm_launcher.launch))
 hl.bind(mainMod .. " + SPACE",    hl.dsp.exec_cmd("vicinae toggle"))
 -- lock.sh, not hyprlock directly: it wraps the lock to expire the cached sudo
 -- ticket on the way out. Safe everywhere — where the sudo side of that rule
@@ -483,8 +484,8 @@ hl.bind("F1", expose.toggle)
 hl.bind("F3", app_switcher.toggle({
     name = "wezterm",
     classes = { ["org.wezfurlong.wezterm"] = true },
-    launch = "wezterm",
-    new_window = "wezterm start",
+    launch = wezterm_launcher.launch,
+    new_window = wezterm_launcher.new_window,
 }))
 hl.bind("F4", app_switcher.toggle({
     name = "obsidian",

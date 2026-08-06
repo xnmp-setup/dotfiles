@@ -5,6 +5,7 @@
 local wezterm = require 'wezterm'
 local config = wezterm.config_builder()
 local recent_tabs_log = require 'wezterm_recent_tabs_log'
+local scheduling = require 'wezterm_scheduling'
 
 recent_tabs_log.emit('config.loaded', {
   config = wezterm.config_file or 'unknown',
@@ -20,7 +21,10 @@ local output = require('wezterm_output').setup()
 -- Restore normal panes from the last GUI session. Background panes are excluded
 -- because their dedicated mux domains already outlive the GUI.
 local sessionstore = require 'sessionstore'
-sessionstore.setup { dir = background.socket_dir }
+sessionstore.setup {
+  dir = background.socket_dir,
+  local_domain = scheduling.pane_domain(),
+}
 
 local agent = require('wezterm_agent').setup { log = recent_tabs_log.emit }
 local recent_tabs = require('wezterm_recent_tabs').setup {
@@ -34,6 +38,7 @@ local close = require('wezterm_close').setup {
 }
 local appearance = require 'wezterm_appearance'
 appearance.apply(config)
+scheduling.apply(config)
 require('wezterm_links').setup(config)
 
 require('wezterm_keybindings').apply(config, {

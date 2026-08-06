@@ -18,6 +18,7 @@
 -- SUPER chords would never reach the nested session.
 
 require("nary")
+local wezterm_launcher = require("wezterm_launcher")
 
 hl.monitor({ output = "", mode = "preferred", position = "auto", scale = 1 })
 
@@ -41,7 +42,7 @@ local mainMod = "ALT"
 
 -- Spawn windows to play with. Each gets a distinct title so you can tell which
 -- one you are moving.
-hl.bind(mainMod .. " + RETURN", hl.dsp.exec_cmd("wezterm"))
+hl.bind(mainMod .. " + RETURN", hl.dsp.exec_cmd(wezterm_launcher.launch))
 hl.bind(mainMod .. " + Q",      hl.dsp.window.close())
 
 -- Focus
