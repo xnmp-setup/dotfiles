@@ -17,8 +17,3 @@
 .window tabbar tab:not(:selected) label {
   opacity: 0.5;
 }
-
-/* Keep the titlebar color stable when libadwaita marks the window inactive. */
-.window {
-  --headerbar-backdrop-color: var(--headerbar-bg-color);
-}
