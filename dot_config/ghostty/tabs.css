@@ -17,3 +17,8 @@
 .window tabbar tab:not(:selected) label {
   opacity: 0.5;
 }
+
+/* Keep tab chrome equally legible when libadwaita marks the window inactive. */
+.window tabbar .box:backdrop > scrolledwindow {
+  filter: none;
+}
