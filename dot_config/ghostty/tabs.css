@@ -18,7 +18,7 @@
   opacity: 0.5;
 }
 
-/* Keep tab chrome equally legible when libadwaita marks the window inactive. */
-.window tabbar .box:backdrop > scrolledwindow {
-  filter: none;
+/* Keep the titlebar color stable when libadwaita marks the window inactive. */
+.window {
+  --headerbar-backdrop-color: var(--headerbar-bg-color);
 }
