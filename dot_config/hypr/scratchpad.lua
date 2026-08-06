@@ -116,12 +116,10 @@ local function new(hl, window_actions)
     -- Geometry
     --------------------------------------------------------------------------------
 
-    -- A pad pinned with `monitor = "builtin"` always appears in the same physical
-    -- place: the laptop panel, or on a machine that has none the first output
-    -- Hyprland reports. Both are properties of the hardware rather than of a named
-    -- machine, so the rule survives docking, undocking and a desktop with only
-    -- external displays. Any other pad follows focus, which is what the
-    -- special-workspace model implies — summoned where you already are.
+    -- A pad can be pinned to the primary display, built-in panel, or a named output.
+    -- The primary display is the monitor assigned to workspace 1, which this config
+    -- declares as its default workspace. Unavailable targets fall back to the focused
+    -- monitor. A pad without a target follows focus.
     local function is_builtin(monitor)
         local name = monitor.name or ""
         return name:match("^eDP") or name:match("^LVDS") or name:match("^DSI")
@@ -136,8 +134,28 @@ local function new(hl, window_actions)
         return first
     end
 
+    local function primary_monitor()
+        local workspace = hl.get_workspace and hl.get_workspace(1)
+        if workspace and workspace.monitor then return workspace.monitor end
+
+        -- Workspace 1 can briefly be absent while outputs are being reconciled. Its
+        -- active monitor still gives us the same answer without coupling to a name.
+        for _, monitor in ipairs(hl.get_monitors() or {}) do
+            local active = monitor.active_workspace
+            if active and active.id == 1 then return monitor end
+        end
+    end
+
     local function target_monitor(pad)
         if pad.monitor == "builtin" then return builtin_monitor() end
+        if pad.monitor == "primary" then
+            return primary_monitor() or hl.get_active_monitor()
+        end
+        if pad.monitor then
+            for _, monitor in ipairs(hl.get_monitors() or {}) do
+                if monitor.name == pad.monitor then return monitor end
+            end
+        end
         return hl.get_active_monitor()
     end
 
@@ -317,8 +335,8 @@ local function new(hl, window_actions)
     ---
     --- `w`/`h`/`gap` are a share of the monitor at 0..1 and logical pixels above it.
     --- Optional `max_w`/`max_h` cap the resolved size using the same units.
-    --- `anchor` is "top" or, by default, centred. `monitor = "builtin"` pins the pad
-    --- to the laptop panel instead of following focus.
+    --- `anchor` is "top" or, by default, centred. `monitor` pins the pad to a named
+    --- output; "primary" selects workspace 1's monitor and "builtin" the laptop panel.
     --- @param name string   also the special workspace it is parked in
     --- @param spec table    { class, cmd, w, h, max_w?, max_h?, anchor?, gap?, monitor?, isolate? }
     function M.define(name, spec)

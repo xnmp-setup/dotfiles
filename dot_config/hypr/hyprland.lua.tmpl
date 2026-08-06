@@ -520,7 +520,7 @@ hl.bind("F10", app_switcher.toggle({
 -- Drop-downs: parked in a special workspace, summoned onto whatever workspace
 -- is in front of you, dismissed by the same key or by focusing anything else.
 -- By default they are centred on the focused monitor; see scratchpad.define for
--- anchoring and for pinning one to the built-in panel.
+-- anchoring and for pinning one to a specific output.
 
 scratchpad.define("chrome-drop", {
     class = "google-chrome",
@@ -532,14 +532,13 @@ scratchpad.define("ytmusic", {
     cmd   = "youtube-music-desktop-app",
     w     = 1400, h = 900,
 })
--- Drops from the top of the built-in panel, sized as a share of it, so the same
--- definition holds on the laptop alone and with an external display attached.
+-- Drops from the top of the primary display (the monitor assigned to workspace 1).
 scratchpad.define("ghostty-drop", {
     class = "com.mitchellh.ghostty",
     cmd   = "ghostty",
     w     = 0.8, h = 0.7, max_w = 1600,
     anchor = "top", gap = 12,
-    monitor = "builtin",
+    monitor = "primary",
     isolate = true,
 })
 scratchpad.define("lite-xl", {

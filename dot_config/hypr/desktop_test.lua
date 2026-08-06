@@ -119,6 +119,13 @@ local function fake_runtime(spec)
             active_monitor.active_special_workspace = special_workspace
             return spec.monitors or { active_monitor }
         end,
+        get_workspace = function(selector)
+            for _, workspace in ipairs(spec.workspaces or { normal_workspace }) do
+                if workspace.id == selector or workspace.name == tostring(selector) then
+                    return workspace
+                end
+            end
+        end,
         get_windows = function() return windows end,
         monitor = function(value) monitors[#monitors + 1] = value end,
         on = function(event, callback)
@@ -1344,6 +1351,57 @@ do
     equal("a top-anchored pad hangs from the top edge by its gap", at.y, 1452)
     check("a pinned pad is placed on the panel, not the focused monitor",
         at.y >= panel.y and at.y + size.y <= panel.y + panel.height)
+end
+
+do
+    -- The primary workspace stays authoritative even when another monitor has focus.
+    local primary_ws = { id = 1, name = "1" }
+    local other_ws = { id = 6, name = "6" }
+    local special = { id = -94, name = "special:ghostty-drop" }
+    local pad = window("pad", "com.mitchellh.ghostty", special)
+    local ultrawide = monitor({
+        id = 0, name = "DP-2", width = 3440, height = 1440,
+        workspace = primary_ws,
+    })
+    local panel = monitor({
+        id = 1, name = "eDP-1", y = 1440, width = 1920, height = 1200,
+        focused = true, workspace = other_ws,
+    })
+    primary_ws.monitor = ultrawide
+    other_ws.monitor = panel
+
+    local hl, control = fake_runtime({
+        active_monitor = panel,
+        monitors = { ultrawide, panel },
+        workspaces = { primary_ws, other_ws },
+        windows = { pad },
+        workspace = other_ws,
+    })
+    local scratchpad = scratchpads.new(hl, window_actions.new(hl))
+    scratchpad.define("ghostty-drop", {
+        class = "com.mitchellh.ghostty",
+        cmd = "ghostty",
+        w = 0.8, h = 0.7, max_w = 1600,
+        anchor = "top", gap = 12,
+        monitor = "primary",
+    })
+
+    scratchpad.toggle("ghostty-drop")
+    local size = last_dispatch(control, "resize")
+    local at = last_dispatch(control, "move")
+    equal("the primary display determines scratchpad width", size.x, 1600)
+    equal("the primary display determines scratchpad height", size.y, 1008)
+    equal("the primary display determines scratchpad position", at.x, 920)
+    equal("the primary display determines scratchpad top edge", at.y, 12)
+    local focused_monitor
+    for _, dispatch in ipairs(control.dispatches) do
+        local args = dispatch.args or {}
+        if dispatch.kind == "focus" and args.monitor then
+            focused_monitor = args.monitor
+        end
+    end
+    equal("a primary scratchpad focuses the primary display",
+        focused_monitor, ultrawide)
 end
 
 do
