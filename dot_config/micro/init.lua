@@ -1,5 +1,6 @@
 local micro = import("micro")
 local buffer = import("micro/buffer")
+local util = import("micro/util")
 
 function toggleWrap(bp)
     local on = not bp.Buf.Settings["softwrap"]
@@ -193,6 +194,85 @@ function expandSelection(bp)
     c:GotoLoc(buffer.Loc(target[4], target[3]))
     c:Relocate()
     bp:Relocate()
+    return true
+end
+
+-- VSCode-style find: Ctrl-f opens the prompt, Enter jumps to the next match
+-- while the prompt stays open, Esc leaves it with the cursor on the current
+-- match. Micro's built-in Find closes the prompt on Enter, but DonePrompt
+-- resets the infobar state before invoking the done-callback, so the callback
+-- can re-open the prompt with the same query and keep the loop going.
+
+-- Loc fields reached through the cursor alias live Go state; copy before
+-- storing across callbacks.
+local function locCopy(l)
+    return buffer.Loc(l.X, l.Y)
+end
+
+local function selectMatch(bp, match)
+    bp.Cursor:SetSelectionStart(match[1])
+    bp.Cursor:SetSelectionEnd(match[2])
+    bp:GotoLoc(match[2])
+end
+
+local function findPrompt(bp, pattern, origin, selectInput)
+    local lastText = pattern
+
+    -- Fires on every edit of the prompt text: incremental search anchored at
+    -- origin, with all matches highlighted while the prompt is open.
+    local eventcb = function(resp)
+        lastText = resp
+        bp.Buf.LastSearch = resp
+        bp.Buf.LastSearchRegex = false
+        bp.Buf.HighlightSearch = resp ~= ""
+        local match, found = bp.Buf:FindNext(resp, bp.Buf:Start(), bp.Buf:End(), origin, true, false)
+        if found then
+            selectMatch(bp, match)
+        else
+            bp:GotoLoc(origin)
+            bp.Cursor:ResetSelection()
+        end
+    end
+
+    local donecb = function(resp, canceled)
+        if canceled or resp == "" then
+            -- Keep the cursor on the current match; highlights revert to the
+            -- hlsearch setting once the prompt closes. LastSearch stays
+            -- committed so FindNext (Alt-f) continues from here.
+            bp.Buf.LastSearch = lastText
+            bp.Buf.LastSearchRegex = false
+            bp.Buf.HighlightSearch = bp.Buf.Settings["hlsearch"] == true and lastText ~= ""
+            return
+        end
+        -- Enter: advance to the next match, searching from the end of the
+        -- current one, then re-open the prompt (wraps around like FindNext).
+        local from = locCopy(bp.Cursor.Loc)
+        if bp.Cursor:HasSelection() then
+            from = locCopy(bp.Cursor.CurSelection[2])
+        end
+        local match, found = bp.Buf:FindNext(resp, bp.Buf:Start(), bp.Buf:End(), from, true, false)
+        local nextOrigin = origin
+        if found then
+            selectMatch(bp, match)
+            nextOrigin = locCopy(match[1])
+        end
+        findPrompt(bp, resp, nextOrigin, false)
+    end
+
+    micro.InfoBar():Prompt("Find: ", pattern, "Find", eventcb, donecb)
+    if selectInput and pattern ~= "" then
+        micro.InfoBar():SelectAll()
+    end
+end
+
+function vsFind(bp)
+    local pattern = ""
+    local origin = locCopy(bp.Cursor.Loc)
+    if bp.Cursor:HasSelection() then
+        pattern = util.String(bp.Cursor:GetSelection())
+        origin = locCopy(bp.Cursor.CurSelection[1])
+    end
+    findPrompt(bp, pattern, origin, true)
     return true
 end
 
