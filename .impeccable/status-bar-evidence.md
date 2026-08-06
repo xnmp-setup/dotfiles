@@ -11,7 +11,7 @@ Hyprland monitor.
 | Active workspace | Distinguishable by stronger fill and a bottom accent, not color alone. |
 | Rename workspace | Right-click any workspace and choose `Rename workspace`; no hover popup competes with the click target. The menu shows the `Alt+F2` shortcut reminder and dismisses on Escape, outside press, or focus moving to another application. `Alt+F2` edits the focused workspace. Renaming happens inline inside the workspace control, is prefilled and selected, submits with Enter, cancels with Escape or focus loss, limits names to 32 characters, and uses empty input to reset to the numeric ID. |
 | Terminal window | Show the terminal icon and number of tabs for both WezTerm and Ghostty OS windows. WezTerm uses its pane-list API; Ghostty uses the GTK AT-SPI tab hierarchy. |
-| Agent sessions | Show per-workspace running Claude and Codex session counts across WezTerm and Ghostty. Claude uses the supplied logo asset; Codex uses the actual OpenAI knot mark. Omit zero counts. Invisible terminal-specific identity tags and stable one-to-one assignment prevent duplicate visible titles from merging windows. |
+| Agent sessions | Show per-workspace running Claude and Codex session counts across WezTerm and Ghostty. Claude uses the supplied logo asset; Codex uses the actual OpenAI knot mark. Omit zero counts. Enumerate every active WezTerm GUI mux socket, namespace its window IDs by GUI process, and use stable one-to-one assignment so duplicate local IDs or visible titles cannot merge windows. |
 | Clock | Center `HH:mm` and an abbreviated weekday/date. Read-only. |
 | Telemetry | Show CPU, RAM, disk I/O busy-time, and GPU as percentages in fixed label/value columns. Disk I/O is the busiest physical disk's busy-time over the trailing 30 seconds; the tooltip carries the device and read/write rates. Values below 50% use normal text, 50–75% use Gruvbox yellow, and values above 75% use Gruvbox red. |
 | AI quota | Append Claude Code and Codex as individual horizontal metric cells at the far right. Each shows consumed weekly quota and a live reset countdown inline; tooltips retain the exact reset time and secondary window. Claude's five-hour quota remains available in its tooltip. Values below 75% use normal text, 75–89% yellow, and 90%+ red. At the unsupported 1920 px maximum-telemetry extreme, the two cells compact to provider mark plus percentage and retain reset details in tooltips. |
@@ -160,7 +160,7 @@ PanelWindow. Set `STATUSBAR_CANDIDATE=instrument` to run Candidate A; Candidate 
 
 | Category | A: instrument | B: segmented | Evidence |
 | --- | ---: | ---: | --- |
-| Functional contract | Pass | Pass | 26 Python + 14 QML tests plus rename-helper integration; live IPC and event checks |
+| Functional contract | Pass | Pass | 36 Python + 18 QML tests plus rename-helper integration; live IPC and event checks |
 | Composition and geometry | 4/5 | 5/5 | `candidate-a-instrument-fixed.png`, final captures |
 | Typography | 4/5 | 4/5 | Inter + JetBrains Mono at locked sizes |
 | Material, color, and depth | 2/5 | 5/5 | A predates thematic correction; B consumes Hypr palette |
@@ -202,7 +202,7 @@ the active Hyprland theme.
 - F9 reservation behavior: the reserved-aware scratchpad assertions pass for
   both a 40 px visible reservation (y=52) and a hidden reservation (y=12).
 - Impeccable detector: no findings.
-- Behavior tests: 34 Python tests plus 18 QML contract tests and the workspace
+- Behavior tests: 36 Python tests plus 18 QML contract tests and the workspace
   rename integration suite passed. The Python
   suite covers Ghostty bulk AT-SPI parsing, tab and agent extraction, live-title
   compatibility, malformed/huge payloads, transient discovery failure, and
@@ -221,8 +221,8 @@ the active Hyprland theme.
   focus-grab activation, active `TextInput` focus, and Escape dismissal were
   also verified live with a real Wayland key event. Pyrefly: 0 errors. Lua
   template: syntax valid.
-- Current source-manifest SHA-256: `68885f51625a131db6a144fc0a38b0d18620ae5838fed4f584ec5896c02ac3ec`
-  on Git base `ffc5e0d`.
+- Current source-manifest SHA-256: `f9cb5803e260360bce4db001fc2f653d63f51fba075227e048e55ccf24cc1630`
+  on Git base `1467683`.
   Reproduce it with:
   `sha256sum dot_config/quickshell/statusbar/*.qml dot_config/quickshell/statusbar/*.js dot_config/quickshell/statusbar/assets/* dot_claude/executable_statusline.sh dot_local/lib/ai_usage_stream.py dot_local/lib/ghostty_status.py dot_local/lib/hypr_status_stream.py dot_local/bin/executable_ai-usage-stream dot_local/bin/executable_hypr-status-stream dot_local/bin/executable_rename-hypr-workspace dot_config/hypr/scratchpad.lua dot_config/hypr/hyprland.lua.tmpl dot_config/hypr/desktop_test.lua dot_config/wezterm/wezterm_window_identity.lua dot_config/wezterm/wezterm_windowing.lua scripts/test_ai_usage_stream.py scripts/test_hypr_status_stream.py scripts/rename-hypr-workspace.test.sh scripts/tst_statusbar.qml .impeccable/fixtures/statusbar_ai_usage.py .impeccable/fixtures/statusbar_laptop_hot.py | sha256sum`.
 

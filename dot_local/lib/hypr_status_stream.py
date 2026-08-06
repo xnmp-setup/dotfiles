@@ -89,6 +89,8 @@ PHYSICAL_DISK_EXCLUDES = ("loop", "ram", "zram", "dm-", "md")
 CPU_HWMON_NAMES = frozenset({"coretemp", "k10temp", "zenpower"})
 GPU_HWMON_NAMES = frozenset({"amdgpu", "nouveau", "nvidia"})
 HOT_TEMPERATURE_C = 75
+MAX_WEZTERM_INSTANCES = 64
+MAX_WEZTERM_PANES = 1024
 TITLE_PREFIX = re.compile(r"^(?:\[Z\]\s+)?(?:\[\d+/(\d+)\]\s+)?")
 WEZTERM_WINDOW_TAG = re.compile(r"([\U000e0020-\U000e007e]+)\U000e007f$")
 THEME_KEYS = (
@@ -350,6 +352,26 @@ def normalize_tty(tty: str) -> str:
     return tty if tty.startswith("/dev/") else f"/dev/{tty}"
 
 
+def positive_integer(value: object) -> int | None:
+    if isinstance(value, (bool, float)):
+        return None
+    try:
+        number = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return number if 0 < number <= 2_147_483_647 else None
+
+
+def nonnegative_integer(value: object) -> int | None:
+    if isinstance(value, (bool, float)):
+        return None
+    try:
+        number = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return number if 0 <= number <= 2_147_483_647 else None
+
+
 def agent_counts_by_tty(processes: Iterable[AgentProcess]) -> dict[str, dict[str, int]]:
     counts: dict[str, dict[str, int]] = defaultdict(lambda: {"claude": 0, "codex": 0})
     for process in processes:
@@ -361,14 +383,14 @@ def agent_counts_by_tty(processes: Iterable[AgentProcess]) -> dict[str, dict[str
 def wezterm_windows(
     rows: Sequence[Mapping[str, Any]], tty_counts: Mapping[str, Mapping[str, int]]
 ) -> list[JsonObject]:
-    grouped: dict[int, list[Mapping[str, Any]]] = defaultdict(list)
-    for row in rows:
-        try:
-            grouped[int(row["window_id"])].append(row)
-        except (KeyError, TypeError, ValueError):
+    grouped: dict[tuple[int | None, int], list[Mapping[str, Any]]] = defaultdict(list)
+    for row in rows[:MAX_WEZTERM_PANES]:
+        window_id = nonnegative_integer(row.get("window_id"))
+        if window_id is None:
             continue
+        grouped[(positive_integer(row.get("gui_pid")), window_id)].append(row)
     result: list[JsonObject] = []
-    for window_id, panes in grouped.items():
+    for (gui_pid, window_id), panes in grouped.items():
         tab_ids = {pane.get("tab_id") for pane in panes}
         counts = {"claude": 0, "codex": 0}
         titles: set[str] = set()
@@ -382,6 +404,7 @@ def wezterm_windows(
                 counts[kind] += int(pane_counts.get(kind, 0))
         result.append(
             {
+                "guiPid": gui_pid,
                 "windowId": window_id,
                 "tabs": max(1, len(tab_ids)),
                 "titles": sorted(titles, key=len, reverse=True),
@@ -425,56 +448,134 @@ def assign_wezterm_windows(
     previous_clients: Mapping[str, Mapping[str, Any]],
 ) -> dict[str, Mapping[str, Any]]:
     """Assign each mux window at most once, preferring stable title identities."""
+
+    def identity(window: Mapping[str, Any]) -> tuple[int | None, int] | None:
+        window_id = nonnegative_integer(window.get("windowId"))
+        if window_id is None:
+            return None
+        return (positive_integer(window.get("guiPid")), window_id)
+
     available = {
-        int(window["windowId"]): window
+        key: window
         for window in windows
-        if isinstance(window.get("windowId"), int)
+        if (key := identity(window)) is not None
     }
     assigned: dict[str, Mapping[str, Any]] = {}
     ordered = sorted(clients, key=lambda client: str(client.get("address", "")))
 
-    def claim(client: Mapping[str, Any], window_id: int | None) -> bool:
+    def candidate_keys(client: Mapping[str, Any]) -> list[tuple[int | None, int]]:
+        gui_pid = positive_integer(client.get("pid"))
+        exact = [key for key in available if key[0] == gui_pid]
+        if gui_pid is not None and exact:
+            return exact
+        legacy = [key for key in available if key[0] is None]
+        if legacy:
+            return legacy
+        return list(available) if gui_pid is None else []
+
+    def claim(
+        client: Mapping[str, Any], key: tuple[int | None, int] | None
+    ) -> bool:
         address = str(client.get("address", ""))
-        if not address or window_id is None or window_id not in available:
+        if not address or key is None or key not in available:
             return False
-        assigned[address] = available.pop(window_id)
+        assigned[address] = available.pop(key)
         return True
 
     pending: list[Mapping[str, Any]] = []
     for client in ordered:
         title = str(client.get("title", ""))
-        if claim(client, wezterm_window_id_from_title(title)):
+        tagged_id = wezterm_window_id_from_title(title)
+        tagged = [key for key in candidate_keys(client) if key[1] == tagged_id]
+        if len(tagged) == 1 and claim(client, tagged[0]):
             continue
         previous = previous_clients.get(str(client.get("address", "")), {})
-        try:
-            previous_id = int(previous.get("weztermWindowId"))
-        except (TypeError, ValueError):
-            previous_id = None
-        if not claim(client, previous_id):
+        previous_id = nonnegative_integer(previous.get("weztermWindowId"))
+        previous_gui = positive_integer(previous.get("weztermGuiPid"))
+        if previous_gui is None:
+            previous_gui = positive_integer(client.get("pid"))
+        previous_key = (
+            (previous_gui, previous_id) if previous_id is not None else None
+        )
+        if not claim(client, previous_key):
             pending.append(client)
 
     # Untagged legacy windows get a deterministic one-to-one fallback. It keeps
     # aggregate counts correct and stops two identical titles from consuming the
     # same mux window while WezTerm reloads the tagged title formatter.
     for client in pending:
-        if not available:
-            break
+        available_keys = candidate_keys(client)
+        if not available_keys:
+            continue
         title = str(client.get("title", ""))
-        matched = match_wezterm_window(title, list(available.values()))
+        matched = match_wezterm_window(
+            title, [available[key] for key in available_keys]
+        )
         if matched is not None:
-            claim(client, int(matched["windowId"]))
+            claim(client, identity(matched))
             continue
         tabs = parse_tab_count(title)
-        candidates = sorted(
+        tab_matches = sorted(
             (
-                window_id
-                for window_id, window in available.items()
+                key
+                for key in available_keys
+                if (window := available.get(key)) is not None
                 if int(window.get("tabs", 1)) == tabs
-            )
+            ),
+            key=lambda key: (key[0] or 0, key[1]),
         )
-        if candidates:
-            claim(client, candidates[0])
+        if tab_matches:
+            claim(client, tab_matches[0])
     return assigned
+
+
+def default_runtime_root() -> Path:
+    value = os.environ.get("XDG_RUNTIME_DIR", "")
+    return Path(value) if value.startswith("/") else Path(f"/run/user/{os.getuid()}")
+
+
+def wezterm_list_targets(
+    clients: Sequence[Mapping[str, Any]], runtime_root: Path
+) -> list[tuple[int | None, tuple[str, ...]]]:
+    wezterm_clients = [
+        client for client in clients if is_wezterm_class(str(client.get("class", "")))
+    ]
+    gui_pids = sorted(
+        {
+            pid
+            for client in wezterm_clients
+            if (pid := positive_integer(client.get("pid"))) is not None
+        }
+    )[:MAX_WEZTERM_INSTANCES]
+    base = ("wezterm", "cli", "list", "--format", "json")
+    if not gui_pids:
+        return [(None, base)] if wezterm_clients else []
+    return [
+        (
+            pid,
+            (
+                "env",
+                f"WEZTERM_UNIX_SOCKET={runtime_root / 'wezterm' / f'gui-sock-{pid}'}",
+                *base,
+            ),
+        )
+        for pid in gui_pids
+    ]
+
+
+def query_wezterm_rows(
+    clients: Sequence[Mapping[str, Any]],
+    runtime_root: Path,
+    runner: CommandRunner,
+) -> list[Mapping[str, Any]]:
+    rows: list[Mapping[str, Any]] = []
+    for gui_pid, command in wezterm_list_targets(clients, runtime_root):
+        parsed = try_parse_json_array(runner(command))
+        if parsed is None:
+            continue
+        for row in parsed[:MAX_WEZTERM_PANES]:
+            rows.append({**row, "gui_pid": gui_pid})
+    return rows[:MAX_WEZTERM_PANES]
 
 
 def icon_name_for(app_class: str) -> str:
@@ -578,6 +679,9 @@ def build_workspaces(
                 for field in ("tabs", "claude", "codex"):
                     app[field] = int(matched.get(field, app[field]))
                 app["weztermWindowId"] = int(matched["windowId"])
+                gui_pid = positive_integer(matched.get("guiPid"))
+                if gui_pid is not None:
+                    app["weztermGuiPid"] = gui_pid
             else:
                 stale = previous_clients.get(app["address"])
                 if stale:
@@ -643,12 +747,14 @@ class StatusCollector:
         runner: CommandRunner = run_command,
         clock: Callable[[], float] = time.monotonic,
         theme_path: Path | None = None,
+        runtime_root: Path | None = None,
     ) -> None:
         self.proc_root = proc_root
         self.sys_root = sys_root
         self.runner = runner
         self.clock = clock
         self.theme_path = theme_path or Path.home() / ".config/hypr/theme-colors.lua"
+        self.runtime_root = runtime_root or default_runtime_root()
         self.previous_cpu: CpuTimes | None = None
         self.disk_history: deque[DiskSample] = deque()
         self.cached_workspaces: list[JsonObject] = []
@@ -809,16 +915,14 @@ class StatusCollector:
             return self.cached_workspaces
         clients = try_parse_json_array(self.runner(["hyprctl", "-j", "clients"]))
         monitors = try_parse_json_array(self.runner(["hyprctl", "-j", "monitors"]))
-        rows = try_parse_json_array(
-            self.runner(["wezterm", "cli", "list", "--format", "json"])
-        )
         if clients is None or monitors is None:
             return self.cached_workspaces
+        rows = query_wezterm_rows(clients, self.runtime_root, self.runner)
         tty_counts = agent_counts_by_tty(self._agent_processes())
         self.cached_workspaces = build_workspaces(
             clients,
             monitors,
-            wezterm_windows(rows or [], tty_counts),
+            wezterm_windows(rows, tty_counts),
             previous=self.cached_workspaces,
             ghostty=self.ghostty_discovery.windows(clients),
         )

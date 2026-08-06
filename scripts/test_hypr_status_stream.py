@@ -237,6 +237,89 @@ class WorkspaceTest(unittest.TestCase):
         self.assertEqual(workspaces[0]["clients"][0]["tabs"], 3)
         self.assertNotIn("active", workspaces[0])
 
+    def test_multiple_wezterm_guis_keep_duplicate_window_ids_separate(self) -> None:
+        clients = [
+            {
+                "mapped": True,
+                "address": "0x1",
+                "pid": 101,
+                "class": "org.wezfurlong.wezterm",
+                "title": "[1/2] chezmoi",
+                "workspace": {"id": 1},
+                "monitor": 0,
+            },
+            {
+                "mapped": True,
+                "address": "0x2",
+                "pid": 202,
+                "class": "org.wezfurlong.wezterm",
+                "title": "ballast",
+                "workspace": {"id": 2},
+                "monitor": 0,
+            },
+        ]
+        rows_by_socket = {
+            "WEZTERM_UNIX_SOCKET=/run/test/wezterm/gui-sock-101": [
+                {
+                    "window_id": 0,
+                    "tab_id": 1,
+                    "tty_name": "/dev/pts/12",
+                    "title": "chezmoi",
+                },
+                {
+                    "window_id": 0,
+                    "tab_id": 2,
+                    "tty_name": "/dev/pts/13",
+                    "title": "chezmoi",
+                },
+            ],
+            "WEZTERM_UNIX_SOCKET=/run/test/wezterm/gui-sock-202": [
+                {
+                    "window_id": 0,
+                    "tab_id": 1,
+                    "tty_name": "/dev/pts/15",
+                    "title": "ballast",
+                }
+            ],
+        }
+
+        def runner(command: Sequence[str]) -> str:
+            return json.dumps(rows_by_socket.get(command[1], []))
+
+        rows = status.query_wezterm_rows(clients, Path("/run/test"), runner)
+        tty_counts = status.agent_counts_by_tty(
+            [
+                status.AgentProcess("codex", "/dev/pts/12"),
+                status.AgentProcess("codex", "/dev/pts/13"),
+                status.AgentProcess("claude", "/dev/pts/15"),
+            ]
+        )
+        windows = status.wezterm_windows(rows, tty_counts)
+        workspaces = status.build_workspaces(
+            clients, [{"id": 0, "name": "DP-2"}], windows
+        )
+
+        self.assertEqual(workspaces[0]["codex"], 2)
+        self.assertEqual(workspaces[0]["clients"][0]["tabs"], 2)
+        self.assertEqual(workspaces[1]["claude"], 1)
+        self.assertEqual(workspaces[1]["clients"][0]["tabs"], 1)
+        self.assertEqual(
+            [window["guiPid"] for window in windows],
+            [101, 202],
+        )
+
+    def test_wezterm_gui_targets_reject_invalid_pids_and_are_bounded(self) -> None:
+        invalid = [True, -1, float("nan"), float("inf"), 9_999_999_999]
+        clients = [
+            {"class": "org.wezfurlong.wezterm", "pid": pid}
+            for pid in [*invalid, *range(1, 100)]
+        ]
+        targets = status.wezterm_list_targets(clients, Path("/run/test"))
+
+        self.assertEqual(len(targets), status.MAX_WEZTERM_INSTANCES)
+        self.assertEqual(targets[0][0], 1)
+        self.assertEqual(targets[-1][0], status.MAX_WEZTERM_INSTANCES)
+
     def test_ghostty_tabs_and_agents_map_to_the_correct_hypr_window(self) -> None:
         _, _, windows = self.ghostty_fixture()
         self.assertEqual(
