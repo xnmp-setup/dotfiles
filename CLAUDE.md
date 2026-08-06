@@ -3,7 +3,7 @@ DO NOT chezmoi apply without viewing the diff first. DO NOT use --force
 
 ## Portability
 
-These dotfiles are applied on NixOS, Arch, macOS, and WSL/Windows. Any config
+These dotfiles are applied on NixOS, Arch, macOS, and WSL(Ubuntu)/Windows. Any config
 you add must work on all four — a change that assumes one of them is broken on
 the other three.
 
@@ -17,3 +17,6 @@ the other three.
 - Where a config depends on something outside this repo (a NixOS module, a
   package, a system file), say so in a comment, and make the config's behaviour
   when that thing is absent both deliberate and safe.
+
+When making a change, double check that it won't break anything on the other platforms. 
+If it's a high risk change, run an adversarial reviewer to verify this. 
