@@ -7,7 +7,6 @@ local M = {}
 
 function M.apply(config, deps)
   local spawn_tab_next = deps.navigation.spawn_tab_next
-  local tab_nav_across_windows = deps.navigation.tab_nav_across_windows
   local move_tab_to_window = deps.windowing.move_tab_to_window
   local spawn_bg_tab = deps.background.spawn_tab
   local detach_bg_tab = deps.background.detach_tab
@@ -75,8 +74,10 @@ function M.apply(config, deps)
     { key = 't', mods = 'CTRL|ALT', action = spawn_bg_tab() },
     { key = 'w', mods = 'CTRL|SHIFT', action = detach_bg_tab() },
     { key = 'e', mods = 'CTRL|SHIFT', action = reattach_bg_tab() },
-    { key = 'PageUp', mods = 'CTRL', action = tab_nav_across_windows(-1) },
-    { key = 'PageDown', mods = 'CTRL', action = tab_nav_across_windows(1) },
+    -- ActivateTabRelative wraps within the current window, so advancing past
+    -- either end lands on the tab at the opposite end.
+    { key = 'PageUp', mods = 'CTRL', action = act.ActivateTabRelative(-1) },
+    { key = 'PageDown', mods = 'CTRL', action = act.ActivateTabRelative(1) },
 
     -- Text is pasted by WezTerm. For an image clipboard, forward ^V so TUI
     -- applications such as Claude Code and Codex can attach the image directly.

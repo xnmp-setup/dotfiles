@@ -24,7 +24,6 @@ local config = {}
 require('wezterm_keybindings').apply(config, {
   navigation = {
     spawn_tab_next = action_factory('spawn-tab-next'),
-    tab_nav_across_windows = action_factory('tab-nav'),
   },
   windowing = { move_tab_to_window = action_factory('move-tab-to-window') },
   background = {
@@ -68,6 +67,20 @@ end
 eq('ctrl-shift-t/one binding', #matches, 1)
 eq('ctrl-shift-t/restores tab', matches[1] and matches[1].action.kind, 'reopen-tab')
 eq('ctrl-shift-t/action built once', reopened, 1)
+
+local function find_binding(key, mods)
+  for _, binding in ipairs(config.keys or {}) do
+    if binding.key == key and binding.mods == mods then return binding end
+  end
+end
+
+local previous_tab = find_binding('PageUp', 'CTRL')
+eq('ctrl-pageup/wraps to previous tab', previous_tab and previous_tab.action.kind, 'ActivateTabRelative')
+eq('ctrl-pageup/moves left', previous_tab and previous_tab.action.value, -1)
+
+local next_tab = find_binding('PageDown', 'CTRL')
+eq('ctrl-pagedown/wraps to next tab', next_tab and next_tab.action.kind, 'ActivateTabRelative')
+eq('ctrl-pagedown/moves right', next_tab and next_tab.action.value, 1)
 
 io.write(string.format('\n%d passed, %d failed\n', passed, failed))
 os.exit(failed == 0 and 0 or 1)
