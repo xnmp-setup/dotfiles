@@ -1,0 +1,4 @@
+interface:
+  display_name: "Reference-Driven UI"
+  short_description: "Build substantial UI from adversarially reviewed references"
+  default_prompt: "Use $build-reference-matched-ui for a substantial UI build or redesign that warrants generated references, competing implementations, and strict adversarial acceptance."
