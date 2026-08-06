@@ -1239,6 +1239,45 @@ do
         control.active(), obsidian)
 end
 
+do
+    local first_ws = { id = 1, name = "1" }
+    local second_ws = { id = 2, name = "2" }
+    local special = { id = -94, name = "special:ghostty-drop" }
+    local first = window("first", "first-app", first_ws)
+    local second = window("second", "second-app", second_ws)
+    local pad = window("pad", "com.mitchellh.ghostty", special)
+    local monitor = {
+        id = 0,
+        x = 0,
+        y = 0,
+        active_workspace = first_ws,
+        width = 3440,
+        height = 1440,
+        scale = 1,
+    }
+    local hl, control = fake_runtime({
+        active = first,
+        active_monitor = monitor,
+        fallback_on_hide = second,
+        special_workspace = special,
+        windows = { first, second, pad },
+        workspace = first_ws,
+    })
+    local scratchpad = scratchpads.new(hl, window_actions.new(hl))
+    scratchpad.define("ghostty-drop", {
+        class = "com.mitchellh.ghostty",
+        cmd = "ghostty",
+        w = 1600,
+        h = 1000,
+    })
+
+    scratchpad.toggle("ghostty-drop")
+    monitor.active_workspace = second_ws
+    scratchpad.toggle("ghostty-drop")
+    equal("dismissal stays on a workspace selected while the scratchpad was open",
+        control.active(), second)
+end
+
 -- Scratchpad geometry. The sizes below are shares of a monitor rather than pixel
 -- counts, so the same declaration has to land on screens of different sizes — the
 -- failure these replaced was a pad positioned entirely off a smaller display.

@@ -250,8 +250,8 @@ local function new(hl, window_actions)
 
     -- Something on the visible workspace to hand focus to, that is not itself a
     -- scratchpad on its way out.
-    local function focus_fallback(leaving)
-        local ws = visible_workspace()
+    local function focus_fallback(leaving, workspace)
+        local ws = workspace or visible_workspace()
         if not (ws and ws.id) then return nil end
 
         for _, window in ipairs(hl.get_windows() or {}) do
@@ -278,9 +278,17 @@ local function new(hl, window_actions)
     local function hide(name, w, next_focus)
         focused_once[name] = nil
 
+        local workspace = workspace_under(name, w) or visible_workspace()
+        local remembered = window_at(return_focus[name])
+        if not (remembered and remembered.workspace and workspace
+            and remembered.workspace.id == workspace.id)
+        then
+            remembered = nil
+        end
+
         local restore = next_focus
-            or window_at(return_focus[name])
-            or focus_fallback(w.address)
+            or remembered
+            or focus_fallback(w.address, workspace)
         return_focus[name] = nil
 
         if is_shown(w) then
