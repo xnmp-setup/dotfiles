@@ -5,7 +5,7 @@
 # That matters because Chrome hands a URL to whichever of its windows was active
 # last and does nothing about focus: with google-chrome.desktop as the handler a
 # link opens in a window you cannot see — buried in a tab strip, on another
-# workspace, or in the F6 drop-down while it is parked. open-link.sh picks an
+# workspace, or in the F8 drop-down while it is parked. open-link.sh picks an
 # ordinary window, focuses it, and only then hands over the URL.
 #
 # A script rather than managing ~/.config/mimeapps.list itself: that file also
@@ -13,9 +13,9 @@
 # calling xdg-mime rewrites it, so owning the whole file would mean fighting
 # them over unrelated lines. This sets one association and leaves the rest.
 #
-# Note this runs on change, not on every apply — an app that later grabs the
-# http handler for itself will keep it until something here changes. `chezmoi
-# state delete-bucket --bucket=scriptState` re-runs it.
+# This runs after every apply because MIME defaults are mutable external state:
+# Chrome or another desktop application can replace them without changing the
+# chezmoi source. Reasserting this small set is idempotent and repairs that drift.
 
 set -eu
 

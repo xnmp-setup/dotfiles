@@ -52,8 +52,9 @@ workspace=$(hyprctl -j monitors 2>/dev/null | jq -r '
 # showing, which is how a URL ends up in a window nobody can see. So the plan
 # carries the group hop as well as the address: the tab's 1-based position, and
 # the member currently on screen, which is the one the dispatcher acts on. Both
-# are empty for an ungrouped window, and for a group already showing this one —
-# `hidden` is what the compositor uses to say which member that is.
+# are empty for an ungrouped window, and for a group already showing this one.
+# Hyprland's IPC `visible` field identifies the member the group is showing;
+# `hidden` remains false for background members of native groups.
 plan=$(hyprctl -j clients 2>/dev/null | jq -r --arg c "$CLASS" --arg ws "$workspace" '
     . as $clients
     | [ $clients[]
@@ -66,12 +67,12 @@ plan=$(hyprctl -j clients 2>/dev/null | jq -r --arg c "$CLASS" --arg ws "$worksp
     | select(. != null)
     | . as $window
     | (.grouped // []) as $members
-    | if ($members | length) > 1 and ($window.hidden // false)
+    | if ($members | length) > 1 and (($window.visible // false) | not)
       then [ $window.address,
              (($members | index($window.address)) + 1 | tostring),
              ([ $clients[]
                 | select(.address as $a | $members | index($a))
-                | select(.hidden // false | not)
+                | select(.visible // false)
               ] | first | .address // "") ]
       else [ $window.address, "", "" ]
       end
