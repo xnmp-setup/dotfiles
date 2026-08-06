@@ -90,6 +90,7 @@ eq('animation clock is 1fps', applied.animation_fps, 1)
 eq('cursor blink ease in is constant', applied.cursor_blink_ease_in, 'Constant')
 eq('cursor blink ease out is constant', applied.cursor_blink_ease_out, 'Constant')
 eq('interactive frame cap is unchanged', applied.max_fps, 120)
+eq('font rasterization is stable across display DPI', applied.freetype_load_flags, 'NO_HINTING')
 
 io.write(string.format('\n%d passed, %d failed\n', passed, failed))
 os.exit(failed == 0 and 0 or 1)

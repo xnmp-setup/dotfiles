@@ -74,6 +74,10 @@ function M.apply(config)
   config.front_end = 'WebGpu'
   config.webgpu_power_preference = 'HighPerformance'
   config.max_fps = 120
+  -- WezTerm otherwise changes its FreeType default at 100 DPI. Pinning
+  -- unhinted rendering avoids uneven stem snapping when a window crosses
+  -- between the 1x and 1.25x monitors.
+  config.freetype_load_flags = 'NO_HINTING'
   -- The default cursor-blink easing functions repaint continuously at
   -- animation_fps for any focused window, even a fully idle one. Constant
   -- easing plus a 1fps animation clock removes that idle repaint floor;
