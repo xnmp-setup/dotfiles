@@ -12,6 +12,8 @@ set -uo pipefail
 set_theme_script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=lib/theme-wallpaper.sh
 source "$set_theme_script_dir/lib/theme-wallpaper.sh"
+# shellcheck source=lib/chrome-layout.sh
+source "$set_theme_script_dir/lib/chrome-layout.sh"
 
 usage() {
   cat <<'EOF'
@@ -517,6 +519,11 @@ EOF
     if [[ -t 0 ]] && pgrep -x "$chrome_proc" &>/dev/null; then
       read -r -p "    Restart Chrome now to apply? [y/N] " chrome_answer
       if [[ "$chrome_answer" =~ ^[Yy]$ ]]; then
+        chrome_layout=""
+        if chrome_layout=$(chrome_layout_snapshot "$chrome_proc"); then
+          echo "    saved Chrome workspaces, groups, and focus"
+        fi
+
         pkill -TERM -x "$chrome_proc"
         for _ in $(seq 20); do
           pgrep -x "$chrome_proc" &>/dev/null || break
@@ -527,7 +534,15 @@ EOF
         else
           nohup "$chrome_bin" &>/dev/null &
         fi
-        echo "    restarted"
+        if [[ -n "$chrome_layout" ]]; then
+          if chrome_layout_restore "$chrome_layout"; then
+            echo "    restarted; restored Chrome workspaces, groups, and focus"
+          else
+            echo "    restarted; warning: Chrome layout could not be fully restored"
+          fi
+        else
+          echo "    restarted"
+        fi
       fi
     fi
   fi
