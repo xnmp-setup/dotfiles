@@ -1,14 +1,91 @@
 #!/usr/bin/env bash
 # Switch all desktop apps to a named theme.
-# Usage: set-theme <theme-slug>
-#   e.g. set-theme golden-hour-light
+# Usage: set-theme <theme-slug> [--wallpaper <name-or-path>]
+#   e.g. set-theme everforest-dark-medium
+#        set-theme everforest-dark-medium --wallpaper river_4k
 #
 # The theme slug is the lowercase-hyphenated form (matching filenames).
 # Title Case names are derived automatically for apps that need them.
 
 set -uo pipefail
 
-slug="${1:-}"
+set_theme_script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=lib/theme-wallpaper.sh
+source "$set_theme_script_dir/lib/theme-wallpaper.sh"
+
+usage() {
+  cat <<'EOF'
+Usage: set-theme <theme-slug> [options]
+
+Options:
+  -w, --wallpaper <name-or-path>  Override the theme's associated wallpaper.
+                                  An extension is optional for files in
+                                  ~/Pictures/Wallpaper.
+      --list-wallpapers           List available wallpaper filenames.
+  -h, --help                      Show this help.
+
+Examples:
+  set-theme everforest-dark-medium
+  set-theme gruvbox --wallpaper river_4k
+  set-theme nord -w ~/Pictures/Wallpaper/forest.png
+EOF
+}
+
+slug=""
+wallpaper_override=""
+wallpaper_override_set=0
+while (( $# > 0 )); do
+  case "$1" in
+    -w|--wallpaper)
+      if (( $# < 2 )); then
+        echo "Missing value for $1" >&2
+        usage >&2
+        exit 2
+      fi
+      wallpaper_override="$2"
+      wallpaper_override_set=1
+      shift 2
+      ;;
+    --wallpaper=*)
+      wallpaper_override="${1#*=}"
+      wallpaper_override_set=1
+      shift
+      ;;
+    --list-wallpapers)
+      list_wallpapers
+      exit
+      ;;
+    -h|--help)
+      usage
+      exit
+      ;;
+    --)
+      shift
+      if (( $# > 0 )) && [[ -z "$slug" ]]; then
+        slug="$1"
+        shift
+      fi
+      if (( $# > 0 )); then
+        echo "Unexpected argument: $1" >&2
+        exit 2
+      fi
+      ;;
+    -*)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+    *)
+      if [[ -n "$slug" ]]; then
+        echo "Unexpected argument: $1" >&2
+        usage >&2
+        exit 2
+      fi
+      slug="$1"
+      shift
+      ;;
+  esac
+done
 
 list_themes() {
   local found=0
@@ -48,11 +125,27 @@ list_themes() {
 }
 
 if [[ -z "$slug" ]]; then
-  echo "Usage: set-theme <theme-slug>"
+  usage
   echo ""
   echo "Available themes:"
   list_themes
   exit 0
+fi
+
+wallpaper_request="${theme_wallpapers[$slug]:-}"
+(( wallpaper_override_set )) && wallpaper_request="$wallpaper_override"
+wallpaper_path=""
+wallpaper_resolution_error=""
+if (( wallpaper_override_set )) || [[ -n "$wallpaper_request" ]]; then
+  if ! wallpaper_path=$(resolve_wallpaper "$wallpaper_request"); then
+    if (( wallpaper_override_set )); then
+      # An explicit choice is part of the requested operation. Validate it
+      # before editing any application config, so failure cannot leave a
+      # partially applied theme.
+      exit 2
+    fi
+    wallpaper_resolution_error="associated file not found: $wallpaper_request"
+  fi
 fi
 
 # Derive title case name from slug: "golden-hour-light" -> "Golden Hour Light"
@@ -498,7 +591,47 @@ else
   skipped+=("Dark Reader (no tauri theme CSS at $dr_css to derive colours)")
 fi
 
-# --- Hyprland ---
+# --- Hyprpaper + Hyprlock wallpaper ---
+if [[ -n "$wallpaper_path" ]]; then
+  hyprpaper_config="$HOME/.config/hypr/hyprpaper.conf"
+  hyprlock_config="$HOME/.config/hypr/hyprlock.conf"
+  hyprpaper_fit_mode="cover"
+  wallpaper_configs=()
+
+  if rewrite_hypr_section_paths "$hyprpaper_config" wallpaper "$wallpaper_path"; then
+    wallpaper_configs+=("Hyprpaper")
+    hyprpaper_fit_mode=$(read_hyprpaper_fit_mode "$hyprpaper_config")
+  elif [[ ! -f "$hyprpaper_config" ]]; then
+    skipped+=("Hyprpaper wallpaper (no config at $hyprpaper_config)")
+  else
+    skipped+=("Hyprpaper wallpaper (no wallpaper path in $hyprpaper_config)")
+  fi
+
+  if rewrite_hypr_section_paths "$hyprlock_config" background "$wallpaper_path"; then
+    wallpaper_configs+=("Hyprlock")
+  elif [[ ! -f "$hyprlock_config" ]]; then
+    skipped+=("Hyprlock wallpaper (no config at $hyprlock_config)")
+  else
+    skipped+=("Hyprlock wallpaper (no background path in $hyprlock_config)")
+  fi
+
+  if (( ${#wallpaper_configs[@]} > 0 )); then
+    echo "  ✓ Wallpaper → $(basename "$wallpaper_path") (${wallpaper_configs[*]})"
+    if apply_hyprpaper_live "$wallpaper_path" "$hyprpaper_fit_mode"; then
+      echo "    Hyprpaper applied immediately"
+      reload+=("Hyprpaper: applied automatically; Hyprlock: next lock")
+    else
+      reload+=("Hyprpaper: restart if running outside this session; Hyprlock: next lock")
+    fi
+    ((changed++))
+  fi
+elif [[ -n "$wallpaper_resolution_error" ]]; then
+  skipped+=("Wallpaper ($wallpaper_resolution_error)")
+else
+  skipped+=("Wallpaper (no association for $slug; use --wallpaper to choose one)")
+fi
+
+# --- Hyprland colours ---
 # Hyprland's Lua config reads its palette from theme-colors.lua (see
 # ~/.config/hypr/theme.lua). Derive it from the same tauri stylesheet Dark
 # Reader is fed, so borders, the tab strip and the backdrop behind a resize
