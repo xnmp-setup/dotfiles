@@ -22,6 +22,24 @@ Scope {
         gpuTemp: null
     })
     property var workspaces: []
+    property var usage: ({
+        claude: {
+            percent: null,
+            resetsAt: null,
+            windowMinutes: null,
+            secondaryPercent: null,
+            secondaryResetsAt: null,
+            secondaryWindowMinutes: null
+        },
+        codex: {
+            percent: null,
+            resetsAt: null,
+            windowMinutes: null,
+            secondaryPercent: null,
+            secondaryResetsAt: null,
+            secondaryWindowMinutes: null
+        }
+    })
     property var themeColors: ({
         accent: "#d4607a",
         accent_light: "#e87898",
@@ -56,6 +74,18 @@ Scope {
         }
     }
 
+    function acceptUsage(line: string): void {
+        let snapshot;
+        try {
+            snapshot = JSON.parse(line);
+        } catch (error) {
+            return;
+        }
+        if (snapshot === null || typeof snapshot !== "object" || Array.isArray(snapshot))
+            return;
+        root.usage = Sanitizer.normalizeUsage(root.usage, snapshot);
+    }
+
     Process {
         id: stream
         command: [Quickshell.env("HYPR_STATUS_STREAM")
@@ -77,5 +107,28 @@ Scope {
         interval: 2000
         repeat: false
         onTriggered: stream.running = true
+    }
+
+    Process {
+        id: usageStream
+        command: [Quickshell.env("STATUSBAR_AI_USAGE_STREAM")
+            || Quickshell.env("HOME") + "/.local/bin/ai-usage-stream"]
+        running: true
+
+        stdout: SplitParser {
+            onRead: data => root.acceptUsage(data)
+        }
+
+        onRunningChanged: {
+            if (!running)
+                usageRestartTimer.restart();
+        }
+    }
+
+    Timer {
+        id: usageRestartTimer
+        interval: 5000
+        repeat: false
+        onTriggered: usageStream.running = true
     }
 }

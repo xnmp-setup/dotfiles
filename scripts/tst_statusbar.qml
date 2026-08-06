@@ -46,6 +46,23 @@ TestCase {
     }
 
     Component {
+        id: usageCellComponent
+
+        UsageCell {
+            provider: "claude"
+            usage: ({
+                percent: 76,
+                resetsAt: 1800000600,
+                windowMinutes: 300,
+                secondaryPercent: 41,
+                secondaryResetsAt: 1800086400,
+                secondaryWindowMinutes: 10080
+            })
+            themeColors: testCase.themeColors
+        }
+    }
+
+    Component {
         id: workspaceEditorRowComponent
 
         Row {
@@ -279,6 +296,86 @@ TestCase {
         compare(normalized.ioTooltip.length, 512);
     }
 
+    function test_usage_payload_is_bounded_and_nullable(): void {
+        const base = {
+            claude: {
+                percent: 12,
+                resetsAt: 1800000600,
+                windowMinutes: 300,
+                secondaryPercent: null,
+                secondaryResetsAt: null,
+                secondaryWindowMinutes: null
+            },
+            codex: {
+                percent: null,
+                resetsAt: null,
+                windowMinutes: null,
+                secondaryPercent: null,
+                secondaryResetsAt: null,
+                secondaryWindowMinutes: null
+            }
+        };
+        const normalized = Sanitizer.normalizeUsage(base, {
+            claude: {
+                percent: 900,
+                resetsAt: Number.POSITIVE_INFINITY,
+                windowMinutes: "five hours"
+            },
+            codex: {
+                percent: null,
+                resetsAt: null,
+                windowMinutes: null
+            },
+            extra: "ignored"
+        });
+        compare(normalized.claude.percent, 100);
+        compare(normalized.claude.resetsAt, 1800000600);
+        compare(normalized.claude.windowMinutes, 300);
+        compare(normalized.codex.percent, null);
+        compare(Object.keys(normalized).length, 2);
+    }
+
+    function test_usage_columns_are_stable_for_empty_and_three_digit_values(): void {
+        const low = createTemporaryObject(usageCellComponent, this, {
+            usage: { percent: 5, resetsAt: 1800000600, windowMinutes: 300 }
+        });
+        const full = createTemporaryObject(usageCellComponent, this, {
+            usage: { percent: 100, resetsAt: 1800000600, windowMinutes: 300 }
+        });
+        const empty = createTemporaryObject(usageCellComponent, this, {
+            usage: { percent: null, resetsAt: null, windowMinutes: null }
+        });
+        verify(low !== null);
+        verify(full !== null);
+        verify(empty !== null);
+        compare(low.percentColumnX, full.percentColumnX);
+        compare(full.percentColumnX, empty.percentColumnX);
+        compare(low.resetColumnX, full.resetColumnX);
+        compare(full.resetColumnX, empty.resetColumnX);
+        compare(full.percentText, "100%");
+        compare(empty.percentText, "--");
+        verify(low.resetText.indexOf("↻ ") === 0);
+        compare(empty.resetText, "waiting");
+    }
+
+    function test_usage_color_reflects_consumed_quota_thresholds(): void {
+        const low = createTemporaryObject(usageCellComponent, this, {
+            usage: { percent: 24, resetsAt: 1800000600, windowMinutes: 300 }
+        });
+        const warning = createTemporaryObject(usageCellComponent, this, {
+            usage: { percent: 76, resetsAt: 1800000600, windowMinutes: 300 }
+        });
+        const critical = createTemporaryObject(usageCellComponent, this, {
+            usage: { percent: 90, resetsAt: 1800000600, windowMinutes: 300 }
+        });
+        verify(low !== null);
+        verify(warning !== null);
+        verify(critical !== null);
+        compare(low.displayColor.toString(), "#ebdbb2");
+        compare(warning.displayColor.toString(), "#fabd2f");
+        compare(critical.displayColor.toString(), "#fb4934");
+    }
+
     function test_2560_layout_keeps_maximum_telemetry_clear_of_clock(): void {
         const width = 2560;
         const clockWidth = 180;
@@ -296,5 +393,39 @@ TestCase {
         ));
         verify(StatusLayout.telemetryLeft(width, metricCount, metricWidth, rightMargin)
             >= StatusLayout.clockRight(width, clockWidth) + minimumGap);
+    }
+
+    function test_2560_layout_keeps_full_usage_cluster_clear_of_clock(): void {
+        const width = 2560;
+        const clockWidth = 180;
+        const rightRegionWidth = 8 * 96 + 2 * 188;
+        verify(StatusLayout.rightRegionClearsClock(
+            width,
+            clockWidth,
+            rightRegionWidth,
+            12,
+            12
+        ));
+    }
+
+    function test_1920_layout_uses_compact_usage_without_covering_clock(): void {
+        const width = 1920;
+        const clockWidth = 180;
+        const fullRegionWidth = 8 * 96 + 2 * 188;
+        const compactRegionWidth = 8 * 96 + 2 * 39;
+        verify(!StatusLayout.rightRegionClearsClock(
+            width,
+            clockWidth,
+            fullRegionWidth,
+            12,
+            12
+        ));
+        verify(StatusLayout.rightRegionClearsClock(
+            width,
+            clockWidth,
+            compactRegionWidth,
+            12,
+            12
+        ));
     }
 }

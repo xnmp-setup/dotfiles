@@ -6,7 +6,8 @@ Item {
 
     required property var themeColors
 
-    implicitWidth: timeText.implicitWidth + dateText.implicitWidth + 13
+    // Two 10px Row gaps plus the 1px divider.
+    implicitWidth: timeText.implicitWidth + dateText.implicitWidth + 21
     implicitHeight: 40
 
     SystemClock {

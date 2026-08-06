@@ -12,6 +12,16 @@
 # Capture stdin once (ccstatusline consumes it, but we also need the raw JSON to
 # read the real session cost that Claude Code passes as cost.total_cost_usd).
 INPUT=$(cat)
+
+# Claude Code exposes subscription usage windows only to its status-line stdin.
+# Persist that non-secret quota snapshot for the desktop bar; absent/malformed
+# payloads leave the last good cache intact, and the reader expires old windows.
+if [ -x "${HOME}/.local/bin/ai-usage-stream" ]; then
+  printf '%s' "$INPUT" \
+    | "${HOME}/.local/bin/ai-usage-stream" --capture-claude >/dev/null 2>&1 \
+    || true
+fi
+
 OUTPUT=$(printf '%s' "$INPUT" | CCSTATUSLINE_WIDTH=1000 bunx -y ccstatusline@latest 2>/dev/null)
 
 # Two costs from the statusline stdin JSON:

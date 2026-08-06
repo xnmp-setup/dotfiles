@@ -32,6 +32,48 @@ function normalizedPercent(value, fallback) {
     return boundedInteger(value, fallback, 0, 100);
 }
 
+function normalizedTimestamp(value, fallback) {
+    if (value === null)
+        return null;
+    return boundedInteger(value, fallback, 1, 4102444800);
+}
+
+function normalizedWindowMinutes(value, fallback) {
+    if (value === null)
+        return null;
+    return boundedInteger(value, fallback, 1, 525600);
+}
+
+function normalizeUsageProvider(base, raw) {
+    const provider = mergeObject({}, base);
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw))
+        return provider;
+    for (const key of ["percent", "secondaryPercent"]) {
+        if (key in raw)
+            provider[key] = normalizedPercent(raw[key], provider[key]);
+    }
+    for (const key of ["resetsAt", "secondaryResetsAt"]) {
+        if (key in raw)
+            provider[key] = normalizedTimestamp(raw[key], provider[key]);
+    }
+    for (const key of ["windowMinutes", "secondaryWindowMinutes"]) {
+        if (key in raw)
+            provider[key] = normalizedWindowMinutes(raw[key], provider[key]);
+    }
+    return provider;
+}
+
+function normalizeUsage(base, raw) {
+    const usage = mergeObject({}, base);
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw))
+        return usage;
+    for (const provider of ["claude", "codex"]) {
+        if (provider in raw)
+            usage[provider] = normalizeUsageProvider(usage[provider], raw[provider]);
+    }
+    return usage;
+}
+
 function normalizedHotTemperature(value, fallback) {
     if (value === null)
         return null;

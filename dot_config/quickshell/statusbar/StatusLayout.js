@@ -9,7 +9,22 @@ function clockRight(width, clockWidth) {
 }
 
 function telemetryLeft(width, metricCount, metricWidth, rightMargin) {
-    return width - rightMargin - metricCount * metricWidth;
+    return rightRegionLeft(width, metricCount * metricWidth, rightMargin);
+}
+
+function rightRegionLeft(width, regionWidth, rightMargin) {
+    return width - rightMargin - regionWidth;
+}
+
+function rightRegionClearsClock(
+    width,
+    clockWidth,
+    regionWidth,
+    rightMargin,
+    minimumGap
+) {
+    return rightRegionLeft(width, regionWidth, rightMargin)
+        >= clockRight(width, clockWidth) + minimumGap;
 }
 
 function telemetryClearsClock(
@@ -20,6 +35,11 @@ function telemetryClearsClock(
     rightMargin,
     minimumGap
 ) {
-    return telemetryLeft(width, metricCount, metricWidth, rightMargin)
-        >= clockRight(width, clockWidth) + minimumGap;
+    return rightRegionClearsClock(
+        width,
+        clockWidth,
+        metricCount * metricWidth,
+        rightMargin,
+        minimumGap
+    );
 }
