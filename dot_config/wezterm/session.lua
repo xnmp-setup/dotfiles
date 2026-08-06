@@ -28,9 +28,10 @@
 -- a pane is zoomed it reports the whole tab's size (80x24 for a 2x2 grid) while
 -- its siblings keep their real coords, so the rectangles overlap and describe no
 -- valid layout. Saving that would replace a good layout with garbage, so the
--- caller uses has_zoomed() to skip the save entirely until zoom is released —
--- the last good layout survives, and the (transient) zoom state is simply not
--- restored.
+-- caller skips the save entirely until zoom is released (sessionstore bails
+-- during its pre-RPC scan; has_zoomed() remains for callers holding a raw
+-- capture) — the last good layout survives, and the (transient) zoom state is
+-- simply not restored.
 --
 -- "Which tab/pane was focused" is stored as a BOOLEAN FLAG on the item, never as
 -- an index. sanitize() drops panes (background-domain ones), which renumbers

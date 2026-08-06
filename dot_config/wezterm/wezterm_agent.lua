@@ -32,11 +32,11 @@ end
 
 -- Maintain animation state from OSC user-variable events and tab renders. This
 -- cache is deliberately GUI-local: update-status must never walk the mux.
-local function track_animation(pane_id, window_id, status)
+local function track_animation(pane_id, window_id, status, observed_at)
   if status == 'working' then
     animated_panes[pane_id] = {
       window_id = window_id,
-      last_seen = now_ms(),
+      last_seen = observed_at or now_ms(),
     }
   else
     animated_panes[pane_id] = nil
@@ -95,10 +95,23 @@ local function page_keys_scroll_terminal(pane)
 end
 
 -- Clear a stuck working state when Escape interrupts or dismisses an agent UI.
+-- This runs on EVERY bare Escape press (the keybind forwards the key after),
+-- so it must never query the foreground process — that's a synchronous /proc
+-- walk on the GUI thread, paid in vim/helix hundreds of times a minute. The
+-- pane_status table (fed by user-var-changed) answers for any pane whose agent
+-- has ever fired a hook this session; user vars cover panes from before a
+-- config reload (fresh Lua state, empty table, but the var persists in the
+-- pane). A pane with neither has no working state to clear, so doing nothing
+-- is correct — not just cheap.
 function M.mark_done(pane)
-  local proc = pane:get_foreground_process_name() or ''
-  if agent_of_pane(proc, pane:get_user_vars()) then
-    pane_status[pane:pane_id()] = 'done'
+  local pane_id = pane:pane_id()
+  if pane_status[pane_id] ~= nil then
+    pane_status[pane_id] = 'done'
+    return
+  end
+  local vars = pane:get_user_vars() or {}
+  if vars.agent_kind or vars.agent_status or vars.claude_status then
+    pane_status[pane_id] = 'done'
   end
 end
 

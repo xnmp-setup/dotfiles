@@ -15,6 +15,8 @@ package.preload.wezterm = function()
     config_file = '/home/u/.config/wezterm/wezterm.lua',
     target_triple = 'x86_64-unknown-linux-gnu',
     color = { get_builtin_schemes = function() return builtins end },
+    gui = { enumerate_gpus = function() return {} end },
+    font_with_fallback = function(fonts) return fonts end,
   }
 end
 
@@ -75,6 +77,17 @@ eq('unknown names fall back rather than erroring',
   appearance.resolve_scheme(config, 'Nope Renamed In v20').background, '#0e1330')
 eq('a config without inline schemes still resolves builtins',
   appearance.resolve_scheme({}, 'Spartan').background, '#000000')
+
+-- ---------- apply: idle repaint floor ----------
+-- A focused idle window must not drive continuous redraws: constant cursor
+-- blink easing at a 1fps animation clock, while interactive frames stay at
+-- the max_fps cap.
+local applied = {}
+appearance.apply(applied)
+eq('animation clock is 1fps', applied.animation_fps, 1)
+eq('cursor blink ease in is constant', applied.cursor_blink_ease_in, 'Constant')
+eq('cursor blink ease out is constant', applied.cursor_blink_ease_out, 'Constant')
+eq('interactive frame cap is unchanged', applied.max_fps, 120)
 
 io.write(string.format('\n%d passed, %d failed\n', passed, failed))
 os.exit(failed == 0 and 0 or 1)

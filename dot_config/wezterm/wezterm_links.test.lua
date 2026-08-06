@@ -64,6 +64,68 @@ for _, mods in ipairs { 'CTRL', 'ALT' } do
   end
 end
 
+-- The image rule is executed by WezTerm's Rust regex engine, not by Lua
+-- patterns, so it is exercised against a real PCRE2 engine (`rg -P`) when the
+-- machine has one and skipped otherwise. PCRE2 and fancy-regex agree on every
+-- construct the rule uses. These cases pin the accepted language and document
+-- that dot-dense non-matching lines stay non-matching.
+local image_regex = config.hyperlink_rules[2].regex
+
+local function shell_quote(value)
+  return "'" .. value:gsub("'", "'\\''") .. "'"
+end
+
+local function capture(command)
+  local handle = io.popen(command)
+  if not handle then return nil end
+  local output = handle:read('*a')
+  handle:close()
+  return output
+end
+
+local function first_match(line)
+  local output = capture(string.format(
+    'printf %%s %s | rg -oP %s 2>/dev/null',
+    shell_quote(line),
+    shell_quote(image_regex)
+  ))
+  return output and output:match('^[^\n]+') or nil
+end
+
+if capture("printf 'x.png' | rg -oP 'x\\.png' 2>/dev/null") == 'x.png\n' then
+  eq('rule/unix path', first_match('open /tmp/image.png now'), '/tmp/image.png')
+  eq('rule/relative path', first_match('see ./image.webp here'), './image.webp')
+  eq('rule/home path', first_match('~/shots/a.jpg'), '~/shots/a.jpg')
+  eq('rule/windows path', first_match('C:\\Users\\me\\pic.jpeg'), 'C:\\Users\\me\\pic.jpeg')
+  eq('rule/trailing sentence period excluded', first_match('Look at image.png.'), 'image.png')
+  eq('rule/near-miss extension rejected', first_match('a.pngx'), nil)
+  eq(
+    'rule/dotted tokens do not match',
+    first_match('a.b.c.d.e.f.g.h.i.j.k.l.m.n.o.p...q.r.s.t.u.v.w.x.y.z'),
+    nil
+  )
+  eq(
+    'rule/minified json does not match',
+    first_match('{"a":1,"b":{"c":2},"d":[3,4],"e":"f.g.h","i":"j.k.l"}'),
+    nil
+  )
+  eq(
+    'rule/stack trace frame does not match',
+    first_match('File "/app/src/main.py", line 12, in <module>'),
+    nil
+  )
+  -- The segment group must stay lazy: greedy fuses two paths joined by
+  -- non-whitespace into one match spanning both. The leading `[` / `IMAGES=`
+  -- in the expectations is a quirk shared with the original rule (the class
+  -- admits those characters); what these cases pin is that the match stops at
+  -- the FIRST extension instead of running on to the second path.
+  eq('rule/markdown link stops at first path', first_match('[assets/a.png](docs/b.png)'), '[assets/a.png')
+  eq('rule/comma-joined paths stop at first', first_match('IMAGES=logo.png,icon.svg'), 'IMAGES=logo.png')
+  eq('rule/query string stops at extension', first_match('test.png?v=1&fallback=old.png'), 'test.png')
+else
+  io.write('skip: rg with PCRE2 support not available; image rule cases not run\n')
+end
+
 local toasts = {}
 local window = {
   toast_notification = function(_, _, message) toasts[#toasts + 1] = message end,

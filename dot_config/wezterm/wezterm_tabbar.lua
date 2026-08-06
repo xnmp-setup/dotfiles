@@ -13,7 +13,17 @@ function M.setup(deps)
   local agent_of_pane = agent.of_pane
 
   -- Last rendered title protects overlay panes from blank-title flicker.
+  -- Values carry an os.time() stamp so the update-status tick can drop entries
+  -- for tabs that haven't rendered in a while (i.e. closed tabs) — without a
+  -- stamp the table grows for the life of the GUI, retaining every dead tab's
+  -- full formatted run-list.
   local last_tab_title = {}
+  local LAST_TITLE_TTL_S = 600
+
+  -- Foreground process basenames that mean "just a shell" — the tab shows the
+  -- bare cwd for these. Hoisted: format-tab-title runs per tab per repaint, and
+  -- building this table there fed the GC ~50 tables/sec with 10 tabs open.
+  local SHELLS = { bash=1, sh=1, zsh=1, fish=1, nu=1, login=1 }
 
   -- Per-window focus state lets active tabs in unfocused windows render inactive.
   local window_focus = {}
@@ -91,9 +101,15 @@ function M.setup(deps)
     return ramp[(math.floor(now / period_ms) % #ramp) + 1]
   end
 
-  local GLYPH_MS = 333
-  local COLOR_MS = 250
-  local SHIMMER_MS = 60
+  -- Animation periods are multiples of the status-update interval because that
+  -- interval IS the repaint clock: the only thing invalidating the tab bar while
+  -- an agent works is the payload toggle in the update-status handler below.
+  -- A finer period (the old SHIMMER_MS = 60) just computes phases for frames
+  -- that never render and makes the wave stutter — phase jumped ~3.3 steps
+  -- between actual repaints.
+  local GLYPH_MS = 2 * STATUS_UPDATE_INTERVAL_MS
+  local COLOR_MS = STATUS_UPDATE_INTERVAL_MS
+  local SHIMMER_MS = STATUS_UPDATE_INTERVAL_MS
 
   local AGENT_MARKERS = {
     claude = {
@@ -123,25 +139,37 @@ function M.setup(deps)
     },
   }
 
-  local function shimmer_grey(lo, hi, amount, dither)
+  local function shimmer_grey(lo, hi, amount)
     local value = math.floor(lo + (hi - lo) * amount + 0.5)
-    return string.format('#%02x%02x%02x', value, value, value - dither)
+    return string.format('#%02x%02x%02x', value, value, value)
   end
+
+  -- Color the title in BANDS of a few characters, not per character. Per-char
+  -- runs cost ~50 tables + 24 string.formats per working tab per repaint, and —
+  -- worse — 24 single-char Text runs defeat the shaper's run coalescing, so the
+  -- title shaped as 24 units instead of ~8. The cos wave's period is ~12.6
+  -- chars, so 3-char bands still render as a visible travelling wave.
+  local SHIMMER_BAND = 3
 
   local function shimmer_runs(title, phase, is_active)
     local lo, hi = is_active and 0xcc or 0x8e, is_active and 0xff or 0xbe
     local runs = {}
-    local index = 0
-    for _, codepoint in utf8.codes(title) do
-      local wave = (math.cos((index - phase) * 0.5) + 1) / 2
-      runs[#runs + 1] = {
-        Foreground = {
-          Color = shimmer_grey(lo, hi, wave, index % 2),
-        },
-      }
-      runs[#runs + 1] = { Text = utf8.char(codepoint) }
-      index = index + 1
+    local band, band_start, index = {}, 0, 0
+    local function flush()
+      if #band == 0 then return end
+      local center = band_start + (#band - 1) / 2
+      local wave = (math.cos((center - phase) * 0.5) + 1) / 2
+      runs[#runs + 1] = { Foreground = { Color = shimmer_grey(lo, hi, wave) } }
+      runs[#runs + 1] = { Text = table.concat(band) }
+      band = {}
+      band_start = index
     end
+    for _, codepoint in utf8.codes(title) do
+      band[#band + 1] = utf8.char(codepoint)
+      index = index + 1
+      if #band == SHIMMER_BAND then flush() end
+    end
+    flush()
     return runs
   end
 
@@ -160,9 +188,9 @@ function M.setup(deps)
     -- Overlays (InputSelector, etc.) replace the active pane with one that has no
     -- cwd and no foreground process. Fall back to the last known rendered title.
     if not pane_info.current_working_dir and (proc == '' or proc == nil) then
-      local cached = last_tab_title[tostring(tab.tab_id)]
+      local cached = last_tab_title[tab.tab_id]
       if cached then
-        return cached
+        return cached.result
       end
     end
 
@@ -185,6 +213,10 @@ function M.setup(deps)
       agent = nil
       proc = ''  -- so the branch below takes the plain-cwd path, not "cwd: _"
     end
+
+    -- Foreground process basename, shared by the title and marker branches
+    -- below (it was previously computed twice per render).
+    local proc_name = (proc:match('[^/\\]+$') or ''):gsub('%.exe$', '')
 
     -- For non-claude tabs, show "cwd" or "cwd: command" if a process is running
     if not is_claude then
@@ -209,9 +241,7 @@ function M.setup(deps)
         basename = path:match('[^/\\]+$') or path
       end
 
-      local proc_name = (proc:match('[^/\\]+$') or ''):gsub('%.exe$', '')
-      local shells = { bash=1, sh=1, zsh=1, fish=1, nu=1, login=1 }
-      if proc_name ~= '' and not shells[proc_name] then
+      if proc_name ~= '' and not SHELLS[proc_name] then
         if APP_ICONS[proc_name] then
           -- Known app: its marker icon (set below) already names the app, so show
           -- just the cwd — no redundant "cwd: micro". Reading an editor's argv to
@@ -284,14 +314,18 @@ function M.setup(deps)
 
     local marker, marker_fg, title_fg
     local is_working = false
+    -- One clock read per render, shared by the glyph frame, the color frame and
+    -- the shimmer phase below. now_ms() is a pcall + strftime format + parse —
+    -- not free — and all consumers want the same instant anyway.
+    local now
     if agent then
       local m = AGENT_MARKERS[agent]
       local status = agent_status_of(pane_info.pane_id, pane_info.user_vars)
-      track_animation(pane_info.pane_id, tab.window_id, status)
+      now = now_ms()
+      track_animation(pane_info.pane_id, tab.window_id, status, now)
       local style = status and STATUS_STYLE[status]
       if status == 'working' then
         is_working = true
-        local now = now_ms()
         marker = frame_at(now, m.frames, GLYPH_MS)
         marker_fg = frame_at(now, m.colors, COLOR_MS)
       elseif status == 'attention' then
@@ -321,8 +355,7 @@ function M.setup(deps)
       -- presentation, needs no Nerd Font), dimmed so it reads as a marker not part
       -- of the name. If a known app is the foreground process, swap in its Nerd
       -- Font icon (see APP_ICONS) — strip any path and a trailing .exe first.
-      local pname = (proc:match('[^/\\]+$') or ''):gsub('%.exe$', '')
-      marker = APP_ICONS[pname] or '❯'
+      marker = APP_ICONS[proc_name] or '❯'
       -- Focused: rich saturated blue. Unfocused: muted slate (was grey).
       marker_fg = is_active and '#4a90e2' or '#5a7a9a'
       title_fg = is_active and active_title_fg or inactive_title_fg
@@ -348,7 +381,7 @@ function M.setup(deps)
       { Text = '  ' .. marker .. ' ' },
     }
     if is_working then
-      local phase = math.floor(now_ms() / SHIMMER_MS)
+      local phase = math.floor(now / SHIMMER_MS)
       for _, run in ipairs(shimmer_runs(title, phase, is_active)) do
         result[#result + 1] = run
       end
@@ -358,7 +391,7 @@ function M.setup(deps)
       result[#result + 1] = { Text = title .. ' ' }
     end
 
-    last_tab_title[tostring(tab.tab_id)] = result
+    last_tab_title[tab.tab_id] = { result = result, seen = os.time() }
     return result
   end)
 
@@ -385,6 +418,16 @@ function M.setup(deps)
   -- Repaint animated titles from local state only. Entries not observed by a tab
   -- render recently are discarded, covering closed panes and hidden windows
   -- without querying the mux from the GUI event loop.
+  --
+  -- The set_right_status call must stay UNCONDITIONAL: in wezterm, firing
+  -- update-status does not schedule the next one — the timer is re-armed by
+  -- the SetRightStatus notification handler (both its changed and unchanged
+  -- branches). Skipping the write when the payload is unchanged looks like a
+  -- saving, but it kills the status clock: one ≥200ms GUI hitch mid-animation
+  -- lands two ticks on the same parity, the write is skipped, and no further
+  -- tick ever fires — spinner frozen until an unrelated update_title. WezTerm
+  -- already dedupes identical payloads internally, so the unconditional write
+  -- costs one wezterm.format per tick and causes no repaint at idle.
   wezterm.on('update-status', function(window, pane)
     local now = now_ms()
     local window_id = window:window_id()
@@ -395,6 +438,17 @@ function M.setup(deps)
       payload = '\u{feff}'
     end
     window:set_right_status(wezterm.format({ { Text = payload } }))
+
+    -- Evict cached titles for tabs that haven't rendered in a while (closed
+    -- tabs, mostly). A live-but-idle tab whose entry expires merely loses the
+    -- overlay-flicker fallback for one frame; a mux walk to learn the real tab
+    -- list from this handler is the thing we must never do.
+    local cutoff = os.time() - LAST_TITLE_TTL_S
+    for tab_id, entry in pairs(last_tab_title) do
+      if entry.seen < cutoff then
+        last_tab_title[tab_id] = nil
+      end
+    end
   end)
 end
 

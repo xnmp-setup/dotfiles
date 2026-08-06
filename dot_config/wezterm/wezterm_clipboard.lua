@@ -22,7 +22,13 @@ function M.clipboard_type_command(target_triple)
   target_triple = (target_triple or ''):lower()
 
   if target_triple:find('linux', 1, true) then
-    return { 'wl-paste', '--list-types' }
+    -- The probe runs synchronously on the GUI thread before every paste, and
+    -- wl-paste blocks indefinitely when the clipboard owner is dead or busy —
+    -- a common Wayland state that would otherwise wedge the whole window.
+    -- A timed-out probe exits non-zero and falls back to plain text paste.
+    -- GNU coreutils `timeout` is present on every Linux target (incl. WSL);
+    -- macOS ships no `timeout`, so the other branches stay unwrapped.
+    return { 'timeout', '0.2', 'wl-paste', '--list-types' }
   end
 
   if target_triple:find('darwin', 1, true) then

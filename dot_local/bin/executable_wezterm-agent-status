@@ -63,13 +63,24 @@ fi
 # A request_user_input call blocks on a human choice. It arrives through the
 # wildcard PreToolUse hook as "working", so promote that precise payload to
 # attention. PermissionRequest stays working because Codex auto-reviews it.
-if [ "$status" = "working" ] \
-  && printf '%s' "$payload" \
-    | jq -e '.hook_event_name == "PreToolUse"
-             and .tool_name == "request_user_input"' >/dev/null 2>&1
-then
-  status=attention
-fi
+#
+# The substring test is a prefilter, not the decision: jq still has the final
+# say. It only has to be conservative in one direction — a false positive costs
+# one jq spawn, a false negative would silently lose the red state. The tool
+# name cannot appear in a matching payload without appearing literally in its
+# bytes, and PreToolUse fires on every tool call, so gating on the rarer of the
+# two terms is what makes the common case free.
+case "$payload" in
+  *request_user_input*)
+    if [ "$status" = "working" ] \
+      && printf '%s' "$payload" \
+        | jq -e '.hook_event_name == "PreToolUse"
+                 and .tool_name == "request_user_input"' >/dev/null 2>&1
+    then
+      status=attention
+    fi
+    ;;
+esac
 
 # Determine identity once for both terminal renderers.
 if [ -n "${CLAUDECODE:-}" ] || [ -n "${CLAUDE_PID:-}" ]; then
@@ -142,9 +153,24 @@ fi
 [ "$TERM_PROGRAM" = "WezTerm" ] || exit 0
 [ -n "$WEZTERM_PANE" ] || exit 0
 
-# OSC 1337 SetUserVar requires values to be base64-encoded.
-kind_b64=$(printf '%s' "$agent_kind" | base64 | tr -d '\n')
-status_b64=$(printf '%s' "$status" | base64 | tr -d '\n')
+# OSC 1337 SetUserVar requires values to be base64-encoded. Both fields draw
+# from tiny fixed sets, and this runs ~60x per busy agent turn, so the encodings
+# are inlined rather than costing two `base64 | tr` pipelines per invocation.
+# Regenerate after changing either set:
+#   for v in claude codex working done attention; do
+#     printf '%s %s\n' "$v" "$(printf '%s' "$v" | base64 | tr -d '\n')"; done
+case "$agent_kind" in
+  claude) kind_b64=Y2xhdWRl ;;
+  codex)  kind_b64=Y29kZXg= ;;
+esac
+# $1 is not validated anywhere upstream, so an unknown status can still reach
+# here; encode those the slow way rather than emitting an empty user var.
+case "$status" in
+  working)   status_b64=d29ya2luZw== ;;
+  done)      status_b64=ZG9uZQ== ;;
+  attention) status_b64=YXR0ZW50aW9u ;;
+  *)         status_b64=$(printf '%s' "$status" | base64 | tr -d '\n') ;;
+esac
 osc=$(printf '\033]1337;SetUserVar=agent_kind=%s\007\033]1337;SetUserVar=agent_status=%s\007' \
   "$kind_b64" "$status_b64")
 
@@ -165,8 +191,48 @@ if { printf '%s' "$osc" > /dev/tty; } 2>/dev/null; then
   exit 0
 fi
 
-# Slow path: no controlling terminal (Claude Code). Map this pane id to its tty
-# via the wezterm CLI, which lives next to the gui binary that launched us.
+# Slow path: no controlling terminal (Claude Code). Resolving the pane's device
+# means an IPC round-trip into the GUI's embedded mux, and under Claude every
+# single hook lands here — so the mapping is cached on disk.
+#
+# The mapping is stable for the pane's lifetime, but pane ids restart from zero
+# when the GUI does, so the pane id alone is NOT a safe key: a cache entry from
+# a previous GUI would name some other pane's tty. $WEZTERM_UNIX_SOCKET embeds
+# the gui pid, which pins the entry to one instance. Without it there is nothing
+# to distinguish instances by, so we simply don't cache.
+cachefile=""
+if [ -n "${WEZTERM_UNIX_SOCKET:-}" ]; then
+  cache_key="${WEZTERM_UNIX_SOCKET##*/}.$WEZTERM_PANE"
+  # The key becomes a filename. Rather than fold unexpected characters to a
+  # placeholder — which would let two distinct instances share one entry and
+  # hand a pane the wrong tty — anything outside the safe set disables the
+  # cache. Real keys ("gui-sock-1234.7") pass, and the test is a shell builtin.
+  case "$cache_key" in
+    ""|*[!A-Za-z0-9._-]*) : ;;
+    *) cachefile="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/wezterm-agent-tty.$cache_key" ;;
+  esac
+fi
+
+if [ -n "$cachefile" ]; then
+  tty_dev=""
+  # `read` is a REGULAR builtin, so a failed redirect (no cache yet) does not
+  # kill the shell the way it would on `exec` — same trap as the /dev/tty probe.
+  # And as there, the 2>/dev/null must sit on the GROUP: the "no such file"
+  # message for a failed redirect comes from the shell, not from `read`.
+  { IFS= read -r tty_dev < "$cachefile"; } 2>/dev/null
+  if [ -n "$tty_dev" ] \
+    && [ -w "$tty_dev" ] \
+    && { printf '%s' "$osc" > "$tty_dev"; } 2>/dev/null
+  then
+    exit 0
+  fi
+  # The pane closed, the device went away, or the entry was written by a GUI
+  # that recycled this pid. Drop it and pay for a fresh lookup.
+  rm -f "$cachefile"
+fi
+
+# Map this pane id to its tty via the wezterm CLI, which lives next to the gui
+# binary that launched us.
 wt="${WEZTERM_EXECUTABLE%-gui}"
 [ -x "$wt" ] || wt="$(command -v wezterm 2>/dev/null)"
 [ -n "$wt" ] && [ -x "$wt" ] || exit 0
@@ -178,6 +244,18 @@ tty_dev=$(timeout 2 "$wt" cli list --format json 2>/dev/null \
   | jq -r --argjson p "$WEZTERM_PANE" \
       '.[] | select(.pane_id == $p) | .tty_name // empty' 2>/dev/null)
 [ -n "$tty_dev" ] && [ -w "$tty_dev" ] || exit 0
+
+# Concurrent hooks race here, but they all write the same correct value, so the
+# only hazard is a reader seeing a half-written line — hence write-then-rename.
+if [ -n "$cachefile" ]; then
+  cache_tmp="$cachefile.$$"
+  umask 077
+  if printf '%s\n' "$tty_dev" > "$cache_tmp" 2>/dev/null; then
+    mv -f "$cache_tmp" "$cachefile" 2>/dev/null || rm -f "$cache_tmp"
+  else
+    rm -f "$cache_tmp"
+  fi
+fi
 
 printf '%s' "$osc" > "$tty_dev" 2>/dev/null
 

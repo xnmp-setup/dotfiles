@@ -19,7 +19,9 @@ package.preload.wezterm = function()
     action_callback = function(callback) return callback end,
     open_with = function(url) opened_urls[#opened_urls + 1] = url end,
     time = {
-      call_after = function(_, callback) scheduled[#scheduled + 1] = callback end,
+      call_after = function(delay, callback)
+        scheduled[#scheduled + 1] = { delay = delay, run = callback }
+      end,
     },
   }
 end
@@ -42,7 +44,10 @@ local function pane(opts)
     pane_id = function() return opts.id end,
     get_foreground_process_name = function() return opts.process end,
     get_current_working_dir = function() return { file_path = opts.cwd } end,
-    get_logical_lines_as_text = function() return opts.output or '' end,
+    get_logical_lines_as_text = function(_, lines)
+      opts.requested_lines = lines
+      return opts.output or ''
+    end,
     activate = function(self)
       opts.activations = (opts.activations or 0) + 1
       if opts.on_activate then opts.on_activate(self) end
@@ -89,6 +94,47 @@ eq(
   utilities_module.extract_server_url(string.rep('x', 100000) .. '\nready at http://localhost:8080'),
   'http://localhost:8080'
 )
+-- Announcing is a property of the line, not of each URL on it: the first URL
+-- on the first announcing line is the fallback, and a line that announces
+-- nothing contributes no fallback however many URLs it carries.
+eq(
+  'url/announcing line contributes its first URL',
+  utilities_module.extract_server_url('ready at https://a.example.com https://b.example.com'),
+  'https://a.example.com'
+)
+eq(
+  'url/non-announcing line contributes nothing',
+  utilities_module.extract_server_url('deps https://a.example.com https://b.example.com'),
+  nil
+)
+eq(
+  'url/first announcing line wins',
+  utilities_module.extract_server_url(
+    'docs https://x.example.com\nlisten https://a.example.com\nready at https://b.example.com'
+  ),
+  'https://a.example.com'
+)
+
+-- Poll schedule: fast while a quick dev server is plausible, then backed off,
+-- covering roughly twenty seconds of wall clock in total.
+eq('poll/first gap is fast', utilities_module.url_poll_delay(1), 0.1)
+eq('poll/fast phase continues', utilities_module.url_poll_delay(9), 0.1)
+eq('poll/backs off after the fast phase', utilities_module.url_poll_delay(10), 0.5)
+eq('poll/stays backed off', utilities_module.url_poll_delay(47), 0.5)
+eq('poll/stops at the end of the window', utilities_module.url_poll_delay(48), nil)
+eq('poll/stops beyond the end of the window', utilities_module.url_poll_delay(100), nil)
+
+local schedule_total, schedule_reads, schedule_fast = 0, 1, 0
+while utilities_module.url_poll_delay(schedule_reads) do
+  local delay = utilities_module.url_poll_delay(schedule_reads)
+  schedule_total = schedule_total + delay
+  if delay == 0.1 then schedule_fast = schedule_fast + 1 end
+  schedule_reads = schedule_reads + 1
+end
+eq('poll/fast phase covers about a second', string.format('%.1f', schedule_fast * 0.1), '0.9')
+eq('poll/covers about twenty seconds', string.format('%.1f', schedule_total), '19.9')
+eq('poll/reads far fewer than 200 times', schedule_reads, 48)
+
 eq('dev title/unix', utilities_module.dev_tab_title('/work/my-app/'), 'dev · my-app')
 eq('dev title/windows', utilities_module.dev_tab_title('C:\\work\\my-app'), 'dev · my-app')
 
@@ -163,8 +209,10 @@ local original_tab = {
 local performed = {}
 local toasts = {}
 local spawned
+local spawned_pane
 local spawn_count = 0
 local mux_tabs = { original_tab }
+local spawn_output = 'VITE ready\nLocal: http://0.0.0.0:5173/'
 local mux_window = {
   tabs = function() return mux_tabs end,
   spawn_tab = function(_, options)
@@ -174,8 +222,9 @@ local mux_window = {
       id = 3,
       process = '/usr/bin/bun',
       cwd = '/work/my-app',
-      output = 'VITE ready\nLocal: http://0.0.0.0:5173/',
+      output = spawn_output,
     }
+    spawned_pane = server
     local title
     local server_tab = {
       set_title = function(_, value) title = value end,
@@ -366,6 +415,38 @@ eq('dev/immediate URL avoids polling', #scheduled, 0)
 chord_by_key.d.action(window, shell)
 eq('dev/reuses project server', spawn_count, 1)
 eq('dev/reopens existing server URL', #opened_urls, 2)
+
+-- A server that never announces a URL is polled on the backed-off schedule,
+-- reads only a bounded slice of scrollback, and eventually explains itself
+-- rather than polling forever.
+local polling_config = {}
+utilities_module.setup(polling_config)
+local polling_chord = {}
+for _, binding in ipairs(polling_config.key_tables.utility_chord) do
+  polling_chord[binding.key] = binding
+end
+
+spawn_output = ''
+scheduled = {}
+polling_chord.d.action(window, secondary)
+eq('dev/reads a bounded slice of scrollback', spawned_pane.opts.requested_lines, 60)
+eq('dev/silent server schedules a retry', #scheduled, 1)
+eq('dev/first retry is fast', scheduled[1].delay, 0.1)
+
+local observed_reads, observed_total = 1, 0
+while #scheduled > 0 do
+  local next_poll = table.remove(scheduled, 1)
+  observed_total = observed_total + next_poll.delay
+  observed_reads = observed_reads + 1
+  next_poll.run()
+end
+eq('dev/silent server is read 48 times', observed_reads, 48)
+eq('dev/silent server is polled for about twenty seconds', string.format('%.1f', observed_total), '19.9')
+eq(
+  'dev/silent server explains itself',
+  toasts[#toasts],
+  'Dev server is still running, but did not publish a URL.'
+)
 
 io.write(string.format('\n%d passed, %d failed\n', passed, failed))
 os.exit(failed == 0 and 0 or 1)

@@ -5,10 +5,21 @@ local act = wezterm.action
 local M = {}
 
 local IMAGE_URI_PREFIX = 'wezterm-image:'
+-- Defaults claim complete URLs first. This rule then recognizes local paths
+-- such as /tmp/image.png, ./image.webp, ~/image.jpg and images/icon.svg.
+--
+-- Hyperlink rules are re-run over every visible line on paint, so the body is
+-- written to backtrack cheaply on dot-dense lines that will never match (stack
+-- traces, `ls -l`, minified JSON). The path is consumed as dot-terminated
+-- segments that themselves contain no dot, which makes each segment scan
+-- unambiguous: the engine only retries the extension alternation once per dot,
+-- not once per character. The segment group is LAZY (`+?`) so the match stops
+-- at the FIRST image extension — greedy would fuse two paths joined by
+-- non-whitespace (`[a.png](b.png)`, CSV rows) into one bogus link. The leading
+-- single character keeps a bare `.png` from matching while still admitting
+-- `./a.png`. `\b` is load-bearing — it is what rejects `a.pngx`.
 local IMAGE_PATH_RULE = {
-  -- Defaults claim complete URLs first. This rule then recognizes local paths
-  -- such as /tmp/image.png, ./image.webp, ~/image.jpg and images/icon.svg.
-  regex = [[(?<![\w:])((?:[A-Za-z]:[\\/]|~?[\\/]|\.{1,2}[\\/])?[^\s"'<>|]+?\.(?:avif|bmp|gif|jpe?g|png|svg|webp))\b]],
+  regex = [[(?<![\w:])([^\s"'<>|](?:[^\s"'<>|.]*\.)+?(?:avif|bmp|gif|jpe?g|png|svg|webp))\b]],
   format = IMAGE_URI_PREFIX .. '$1',
 }
 

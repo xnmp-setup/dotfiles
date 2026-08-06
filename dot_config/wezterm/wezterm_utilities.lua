@@ -5,8 +5,17 @@ local act = wezterm.action
 local M = {}
 
 local DEV_TAB_PREFIX = 'dev · '
-local URL_POLL_INTERVAL_SECONDS = 0.1
-local URL_POLL_ATTEMPTS = 200
+-- Polling reads scrollback on the GUI thread from a pane that is still
+-- building, so it stays fast only while a quick dev server is plausible and
+-- then backs off. The two rates cover ~20s of wall clock in 48 reads instead
+-- of 200.
+local URL_POLL_FAST_INTERVAL_SECONDS = 0.1
+local URL_POLL_FAST_ATTEMPTS = 10
+local URL_POLL_SLOW_INTERVAL_SECONDS = 0.5
+local URL_POLL_ATTEMPTS = 48
+-- Dev servers announce their URL within the last few dozen lines; asking for
+-- more only materializes scrollback that is then discarded.
+local URL_POLL_LINES = 60
 local BOTTOM_PANE_SIZE = 0.40
 local TERMINAL_PANE_SIZE = 0.35
 local UTILITY_PANE_STATE_KEY = 'utility_pane_ids'
@@ -127,24 +136,38 @@ local function is_local_url(url)
     or (second_octet ~= nil and second_octet >= 16 and second_octet <= 31)
 end
 
+local SERVER_ANNOUNCEMENTS = {
+  'local%s*:',
+  'network%s*:',
+  'listen',
+  'ready%s+at',
+  'started%s+at',
+  'available%s+at',
+  'url%s*:',
+}
+
+local function announces_server(line)
+  local lower = line:lower()
+  for _, pattern in ipairs(SERVER_ANNOUNCEMENTS) do
+    if lower:match(pattern) then return true end
+  end
+  return false
+end
+
 -- Extract the URL a dev server announces, ignoring unrelated links emitted by
 -- package managers. Loopback/private addresses win; otherwise the line must
 -- describe a server becoming available.
 function M.extract_server_url(text)
   local contextual
   for line in (text or ''):gmatch('[^\r\n]+') do
-    local lower = line:lower()
+    -- Whether a line announces a server is a property of the line, so it is
+    -- decided once per line rather than once per URL on it, and not at all
+    -- once a contextual fallback has been chosen.
+    local announcing = not contextual and announces_server(line)
     for raw in line:gmatch('https?://[^%s]+') do
       local url = trim_url(raw)
       if is_local_url(url) then return browser_url(url) end
-      local announces_server = lower:match('local%s*:')
-        or lower:match('network%s*:')
-        or lower:match('listen')
-        or lower:match('ready%s+at')
-        or lower:match('started%s+at')
-        or lower:match('available%s+at')
-        or lower:match('url%s*:')
-      if not contextual and announces_server then
+      if announcing and not contextual then
         contextual = url
       end
     end
@@ -167,9 +190,17 @@ local function find_dev_tab(mux_window, cwd)
   end
 end
 
+-- Seconds to wait after `attempt` (1-based, counting reads already performed)
+-- before the next read, or nil once polling has covered its whole window.
+function M.url_poll_delay(attempt)
+  if attempt >= URL_POLL_ATTEMPTS then return nil end
+  if attempt < URL_POLL_FAST_ATTEMPTS then return URL_POLL_FAST_INTERVAL_SECONDS end
+  return URL_POLL_SLOW_INTERVAL_SECONDS
+end
+
 local function poll_for_server_url(window, server_pane, attempt, on_finished)
   local ok, output = pcall(function()
-    return server_pane:get_logical_lines_as_text(200)
+    return server_pane:get_logical_lines_as_text(URL_POLL_LINES)
   end)
   if not ok then
     on_finished(nil)
@@ -190,7 +221,8 @@ local function poll_for_server_url(window, server_pane, attempt, on_finished)
     return
   end
 
-  if attempt >= URL_POLL_ATTEMPTS then
+  local delay = M.url_poll_delay(attempt)
+  if not delay then
     on_finished(nil)
     window:toast_notification(
       'WezTerm',
@@ -201,7 +233,7 @@ local function poll_for_server_url(window, server_pane, attempt, on_finished)
     return
   end
 
-  wezterm.time.call_after(URL_POLL_INTERVAL_SECONDS, function()
+  wezterm.time.call_after(delay, function()
     poll_for_server_url(window, server_pane, attempt + 1, on_finished)
   end)
 end
@@ -371,7 +403,7 @@ function M.setup(config)
       end
 
       polling_panes[server_pane] = true
-      poll_for_server_url(window, server_pane, 0, function(url)
+      poll_for_server_url(window, server_pane, 1, function(url)
         polling_panes[server_pane] = nil
         if url then dev_urls[cwd] = url end
       end)

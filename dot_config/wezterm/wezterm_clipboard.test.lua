@@ -34,10 +34,19 @@ eq('mime/text only', clipboard.has_image_mime('text/plain;charset=utf-8\nUTF8_ST
 eq('mime/malformed', clipboard.has_image_mime(nil), false)
 eq('mime/huge', clipboard.has_image_mime(string.rep('text/plain\n', 100000) .. 'image/webp\n'), true)
 
+-- The probe blocks the GUI thread, so on Linux it must be time-bounded.
 local linux = clipboard.clipboard_type_command('x86_64-unknown-linux-gnu')
-eq('command/linux executable', linux[1], 'wl-paste')
-eq('command/linux argument', linux[2], '--list-types')
+eq('command/linux is time-bounded', linux[1], 'timeout')
+eq('command/linux timeout is sub-second', tonumber(linux[2]) < 1, true)
+eq('command/linux executable', linux[3], 'wl-paste')
+eq('command/linux argument', linux[4], '--list-types')
 eq('command/unsupported', clipboard.clipboard_type_command('unknown'), nil)
+
+-- macOS ships no `timeout`; wrapping there would break the probe outright.
+local darwin = clipboard.clipboard_type_command('x86_64-apple-darwin')
+eq('command/darwin runs osascript directly', darwin[1], '/usr/bin/osascript')
+local windows = clipboard.clipboard_type_command('x86_64-pc-windows-msvc')
+eq('command/windows runs powershell directly', windows[1], 'powershell.exe')
 
 local function image_runner()
   return true, 'text/plain\nimage/png\n', ''
@@ -83,6 +92,19 @@ clipboard.paste_action {
   target_triple = 'linux',
 }(window, {})
 eq('action/probe failure preserves text paste', performed[#performed].kind, 'paste')
+
+-- A wedged clipboard owner: `timeout` kills wl-paste, so the probe exits
+-- non-zero with no output. Pasting must still work, as plain text.
+local function timed_out_runner()
+  return false, '', ''
+end
+eq('probe/timeout', clipboard.clipboard_has_image(timed_out_runner, 'linux'), false)
+clipboard.paste_action {
+  run_child_process = timed_out_runner,
+  target_triple = 'linux',
+}(window, {})
+eq('action/timeout falls back to text paste', performed[#performed].kind, 'paste')
+eq('action/timeout pastes from the clipboard', performed[#performed].source, 'Clipboard')
 
 io.write(string.format('\n%d passed, %d failed\n', passed, failed))
 os.exit(failed == 0 and 0 or 1)

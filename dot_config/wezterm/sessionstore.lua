@@ -45,26 +45,68 @@ local last_save = 0
 
 -- ---------- capture ----------
 
--- Walk the mux into a plain state table (shape documented in session.lua).
-local function capture()
+-- Capture runs in two passes because the per-pane queries are not all the same
+-- price. tabs_with_info/panes_with_info are local and hand over geometry, focus
+-- and is_zoomed for free; get_domain_name and especially get_current_working_dir
+-- are per-pane calls that, for a pane living in a bg-N unix domain, cross a
+-- socket to that mux-server and block the GUI thread while they do. So the first
+-- pass collects only free information and gives anything that can veto a query a
+-- chance to run before one is issued.
+
+-- Pass one: the mux handles, plus the zoom veto.
+--
+-- A zoomed pane reports the whole tab's size while its siblings keep theirs, so
+-- the rectangles overlap and describe no real layout; the save is skipped and the
+-- last good one kept. (Measured; see session.lua.) Returning nil here means not
+-- one cwd is asked for on the way to discovering that — including in windows
+-- walked before the zoomed one.
+local function scan()
   local windows = {}
   for _, mux_win in ipairs(wezterm.mux.all_windows()) do
-    local tabs, size = {}, nil
+    local tabs = {}
     for _, tab_info in ipairs(mux_win:tabs_with_info()) do
-      local panes, zoomed = {}, false
-      for _, pane_info in ipairs(tab_info.tab:panes_with_info()) do
-        if pane_info.is_zoomed then zoomed = true end
-        local p = pane_info.pane
-        panes[#panes + 1] = {
-          cwd = session.normalize_cwd(p:get_current_working_dir()),
-          domain = p:get_domain_name(),
-          left = pane_info.left, top = pane_info.top,
-          width = pane_info.width, height = pane_info.height,
-          active = pane_info.is_active,
-        }
+      local pane_infos = tab_info.tab:panes_with_info()
+      for _, pane_info in ipairs(pane_infos) do
+        if pane_info.is_zoomed then return nil end
       end
-      size = size or tab_info.tab:get_size()
-      tabs[#tabs + 1] = { panes = panes, active = tab_info.is_active, zoomed = zoomed }
+      tabs[#tabs + 1] = { tab = tab_info.tab, active = tab_info.is_active, panes = pane_infos }
+    end
+    windows[#windows + 1] = tabs
+  end
+  return windows
+end
+
+-- Pass two: the queries, into a plain state table (shape documented in
+-- session.lua). Returns nil when the scan declined.
+local function capture()
+  local scanned = scan()
+  if not scanned then return nil end
+  local windows = {}
+  for _, win_tabs in ipairs(scanned) do
+    local tabs, size = {}, nil
+    for _, tab in ipairs(win_tabs) do
+      local panes = {}
+      for _, pane_info in ipairs(tab.panes) do
+        local p = pane_info.pane
+        -- Domain first, cwd only for panes that will survive sanitize. A
+        -- background pane is dropped there whatever its cwd, and its cwd is the
+        -- expensive one to ask for — it's the query that crosses the socket. The
+        -- predicate is session's own, not a restatement, so the two can't drift;
+        -- capture omitting these panes and sanitize dropping them produce the
+        -- same state, and therefore the same digest and the same file.
+        local domain = p:get_domain_name()
+        if session.is_restorable_domain(domain) then
+          panes[#panes + 1] = {
+            cwd = session.normalize_cwd(p:get_current_working_dir()),
+            domain = domain,
+            left = pane_info.left, top = pane_info.top,
+            width = pane_info.width, height = pane_info.height,
+            active = pane_info.is_active,
+          }
+        end
+      end
+      size = size or tab.tab:get_size()
+      tabs[#tabs + 1] = { panes = panes, active = tab.active }
     end
     windows[#windows + 1] = {
       tabs = tabs,
@@ -119,10 +161,9 @@ end
 -- Exposed for tests/manual use; setup() calls it on a throttle.
 function M.save()
   local raw = capture()
-  -- A zoomed pane reports the whole tab's size while its siblings keep theirs,
-  -- so the rectangles overlap and describe no real layout. Skip the save and
-  -- keep the last good one rather than persist that. (Measured; see session.lua.)
-  if session.has_zoomed(raw) then return end
+  -- nil means the capture wasn't trustworthy (zoom; see scan()) — keep the last
+  -- good save rather than persist over it.
+  if not raw then return end
   local state = session.sanitize(raw)
   -- Never replace a real session with an empty one. During teardown the mux can
   -- briefly report no windows, and that's exactly when the file must survive.

@@ -70,6 +70,31 @@ eq('animation/other window', agent.window_has_working(12, 3000), false)
 clock_ms = 5001
 eq('animation/stale entry removed', agent.window_has_working(11, 3000), false)
 
+-- mark_done must never query the foreground process: it runs on every bare
+-- Escape press. A pane already tracked in pane_status takes the table path;
+-- an untracked pane may consult user vars only.
+local function proc_forbidden_pane(id, user_vars)
+  return {
+    pane_id = function() return id end,
+    get_foreground_process_name = function()
+      error('mark_done must not query the foreground process')
+    end,
+    get_user_vars = function() return user_vars or {} end,
+  }
+end
+
+agent.mark_done(proc_forbidden_pane(7))
+eq('mark done/tracked pane skips process query', agent.status_of(7, {}), 'done')
+
+agent.mark_done(proc_forbidden_pane(21, { agent_kind = 'codex' }))
+eq('mark done/untracked agent pane via vars', agent.status_of(21, {}), 'done')
+
+agent.mark_done(proc_forbidden_pane(22, { claude_status = 'working' }))
+eq('mark done/legacy var name recognised', agent.status_of(22, {}), 'done')
+
+agent.mark_done(proc_forbidden_pane(23))
+eq('mark done/plain pane untouched', agent.status_of(23, {}), nil)
+
 eq('page keys/zsh scroll', agent.page_keys_scroll_terminal(pane(1, '/usr/bin/zsh')), true)
 eq('page keys/codex scroll', agent.page_keys_scroll_terminal(pane(2, '/usr/bin/node', { agent_kind = 'codex' })), true)
 eq('page keys/other app passes through', agent.page_keys_scroll_terminal(pane(3, '/usr/bin/micro')), false)

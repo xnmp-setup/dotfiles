@@ -74,6 +74,13 @@ function M.apply(config)
   config.front_end = 'WebGpu'
   config.webgpu_power_preference = 'HighPerformance'
   config.max_fps = 120
+  -- The default cursor-blink easing functions repaint continuously at
+  -- animation_fps for any focused window, even a fully idle one. Constant
+  -- easing plus a 1fps animation clock removes that idle repaint floor;
+  -- max_fps only caps, so scrolling and typing still render at 120.
+  config.animation_fps = 1
+  config.cursor_blink_ease_in = 'Constant'
+  config.cursor_blink_ease_out = 'Constant'
   for _, gpu in ipairs(wezterm.gui.enumerate_gpus()) do
     if gpu.backend == 'Vulkan' and gpu.device_type == 'DiscreteGpu' then
       config.webgpu_preferred_adapter = gpu
