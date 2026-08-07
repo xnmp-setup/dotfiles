@@ -1356,6 +1356,76 @@ do
 end
 
 do
+    -- A workspace that does not exist yet cannot be renamed, and the attempt
+    -- fails silently. At login only the workspace being looked at exists — the
+    -- rest are created by the windows being placed onto them — so renaming only
+    -- at the start of the restore leaves every other workspace called "2", "3"
+    -- and so on for the rest of the session. The names have to be reasserted
+    -- once the placements have made the workspaces real.
+    local path = temp_path()
+    write(path, session_model.serialize({
+        version = session_model.VERSION,
+        workspaces = {
+            { id = 1, name = "Base" },
+            { id = 2, name = "SillyTavern" },
+            { id = 3, name = "Obsidian Capture" },
+        },
+        windows = {
+            { class = "google-chrome", workspace = 2, title = "Inbox", provider = "chrome" },
+            { class = "google-chrome", workspace = 3, title = "Capture", provider = "chrome" },
+        },
+        shells = {},
+    }))
+    local handle, control = restorer({ snapshot_path = path, map_path = "/dev/null" })
+    handle.boot()
+
+    local function renamed_to(name)
+        local count = 0
+        for _, command in ipairs(control.renames()) do
+            if command:find(name, 1, true) then count = count + 1 end
+        end
+        return count
+    end
+    equal("the names are asserted once up front", renamed_to("SillyTavern"), 1)
+
+    -- The windows arrive, which is what creates workspaces 2 and 3.
+    control.open({ class = "google-chrome", title = "Inbox", mapped = true })
+    control.open({ class = "google-chrome", title = "Capture", mapped = true })
+    control.advance(500)
+    equal("still only the one attempt while the restore runs",
+        renamed_to("SillyTavern"), 1)
+
+    control.advance(60000)
+    check("the restore has ended", not handle.is_restoring())
+    equal("and the name is asserted again, now that the workspace exists",
+        renamed_to("SillyTavern"), 2)
+    equal("for every renamed workspace", renamed_to("Obsidian Capture"), 2)
+
+    -- A rename that throws must not take the rest of the cleanup with it: the
+    -- restore still has to end, or saving stops for the session.
+    local broken_path = snapshot_file()
+    local hl, broken = fake_hl({}, {})
+    hl.exec_cmd = function(command)
+        broken.executed[#broken.executed + 1] = command
+        if command:match("^rename%-ws") then error("rename refused") end
+    end
+    local wedged = session_restore.new(hl, {
+        snapshot_path = broken_path,
+        shells_path = "/nonexistent-shells.lua",
+        rename_command = "rename-ws",
+        map_path = "/dev/null",
+        write_file = function() return true end,
+        log = function() end,
+    })
+    wedged.boot()
+    broken.advance(60000)
+    check("a rename that throws at the end still ends the restore",
+        not wedged.is_restoring())
+    os.remove(path)
+    os.remove(broken_path)
+end
+
+do
     -- Leaving the session: save, then actually leave. The exit has to be
     -- dispatched inside the call — Hyprland invokes a keybind callback with
     -- nresults=0, so a dispatcher merely handed back is discarded and the

@@ -113,6 +113,9 @@ function M.new(hl, options)
     local sightings = {}
     local restoring = false
     local placements, groups, placed = {}, {}, {}
+    -- Kept past the launches because the renames are re-run at the end, when
+    -- the workspaces the placements created finally exist.
+    local workspace_names = {}
     local ghostty_queue, ghostty_pending = {}, 0
     -- Saving is held off until the first restore has settled. Otherwise the
     -- 30 s timer can fire while Chrome is still coming up and write a snapshot
@@ -402,12 +405,30 @@ function M.new(hl, options)
         end
     end
 
+    -- rename-hypr-workspace owns the length cap, the Lua %q quoting of the name
+    -- and the lock against concurrent renames from the bar.
+    --
+    -- Run twice, at the start of the restore and again at the end, because a
+    -- workspace that does not exist yet cannot be renamed and the attempt fails
+    -- silently. At login only the workspace being looked at exists; the rest are
+    -- created by the placements, so the pass that makes their names stick is the
+    -- one after the settle. The early pass is kept because it costs nothing and
+    -- puts the names of the workspaces that *do* exist on the bar immediately;
+    -- renaming is idempotent.
+    local function rename_workspaces()
+        for _, workspace in ipairs(workspace_names) do
+            hl.exec_cmd(("%s %d %s"):format(
+                rename_command, workspace.id, shell_quote(workspace.name)))
+        end
+    end
+
     local function finish()
         if not restoring then return end
         -- Every step is guarded: a throw in one must not leave `restoring`
         -- stuck true, which would permanently suppress terminal grouping and
         -- silently stop all further saves.
         local ok, err = pcall(function()
+            rename_workspaces()
             rebuild_groups()
             apply_focus_states()
             for _, placement in ipairs(session_model.unclaimed(placements)) do
@@ -423,11 +444,13 @@ function M.new(hl, options)
         restoring = false
         savable = true
         placements, groups, placed = {}, {}, {}
+        workspace_names = {}
     end
 
     local function start(plan)
         restoring = true
         placements, groups, placed = plan.placements, plan.groups, {}
+        workspace_names = plan.workspace_names or {}
         ghostty_queue, ghostty_pending = {}, 0
 
         local immediate = {}
@@ -448,13 +471,7 @@ function M.new(hl, options)
         })
 
         local ok, err = pcall(function()
-            for _, workspace in ipairs(plan.workspace_names) do
-                -- rename-hypr-workspace owns the length cap, the Lua %q quoting
-                -- of the name and the lock against concurrent renames from the
-                -- bar.
-                hl.exec_cmd(("%s %d %s"):format(
-                    rename_command, workspace.id, shell_quote(workspace.name)))
-            end
+            rename_workspaces()
             for _, launch in ipairs(immediate) do
                 hl.exec_cmd(launch.cmd)
             end
