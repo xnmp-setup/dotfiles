@@ -27,6 +27,32 @@ local startup_pairing = require("startup_pairing").new(hl, {
     workspace = 1,
 })
 local terminal_groups = require("terminal_grouping")
+-- Global, not local: `hyprctl dispatch` evaluates its argument as Lua in the
+-- config's environment, so `hyprctl dispatch "session.save()"` (the systemd
+-- unit's ExecStop) needs this name to be reachable from there.
+--
+-- Built under pcall, and every call site tolerates the stub. This runs while
+-- the config is still being read — before any keybind, before the monitor
+-- setup, before autostart — so an uncaught throw here (a syntax error, a file
+-- missing after a partial `chezmoi apply`) would abort config evaluation and
+-- leave a Hyprland with no binds and no way to open a window. Session restore
+-- is a convenience; it does not get to take the desktop down with it.
+local session_ok, session_module = pcall(function()
+    return require("session_restore").new(hl, {
+        wezterm_command = wezterm_launcher.launch,
+    })
+end)
+if session_ok then
+    session = session_module
+else
+    print("[session] disabled: " .. tostring(session_module))
+    session = {
+        boot = function() return false end,
+        save = function() return hl.dsp.exec_cmd("true") end,
+        restore = function() return hl.dsp.exec_cmd("true") end,
+        is_restoring = function() return false end,
+    }
+end
 local navigation      = require("window_navigation").new(hl, nary, group_actions)
 local resize          = require("window_resize").new(hl)
 local scratchpad      = require("scratchpad").new(hl, window_actions)
@@ -267,11 +293,27 @@ hl.on("hyprland.start", function()
     hl.exec_cmd("sh -c 'ls -d /sys/class/power_supply/BAT* >/dev/null 2>&1 && exec hypridle'")
     -- scratchpad-autohide.sh and imv-splash.sh are gone: both tailed the event
     -- socket through socat to react to focus, which is an `hl.on` handler now.
-    hl.exec_cmd(wezterm_launcher.launch, { workspace = "1" })
-    hl.exec_cmd("google-chrome-stable", { workspace = "1" })
-    -- Obsidian is launched by the startup pairing module, once Chrome's
-    -- window is up, so the two land next to each other and can be tabbed.
-    startup_pairing.start()
+
+    -- Rebuild the last session if there is one, and fall back to the fixed
+    -- startup set if there is not. The pcall is the point: a snapshot that is
+    -- missing, truncated or from an older version must leave you with the same
+    -- desktop this config always produced, never with an empty one. That is
+    -- also why boot() runs in-process rather than as an exec — a fire-and-
+    -- forget command that dies takes the whole startup with it, silently.
+    local restored, claimed = pcall(session.boot)
+    if not (restored and claimed) then
+        if not restored then
+            print("[session] restore failed, falling back to the startup set: "
+                .. tostring(claimed))
+        end
+        hl.exec_cmd(wezterm_launcher.launch, { workspace = "1" })
+        hl.exec_cmd("google-chrome-stable", { workspace = "1" })
+        -- Obsidian is launched by the startup pairing module, once Chrome's
+        -- window is up, so the two land next to each other and can be tabbed.
+        -- A restore does not need it: Obsidian is in the snapshot if it was
+        -- open, and pairing would fight the restorer for the same windows.
+        startup_pairing.start()
+    end
     hl.exec_cmd("systemctl --user start hypr-session-save.service")
 {{ if eq .chezmoi.hostname "t14s" }}
     -- NixOS laptop: polkit agent is not autostarted by anything else
@@ -320,7 +362,14 @@ terminal_groups.new(hl, {
     -- At startup wezterm is the focused terminal when Chrome opens, so the
     -- focus fallback would pull Chrome (and then Obsidian) into wezterm's
     -- tile. The pairing sequence owns those windows; leave wezterm alone.
-    suppress = startup_pairing.is_waiting,
+    --
+    -- A restore is the same problem, larger: every restored ghostty window is
+    -- a child of the one single-instance ghostty process, so process ancestry
+    -- makes each of them look like it was launched from the last, and they
+    -- would tab themselves together while the restorer is still placing them.
+    suppress = function(window)
+        return session.is_restoring() or startup_pairing.is_waiting(window)
+    end,
 })
 
 ---------------------
@@ -336,7 +385,10 @@ hl.bind(mainMod .. " + SPACE",    hl.dsp.exec_cmd("vicinae toggle"))
 -- ticket on the way out. Safe everywhere — where the sudo side of that rule
 -- isn't installed the wrapper detects it and is a plain hyprlock.
 hl.bind(mainMod .. " + CTRL + L", hl.dsp.exec_cmd("~/.config/hypr/lock.sh"))
-hl.bind(mainMod .. " + CTRL + R", hl.dsp.exec_cmd("~/.local/bin/hypr-session-restore.sh"))
+-- Rebuild the saved session on top of whatever is already open. Windows that
+-- are already on screen keep their slot and are left where they are; only what
+-- is missing is relaunched.
+hl.bind(mainMod .. " + CTRL + R", function() session.restore() end)
 hl.bind(mainMod .. " + E",         hl.dsp.exec_cmd("~/.config/hypr/open-explorer-cwd.sh"))
 hl.bind(mainMod .. " + SHIFT + S", hl.dsp.exec_cmd("hyprshot -m region --clipboard-only"))
 hl.bind("CTRL + SHIFT + C",        hl.dsp.exec_cmd("~/Repos/obsidian-capture/hotkey/capture-linux.sh"))

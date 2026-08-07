@@ -3,7 +3,9 @@ __ghostty_set_tab_title() {
   title=${title//$'\a'/}
   title=${title//$'\r'/ }
   title=${title//$'\n'/ }
-  printf '\e]2;%s\e\\' "$title"
+  # The identity tag goes last: see ghostty-title-tags.zsh for why the ordering
+  # matters to the status bar's title parsing.
+  printf '\e]2;%s%s\e\\' "$title" "$__ghostty_pid_tag"
 }
 
 # Mirror WezTerm's foreground-app markers. These are Hack Nerd Font private-use

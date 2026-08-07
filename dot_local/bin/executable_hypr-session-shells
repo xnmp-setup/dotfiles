@@ -1,0 +1,255 @@
+#!/usr/bin/env python3
+"""Report the shells running inside Ghostty, as a Lua table literal.
+
+session_restore.lua runs this in the background and reads the file it writes;
+it never blocks the compositor on it. A /proc walk costs ~50 ms here, mostly
+Python startup, and Hyprland's Lua runs on the main event loop — doing it
+inline would drop frames twice a minute. The consequence is that a working
+directory can be up to one save interval stale, which is a far better trade
+than a periodic stutter.
+
+This deliberately does NOT ask hyprctl anything. Windows and workspaces come
+from the `hl` API inside the config. Shelling out to hyprctl from Lua would
+deadlock: the request can only be served by the main event loop, which is
+blocked waiting for the very process making it.
+
+Ghostty runs with --gtk-single-instance=true, so every window and every tab is
+a surface of one process, and each surface's shell is a direct child of it.
+Nothing outside the process can say which surface belongs to which window; that
+mapping is recovered from the invisible pid tag each shell stamps into its
+title (dot_config/zsh/ghostty-title-tags.zsh).
+
+For "what was running in this tab" the answer is the tty's foreground process
+group, not the deepest descendant. A shell running `codex resume` has a process
+tree five levels deep ending in whatever the agent most recently spawned; a
+depth-first walk reports that, which is neither what the user sees nor what
+they would want retyped. quick-question.zsh also parks helper shells under
+every prompt. The foreground process group is the thing that owns the terminal,
+which is exactly the question being asked.
+
+Output is a Lua literal rather than JSON so the caller can `load()` it: Lua has
+no stdlib JSON parser, and the snapshot this feeds is itself a Lua file.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+from dataclasses import dataclass
+
+GHOSTTY_COMM = "ghostty"
+
+# Shells whose foreground process group we report. Anything else that ends up
+# as a direct child of ghostty is a helper, not a surface.
+SHELL_COMMS = frozenset({"zsh", "bash", "sh", "fish", "dash", "nu"})
+
+
+@dataclass(frozen=True)
+class Stat:
+    """The fields of /proc/<pid>/stat this program needs."""
+
+    pid: int
+    comm: str
+    ppid: int
+    pgrp: int
+    tty_nr: int
+    tpgid: int
+
+
+def parse_stat(text: str) -> Stat | None:
+    """Parse /proc/<pid>/stat.
+
+    The second field is the executable name in parentheses and may itself
+    contain spaces and parentheses, so everything is indexed from the *last*
+    close-paren rather than split on whitespace from the left.
+    """
+    open_paren = text.find("(")
+    close_paren = text.rfind(")")
+    if open_paren < 0 or close_paren < open_paren:
+        return None
+    try:
+        pid = int(text[:open_paren].strip())
+    except ValueError:
+        return None
+    comm = text[open_paren + 1 : close_paren]
+    fields = text[close_paren + 1 :].split()
+    # fields[0] is state (stat field 3); ppid, pgrp, session, tty_nr and tpgid
+    # follow as fields 4-8.
+    if len(fields) < 6:
+        return None
+    try:
+        return Stat(
+            pid=pid,
+            comm=comm,
+            ppid=int(fields[1]),
+            pgrp=int(fields[2]),
+            tty_nr=int(fields[4]),
+            tpgid=int(fields[5]),
+        )
+    except ValueError:
+        return None
+
+
+def read_stats(proc: str) -> dict[int, Stat]:
+    """Every readable process. Entries that vanish mid-scan are skipped."""
+    stats: dict[int, Stat] = {}
+    try:
+        entries = os.listdir(proc)
+    except OSError:
+        return stats
+    for entry in entries:
+        if not entry.isdigit():
+            continue
+        try:
+            with open(
+                os.path.join(proc, entry, "stat"), encoding="utf-8", errors="replace"
+            ) as handle:
+                text = handle.read()
+        except OSError:
+            continue
+        stat = parse_stat(text)
+        if stat is not None:
+            stats[stat.pid] = stat
+    return stats
+
+
+def read_cmdline(proc: str, pid: int) -> str:
+    """The foreground command, for display and for pre-typing.
+
+    Argument boundaries are lost here — /proc gives NUL-separated argv and this
+    joins on spaces. That is fine for its two uses: showing the user what was
+    running, and pre-loading it onto a prompt with `print -z`, where a human
+    reads it before pressing Enter. It is emphatically NOT good enough to
+    re-execute, which is why nothing does (see session-restore-map.conf).
+    """
+    try:
+        with open(os.path.join(proc, str(pid), "cmdline"), "rb") as handle:
+            raw = handle.read()
+    except OSError:
+        return ""
+    return " ".join(part.decode("utf-8", "replace") for part in raw.split(b"\0") if part)
+
+
+def read_cwd(proc: str, pid: int) -> str:
+    try:
+        return os.readlink(os.path.join(proc, str(pid), "cwd"))
+    except OSError:
+        return ""
+
+
+def ghostty_pids(stats: dict[int, Stat]) -> list[int]:
+    return sorted(pid for pid, stat in stats.items() if stat.comm == GHOSTTY_COMM)
+
+
+def surface_shells(stats: dict[int, Stat], parents: set[int]) -> list[Stat]:
+    """The shells that are direct children of a ghostty process.
+
+    A surface shell always has a controlling terminal, which is what
+    distinguishes it from any helper ghostty might fork.
+    """
+    return sorted(
+        (
+            stat
+            for stat in stats.values()
+            if stat.ppid in parents and stat.comm in SHELL_COMMS and stat.tty_nr != 0
+        ),
+        key=lambda stat: stat.pid,
+    )
+
+
+def foreground_pid(stats: dict[int, Stat], shell: Stat) -> int | None:
+    """The process group in the foreground of this shell's terminal.
+
+    Returns None when the shell itself is in the foreground — i.e. it is
+    sitting at a prompt and there is nothing to pre-type.
+    """
+    if shell.tpgid <= 0 or shell.tpgid == shell.pgrp:
+        return None
+    # The group leader is the process whose pid is the group id; prefer it, but
+    # accept any member if the leader has already exited.
+    leader = stats.get(shell.tpgid)
+    if leader is not None and leader.pgrp == shell.tpgid:
+        return leader.pid
+    members = [
+        stat.pid
+        for stat in stats.values()
+        if stat.pgrp == shell.tpgid and stat.tty_nr == shell.tty_nr
+    ]
+    return min(members) if members else None
+
+
+def collect_shells(proc: str = "/proc") -> list[dict[str, object]]:
+    stats = read_stats(proc)
+    parents = set(ghostty_pids(stats))
+    if not parents:
+        return []
+
+    shells = []
+    for shell in surface_shells(stats, parents):
+        cwd = read_cwd(proc, shell.pid)
+        if not cwd:
+            # The shell exited between the scan and now; a record with no
+            # working directory would restore a window pointing nowhere.
+            continue
+        foreground = foreground_pid(stats, shell)
+        shells.append(
+            {
+                "pid": shell.pid,
+                "cwd": cwd,
+                "command": read_cmdline(proc, foreground) if foreground else "",
+            }
+        )
+    return shells
+
+
+# ---------------------------------------------------------------------------
+# Lua rendering
+# ---------------------------------------------------------------------------
+
+_LUA_ESCAPES = {"\\": "\\\\", '"': '\\"', "\n": "\\n", "\r": "\\r", "\t": "\\t"}
+
+
+def lua_string(value: str) -> str:
+    out = ['"']
+    for character in value:
+        escape = _LUA_ESCAPES.get(character)
+        if escape is not None:
+            out.append(escape)
+        elif ord(character) < 0x20 or ord(character) == 0x7F:
+            # \ddd must not be followed by a digit or Lua reads it as part of
+            # the escape, so it is always padded to three digits.
+            out.append("\\%03d" % ord(character))
+        else:
+            out.append(character)
+    out.append('"')
+    return "".join(out)
+
+
+def render(shells: list[dict[str, object]]) -> str:
+    lines = ["return {"]
+    for shell in shells or []:
+        lines.append(
+            '  { ["pid"] = %d, ["cwd"] = %s, ["command"] = %s },'
+            % (
+                shell["pid"],
+                lua_string(str(shell["cwd"])),
+                lua_string(str(shell["command"])),
+            )
+        )
+    lines.append("}")
+    return "\n".join(lines) + "\n"
+
+
+def main(argv: list[str]) -> int:
+    # Hyprland-only. On macOS and WSL there is no session to record and no
+    # /proc to walk, so report nothing rather than fail.
+    if not os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+        sys.stdout.write(render([]))
+        return 0
+    proc = argv[1] if len(argv) > 1 else "/proc"
+    sys.stdout.write(render(collect_shells(proc)))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

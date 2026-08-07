@@ -112,27 +112,27 @@ __ghostty_agent_animation() {
         if [[ $previous_state != working ]]; then
           __ghostty_agent_shader_sequence working "$working_signal" >&$title_fd
         fi
-        printf '\e]2;%s %s%s%s\e\\' \
+        printf '\e]2;%s %s%s%s%s\e\\' \
           "$frames[$frame_index]" "$display_label" \
-          "$routing_marker" "$agent_marker" >&$title_fd
+          "$routing_marker" "$agent_marker" "$__ghostty_pid_tag" >&$title_fd
         (( frame_index = frame_index % $#frames + 1 ))
         zselect -t $frame_delay_cs >/dev/null 2>&1
         ;;
       attention)
         if [[ $previous_state != attention || $previous_label != $display_label ]]; then
           __ghostty_agent_shader_sequence attention "$working_signal" >&$title_fd
-          printf '\e]2;%s %s%s%s\e\\' \
+          printf '\e]2;%s %s%s%s%s\e\\' \
             "$attention_marker" "$display_label" \
-            "$routing_marker" "$agent_marker" >&$title_fd
+            "$routing_marker" "$agent_marker" "$__ghostty_pid_tag" >&$title_fd
         fi
         zselect -t 20 >/dev/null 2>&1
         ;;
       done)
         if [[ $previous_state != done || $previous_label != $display_label ]]; then
           __ghostty_agent_shader_sequence done "$working_signal" >&$title_fd
-          printf '\e]2;%s %s%s%s\e\\' \
+          printf '\e]2;%s %s%s%s%s\e\\' \
             "$idle_marker" "$display_label" \
-            "$routing_marker" "$agent_marker" >&$title_fd
+            "$routing_marker" "$agent_marker" "$__ghostty_pid_tag" >&$title_fd
         fi
         zselect -t 20 >/dev/null 2>&1
         ;;
@@ -140,9 +140,9 @@ __ghostty_agent_animation() {
         state=idle
         if [[ $previous_state != idle || $previous_label != $display_label ]]; then
           __ghostty_agent_shader_sequence idle "$working_signal" >&$title_fd
-          printf '\e]2;%s %s%s%s\e\\' \
+          printf '\e]2;%s %s%s%s%s\e\\' \
             "$idle_marker" "$display_label" \
-            "$routing_marker" "$agent_marker" >&$title_fd
+            "$routing_marker" "$agent_marker" "$__ghostty_pid_tag" >&$title_fd
         fi
         zselect -t 20 >/dev/null 2>&1
         ;;

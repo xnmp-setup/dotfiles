@@ -26,6 +26,16 @@ __wezterm_osc7  # emit on shell startup too
 [[ -r ~/.config/zsh/ghostty-shell-integration.zsh ]] \
   && source ~/.config/zsh/ghostty-shell-integration.zsh
 
+# Hyprland session restore reopens each terminal in its saved directory and
+# hands back whatever was running in it. `print -z` pushes onto zsh's buffer
+# stack, so the command lands on the first prompt ready to edit or run — it is
+# never executed for you. Restoring a session must not relaunch a build, a
+# deploy or an agent behind your back.
+if [[ -n ${HYPR_RESTORE_CMD:-} ]]; then
+  print -z -- "$HYPR_RESTORE_CMD"
+  unset HYPR_RESTORE_CMD
+fi
+
 # --- History ---
 HISTFILE="$HOME/.zsh_history"
 HISTSIZE=50000

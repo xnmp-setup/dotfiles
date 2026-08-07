@@ -15,6 +15,8 @@ zmodload zsh/zselect
 zmodload zsh/stat
 autoload -Uz add-zsh-hook
 
+# First: both title writers below append the identity tag it defines.
+source "${${(%):-%x}:A:h}/ghostty-title-tags.zsh"
 source "${${(%):-%x}:A:h}/ghostty-page-scroll.zsh"
 source "${${(%):-%x}:A:h}/ghostty-tab-title.zsh"
 source "${${(%):-%x}:A:h}/ghostty-command-pulse.zsh"
