@@ -303,6 +303,17 @@ local function snapshot_for(windows, shells, workspaces)
     }
 end
 
+-- A saved ghostty window, tagged with the pid of the shell that was its visible
+-- tab — which is how the restore knows what to reopen it with.
+local function ghostty_window(workspace, pid, title)
+    return {
+        class = session_model.GHOSTTY_CLASS,
+        provider = "ghostty",
+        workspace = workspace,
+        title = (title or "❯ term") .. session_model.encode_tag("pid:" .. pid),
+    }
+end
+
 do
     local plan = session_model.plan_restore(snapshot_for(
         {
@@ -310,6 +321,8 @@ do
             { class = "google-chrome", workspace = 2, title = "Docs", provider = "chrome" },
             { class = "obsidian", workspace = 6, title = "Vault", provider = "generic",
               cmdline = "obsidian" },
+            ghostty_window(1, 1, "❯ a"),
+            ghostty_window(3, 2, "❯ b"),
         },
         { { pid = 1, cwd = "/a", workspace = 1 }, { pid = 2, cwd = "/b", workspace = 3 } },
         { { id = 1, name = "Base" }, { id = 2, name = "SillyTavern" }, { id = 9, name = "9" } }
@@ -332,7 +345,7 @@ do
     for _, launch in ipairs(plan.launches) do
         if launch.provider == "ghostty" then ghostty_launches = ghostty_launches + 1 end
     end
-    equal("one ghostty window is launched per saved shell", ghostty_launches, 2)
+    equal("one terminal is launched per saved ghostty window", ghostty_launches, 2)
 
     check("chrome is launched with its own session restore",
         (function()
@@ -384,7 +397,6 @@ do
         { { pid = 1, cwd = "/a", workspace = 1 } }
     ), {
         { class = "google-chrome", title = "Inbox" },
-        { class = session_model.GHOSTTY_CLASS, title = "❯ a" },
     })
 
     equal("an already-open window is neither relaunched nor moved", #plan.placements, 1)
@@ -459,10 +471,12 @@ end
 do
     -- Ghostty windows have no identity at open time, so they are claimed in
     -- launch order, which is save order.
-    local plan = session_model.plan_restore(snapshot_for({}, {
-        { pid = 1, cwd = "/first", workspace = 1 },
-        { pid = 2, cwd = "/second", workspace = 4 },
-    }), {})
+    local plan = session_model.plan_restore(snapshot_for(
+        { ghostty_window(1, 1), ghostty_window(4, 2) },
+        {
+            { pid = 1, cwd = "/first", workspace = 1 },
+            { pid = 2, cwd = "/second", workspace = 4 },
+        }), {})
     local first = session_model.match_window(plan.placements,
         { class = session_model.GHOSTTY_CLASS, title = "" })
     local second = session_model.match_window(plan.placements,
@@ -519,18 +533,17 @@ do
     local nils = session_model.plan_restore({ version = 2 }, nil)
     equal("missing tables are tolerated", #nils.placements, 0)
 
-    -- A shell the tracker could not attribute is skipped rather than dumped on
-    -- an arbitrary workspace.
-    local unattributed = session_model.plan_restore(
-        snapshot_for({}, { { pid = 1, cwd = "/a" } }), {})
-    equal("a shell with no workspace is not restored", #unattributed.launches, 0)
+    -- Shells are what a restored window resumes, never what produces one: a
+    -- shell whose window is not in the capture has nowhere to be put.
+    local windowless = session_model.plan_restore(
+        snapshot_for({}, { { pid = 1, cwd = "/a", workspace = 1 } }), {})
+    equal("a shell with no window of its own is not restored", #windowless.launches, 0)
 end
 
 do
     -- shells.lua is written by a background /proc walk and can legitimately be
     -- empty — it has never run, or it ran before any shell existed. The saved
-    -- ghostty windows are the fallback; without one every terminal in the
-    -- session is silently dropped.
+    -- ghostty windows still come back; only their directories are lost.
     local ghostty = session_model.GHOSTTY_CLASS
     local plan = session_model.plan_restore(snapshot_for({
         { class = ghostty, workspace = 3, title = "❯ a", provider = "ghostty" },
@@ -541,19 +554,92 @@ do
     check("with no working directory, since none was recorded",
         (plan.launches[1] or { cmd = "" }).cmd:find("--working%-directory") == nil)
 
-    -- With a shell list the windows are driven off it, and must not be doubled.
-    local both = session_model.plan_restore(snapshot_for(
-        { { class = ghostty, workspace = 3, title = "❯ a", provider = "ghostty" } },
-        { { pid = 1, cwd = "/a", workspace = 3 } }), {})
-    equal("a known shell does not restore its window twice", #both.launches, 1)
-    check("and it is the one that knows the directory",
-        both.launches[1].cmd:find("/a", 1, true) ~= nil)
-
-    -- A terminal already on screen still claims its saved slot in the fallback.
+    -- A terminal already on screen is not relaunched.
     local live = session_model.plan_restore(
         snapshot_for({ { class = ghostty, workspace = 3, provider = "ghostty" } }, {}),
         { { class = ghostty, title = "❯ a" } })
     equal("an open terminal is not relaunched", #live.launches, 0)
+end
+
+do
+    -- Ghostty tabs are surfaces of one process: the CLI can only open windows,
+    -- so six shells in three windows would restore as six windows and the
+    -- tabbing could not be put back. One window per saved window, resuming the
+    -- shell whose pid its title carried — the tab that was visible.
+    local plan = session_model.plan_restore(snapshot_for(
+        { ghostty_window(1, 11, "❯ repo"), ghostty_window(4, 22, "❯ notes") },
+        {
+            { pid = 11, cwd = "/repo", command = "vim", workspace = 1 },
+            { pid = 12, cwd = "/hidden-a", command = "", workspace = 1 },
+            { pid = 13, cwd = "/hidden-b", command = "", workspace = 1 },
+            { pid = 22, cwd = "/notes", command = "less log", workspace = 4 },
+            { pid = 23, cwd = "/hidden-c", command = "", workspace = 4 },
+        }), {})
+
+    equal("five shells in two windows restore as two windows", #plan.launches, 2)
+    check("the first resumes its visible tab's directory",
+        plan.launches[1].cmd:find("'/repo'", 1, true) ~= nil)
+    check("and that tab's command", plan.launches[1].cmd:find("vim", 1, true) ~= nil)
+    check("the second resumes its own",
+        plan.launches[2].cmd:find("'/notes'", 1, true) ~= nil)
+    check("no background tab is opened as a window of its own",
+        not table.concat({ plan.launches[1].cmd, plan.launches[2].cmd }, " ")
+            :find("hidden", 1, true))
+    equal("and each lands where its window was", plan.placements[2].workspace, 4)
+
+    -- Both windows still open: nothing to launch, and no extra window per tab.
+    local live = session_model.plan_restore(snapshot_for(
+        { ghostty_window(1, 11, "❯ repo"), ghostty_window(4, 22, "❯ notes") },
+        {
+            { pid = 11, cwd = "/repo", workspace = 1 },
+            { pid = 12, cwd = "/hidden-a", workspace = 1 },
+            { pid = 22, cwd = "/notes", workspace = 4 },
+        }), {
+            { class = session_model.GHOSTTY_CLASS, title = "❯ repo" },
+            { class = session_model.GHOSTTY_CLASS, title = "❯ notes" },
+        })
+    equal("terminals already on screen launch nothing", #live.launches, 0)
+    equal("and are left where they are", #live.placements, 0)
+end
+
+do
+    -- The greedy-claim bug, from the desktop it was found on: three windows of
+    -- one class saved on workspaces 1, 2 and 3, the first one closed, then a
+    -- manual re-restore. Claiming in one pass, the saved workspace-1 slot ate a
+    -- live window and looked satisfied, and the relaunch inherited the last
+    -- slot's placement — the window came back on workspace 3.
+    local plan = session_model.plan_restore(snapshot_for({
+        { class = "tauri-explorer", workspace = 1, title = "one", provider = "generic" },
+        { class = "tauri-explorer", workspace = 2, title = "two", provider = "generic" },
+        { class = "tauri-explorer", workspace = 3, title = "three", provider = "generic" },
+    }), {
+        { class = "tauri-explorer", title = "two" },
+        { class = "tauri-explorer", title = "three" },
+    }, { class_commands = { ["tauri-explorer"] = "tauri-explorer" } })
+
+    equal("only the closed window is relaunched", #plan.launches, 1)
+    equal("and only it is placed", #plan.placements, 1)
+    equal("on the workspace it was closed from", plan.placements[1].workspace, 1)
+    equal("as the window it actually was", plan.placements[1].title, "one")
+
+    -- An exact title still beats save order when several are missing.
+    local two_gone = session_model.plan_restore(snapshot_for({
+        { class = "tauri-explorer", workspace = 1, title = "one", provider = "generic" },
+        { class = "tauri-explorer", workspace = 2, title = "two", provider = "generic" },
+        { class = "tauri-explorer", workspace = 3, title = "three", provider = "generic" },
+    }), { { class = "tauri-explorer", title = "three" } }, {})
+    equal("the two missing windows are the two planned", #two_gone.placements, 2)
+    equal("in save order", two_gone.placements[1].workspace, 1)
+    equal("with the surviving one dropped", two_gone.placements[2].workspace, 2)
+
+    -- A live window whose title matches nothing saved still satisfies a slot,
+    -- because it is a window of that class that is already on screen.
+    local renamed = session_model.plan_restore(snapshot_for({
+        { class = "tauri-explorer", workspace = 1, title = "one", provider = "generic" },
+        { class = "tauri-explorer", workspace = 2, title = "two", provider = "generic" },
+    }), { { class = "tauri-explorer", title = "something else" } }, {})
+    equal("an unrecognised live window is still accounted for", #renamed.placements, 1)
+    equal("against the earliest unclaimed slot", renamed.placements[1].workspace, 2)
 end
 
 
@@ -754,6 +840,7 @@ local function snapshot_file()
             { class = "google-chrome", workspace = -97, provider = "chrome",
               workspace_name = "special:chrome-drop", title = "Drop",
               floating = true, at = { 100, 200 }, size = { 800, 600 }, pinned = true },
+            ghostty_window(3, 1, "❯ repo"),
         },
         shells = { { pid = 1, cwd = "/home/chong/repo", command = "vim", workspace = 3 } },
     }))
@@ -837,7 +924,12 @@ do
     write(path, session_model.serialize({
         version = session_model.VERSION,
         workspaces = {},
-        windows = { { class = "obsidian", workspace = 1, title = "V", provider = "generic" } },
+        windows = {
+            { class = "obsidian", workspace = 1, title = "V", provider = "generic" },
+            ghostty_window(1, 1, "❯ first"),
+            ghostty_window(4, 2, "❯ second"),
+            ghostty_window(7, 3, "❯ third"),
+        },
         shells = {
             { pid = 1, cwd = "/first", workspace = 1 },
             { pid = 2, cwd = "/second", workspace = 4 },

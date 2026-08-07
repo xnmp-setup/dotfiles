@@ -9,7 +9,9 @@
 -- What is deliberately NOT modelled:
 --   * Ghostty tab grouping. Ghostty's CLI can only open windows, never a tab
 --     in an existing one, and its surfaces are not addressable from outside
---     the process. Every saved shell restores as its own window.
+--     the process. So a window comes back with the shell of the tab that was
+--     visible in it and nothing else: restoring every shell would turn three
+--     tabbed windows into six, and there is no way to put the tabs back.
 --   * Terminal scrollback, and WezTerm pane layout — sessionstore.lua owns the
 --     latter and restores it itself on gui-startup.
 
@@ -385,11 +387,9 @@ function M.ghostty_command(shell, options)
     return table.concat(parts, " ")
 end
 
--- A window already on screen when the restore starts is left alone and its
--- saved slot is dropped entirely — not just its launch. Re-launching would
--- duplicate it, and it can never be claimed by match_window() because its
--- window.open event fired long ago. This only comes up on a manual re-restore
--- (SUPER+CTRL+R); at boot nothing is running yet.
+-- The windows already on screen when the restore starts, bucketed by class and
+-- consumed as saved windows claim them. This only comes up on a manual
+-- re-restore (SUPER+CTRL+R); at boot nothing is running yet.
 local function live_pool(live_windows)
     local pool = {}
     for _, window in ipairs(live_windows or {}) do
@@ -405,19 +405,42 @@ local function live_pool(live_windows)
     return pool
 end
 
--- Consume one live window of `class`, preferring an exact title match so that
--- three open Chrome windows are matched to the right three saved slots.
-local function take_live(pool, class, title)
+-- Consume the live window of `class` whose title is exactly `title`.
+local function take_titled(pool, class, title)
     local bucket = pool[class]
-    if not bucket or #bucket == 0 then return false end
+    if not (bucket and title and title ~= "") then return false end
     for index, candidate in ipairs(bucket) do
-        if title and candidate.title == title then
+        if candidate.title == title then
             table.remove(bucket, index)
             return true
         end
     end
+    return false
+end
+
+-- Consume any remaining live window of `class`.
+local function take_any(pool, class)
+    local bucket = pool[class]
+    if not bucket or #bucket == 0 then return false end
     table.remove(bucket, 1)
     return true
+end
+
+-- Which saved windows are already on screen. Two passes, and the order between
+-- them is the whole point: every exact title match is settled before any saved
+-- window is allowed to take an arbitrary window of its class. Greedy in a
+-- single pass, a saved window whose real window was closed swallows a live one
+-- belonging to a later slot — three tauri-explorer windows on workspaces 1, 2
+-- and 3 with the first closed relaunch the missing one onto workspace 3.
+local function claim_live(pool, windows, titles)
+    local claimed = {}
+    for index, window in ipairs(windows) do
+        if take_titled(pool, window.class, titles[index]) then claimed[index] = true end
+    end
+    for index, window in ipairs(windows) do
+        if not claimed[index] and take_any(pool, window.class) then claimed[index] = true end
+    end
+    return claimed
 end
 
 -- Returns { workspace_names, launches, placements, groups }.
@@ -429,6 +452,7 @@ end
 function M.plan_restore(snapshot, live_windows, options)
     options = options or {}
     local pool = live_pool(live_windows)
+    local windows = snapshot.windows or {}
 
     local workspace_names = {}
     for _, workspace in ipairs(snapshot.workspaces or {}) do
@@ -437,54 +461,56 @@ function M.plan_restore(snapshot, live_windows, options)
         end
     end
 
+    local titles = {}
+    for index, window in ipairs(windows) do
+        titles[index] = window.title and M.strip_tags(window.title) or nil
+    end
+    local already_open = claim_live(pool, windows, titles)
+
+    -- The saved shells by pid, so a ghostty window can find the shell that was
+    -- its visible tab. Only that one comes back: ghostty tabs are surfaces of a
+    -- single process and its CLI can only open windows, never a tab in an
+    -- existing one, so restoring per shell turns three tabbed windows into six.
+    -- One window per saved *window* is the trade: the background tabs' working
+    -- directories are lost, and the arrangement is not.
+    local shells_by_pid = {}
+    for _, shell in ipairs(snapshot.shells or {}) do
+        if shell.pid then shells_by_pid[shell.pid] = shell end
+    end
+
     local launches, placements = {}, {}
     local launched_provider, launched_generic = {}, {}
 
-    -- Ghostty first: one window per saved shell, in save order, which is also
-    -- the order they will be claimed in (their pid tag does not exist until the
-    -- restored shell draws its first prompt).
-    -- shells.lua is written by a background /proc walk and can legitimately be
-    -- empty (it has never run, or it ran before any shell existed). Without a
-    -- fallback every terminal in the snapshot would be silently dropped, so the
-    -- saved ghostty *windows* drive the restore instead — workspace only, since
-    -- with no shell record there is no working directory to reopen in.
-    local have_shells = #(snapshot.shells or {}) > 0
-
-    for _, shell in ipairs(snapshot.shells or {}) do
-        if shell.workspace and not take_live(pool, M.GHOSTTY_CLASS, nil) then
+    for index, window in ipairs(windows) do
+        local provider = window.provider or M.provider_for(window.class)
+        local title = titles[index]
+        if already_open[index] then -- luacheck: ignore
+            -- Left exactly where it is: relaunching would duplicate it, and it
+            -- can never be claimed by match_window() because its window.open
+            -- event fired long ago.
+        elseif provider == "ghostty" then
+            -- The pid tag in a ghostty window's title names the shell of the
+            -- tab that was visible. An untagged window (its shell never drew a
+            -- prompt) or a missing shell list still reopens the window, just
+            -- with a plain login shell.
+            local shell = shells_by_pid[M.shell_pid_from_title(window.title) or -1] or {}
             launches[#launches + 1] = {
                 provider = "ghostty",
                 cmd = M.ghostty_command(shell, options),
             }
             placements[#placements + 1] = {
-                class = M.GHOSTTY_CLASS,
+                class = window.class,
                 provider = "ghostty",
-                workspace = shell.workspace,
-                workspace_name = shell.workspace_name,
+                -- No title: a restored terminal's title is written by its shell
+                -- and may match any of the saved ones, which would let it claim
+                -- a slot out of order. Ghostty windows are claimed in launch
+                -- order and nothing else.
+                workspace = window.workspace,
+                workspace_name = window.workspace_name,
                 floating = false,
                 cwd = shell.cwd,
             }
-        end
-    end
-
-    for _, window in ipairs(snapshot.windows or {}) do
-        local provider = window.provider or M.provider_for(window.class)
-        local title = window.title and M.strip_tags(window.title) or nil
-        if provider == "ghostty" then
-            if not have_shells and not take_live(pool, window.class, nil) then
-                launches[#launches + 1] = {
-                    provider = "ghostty",
-                    cmd = M.ghostty_command({}, options),
-                }
-                placements[#placements + 1] = {
-                    class = window.class,
-                    provider = "ghostty",
-                    workspace = window.workspace,
-                    workspace_name = window.workspace_name,
-                    floating = false,
-                }
-            end
-        elseif not take_live(pool, window.class, title) then
+        else
             if provider == "chrome" then
                 if not launched_provider.chrome then
                     launched_provider.chrome = true
