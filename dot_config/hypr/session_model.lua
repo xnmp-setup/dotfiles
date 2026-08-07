@@ -399,18 +399,21 @@ local function live_pool(live_windows)
             bucket[#bucket + 1] = {
                 title = M.strip_tags(window.title),
                 shell_pid = M.shell_pid_from_title(window.title),
+                -- Where it is *now*, which is what tells two identically titled
+                -- windows apart when one of them is a stale duplicate.
+                workspace = select(1, workspace_of(window)),
             }
         end
     end
     return pool
 end
 
--- Consume the live window of `class` whose title is exactly `title`.
-local function take_titled(pool, class, title)
+-- Consume the first live window of `class` the predicate accepts.
+local function take_live(pool, class, accepts)
     local bucket = pool[class]
-    if not (bucket and title and title ~= "") then return false end
+    if not bucket then return false end
     for index, candidate in ipairs(bucket) do
-        if candidate.title == title then
+        if accepts(candidate) then
             table.remove(bucket, index)
             return true
         end
@@ -418,27 +421,48 @@ local function take_titled(pool, class, title)
     return false
 end
 
--- Consume any remaining live window of `class`.
-local function take_any(pool, class)
-    local bucket = pool[class]
-    if not bucket or #bucket == 0 then return false end
-    table.remove(bucket, 1)
-    return true
-end
-
--- Which saved windows are already on screen. Two passes, and the order between
--- them is the whole point: every exact title match is settled before any saved
--- window is allowed to take an arbitrary window of its class. Greedy in a
--- single pass, a saved window whose real window was closed swallows a live one
--- belonging to a later slot — three tauri-explorer windows on workspaces 1, 2
--- and 3 with the first closed relaunch the missing one onto workspace 3.
+-- Which saved windows are already on screen. Three passes, weakest evidence
+-- last, and the order between them is the whole point:
+--
+--   1. same title and same workspace — the window is where it was and called
+--      what it was called, so it is that one.
+--   2. same title — it has been moved, or its workspace was not recorded.
+--   3. anything of the class — some window of this kind is open; a saved slot
+--      is spent on it rather than duplicating it.
+--
+-- Every pass is settled for all saved windows before the next begins. Done in
+-- one greedy pass instead, a saved window whose real window was closed swallows
+-- a live one belonging to a later slot and the relaunch inherits that slot's
+-- placement: three tauri-explorer windows on workspaces 1, 2 and 3 with the
+-- first closed bring it back on workspace 3. The workspace pass exists for the
+-- same failure one level down, where the titles are identical too — a stale
+-- duplicate of "Inbox - Tauri Explorer" parked on another workspace would
+-- otherwise answer for the one that was closed.
 local function claim_live(pool, windows, titles)
     local claimed = {}
-    for index, window in ipairs(windows) do
-        if take_titled(pool, window.class, titles[index]) then claimed[index] = true end
-    end
-    for index, window in ipairs(windows) do
-        if not claimed[index] and take_any(pool, window.class) then claimed[index] = true end
+    local passes = {
+        function(window, title)
+            if not (title and title ~= "" and window.workspace) then return nil end
+            return function(candidate)
+                return candidate.title == title and candidate.workspace == window.workspace
+            end
+        end,
+        function(_, title)
+            if not (title and title ~= "") then return nil end
+            return function(candidate) return candidate.title == title end
+        end,
+        function() return function() return true end end,
+    }
+
+    for _, pass in ipairs(passes) do
+        for index, window in ipairs(windows) do
+            if not claimed[index] then
+                local accepts = pass(window, titles[index])
+                if accepts and take_live(pool, window.class, accepts) then
+                    claimed[index] = true
+                end
+            end
+        end
     end
     return claimed
 end

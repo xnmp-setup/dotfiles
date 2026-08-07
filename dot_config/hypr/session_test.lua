@@ -632,6 +632,28 @@ do
     equal("in save order", two_gone.placements[1].workspace, 1)
     equal("with the surviving one dropped", two_gone.placements[2].workspace, 2)
 
+    -- Identical titles, from the desktop this one was found on too: a stale
+    -- duplicate of the same page parked on another workspace. With the title
+    -- alone to go on, the closed workspace-1 slot claims the live workspace-3
+    -- window and the relaunch lands on workspace 3 all over again. Where the
+    -- live window actually is settles it.
+    local duplicate = "Inbox - Tauri Explorer"
+    local twins = session_model.plan_restore(snapshot_for({
+        { class = "tauri-explorer", workspace = 1, title = duplicate, provider = "generic" },
+        { class = "tauri-explorer", workspace = 3, title = duplicate, provider = "generic" },
+    }), { { class = "tauri-explorer", title = duplicate, workspace = { id = 3 } } }, {})
+    equal("only the closed twin is planned", #twins.placements, 1)
+    equal("and it is the one that was on workspace 1", twins.placements[1].workspace, 1)
+
+    -- The live window having moved since the save is the case the title pass
+    -- is still there for.
+    local moved = session_model.plan_restore(snapshot_for({
+        { class = "tauri-explorer", workspace = 1, title = "one", provider = "generic" },
+        { class = "tauri-explorer", workspace = 3, title = "three", provider = "generic" },
+    }), { { class = "tauri-explorer", title = "three", workspace = { id = 8 } } }, {})
+    equal("a window that moved is still recognised by title", #moved.placements, 1)
+    equal("leaving the one that is really missing", moved.placements[1].workspace, 1)
+
     -- A live window whose title matches nothing saved still satisfies a slot,
     -- because it is a window of that class that is already on screen.
     local renamed = session_model.plan_restore(snapshot_for({
