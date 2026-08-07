@@ -28,8 +28,8 @@ local startup_pairing = require("startup_pairing").new(hl, {
 })
 local terminal_groups = require("terminal_grouping")
 -- Global, not local: `hyprctl dispatch` evaluates its argument as Lua in the
--- config's environment, so `hyprctl dispatch "session.save()"` (the systemd
--- unit's ExecStop) needs this name to be reachable from there.
+-- config's environment, so `hyprctl dispatch "session.save()"` (and
+-- "session.exit()") needs this name to be reachable from there.
 --
 -- Built under pcall, and every call site tolerates the stub. This runs while
 -- the config is still being read — before any keybind, before the monitor
@@ -49,6 +49,7 @@ else
     session = {
         boot = function() return false end,
         save = function() return hl.dsp.exec_cmd("true") end,
+        exit = function() hl.dispatch(hl.dsp.exit()); return hl.dsp.exec_cmd("true") end,
         restore = function() return hl.dsp.exec_cmd("true") end,
         is_restoring = function() return false end,
     }
@@ -314,7 +315,6 @@ hl.on("hyprland.start", function()
         -- open, and pairing would fight the restorer for the same windows.
         startup_pairing.start()
     end
-    hl.exec_cmd("systemctl --user start hypr-session-save.service")
 {{ if eq .chezmoi.hostname "t14s" }}
     -- NixOS laptop: polkit agent is not autostarted by anything else
     hl.exec_cmd("systemctl --user start hyprpolkitagent")
@@ -389,6 +389,11 @@ hl.bind(mainMod .. " + CTRL + L", hl.dsp.exec_cmd("~/.config/hypr/lock.sh"))
 -- are already on screen keep their slot and are left where they are; only what
 -- is missing is relaunched.
 hl.bind(mainMod .. " + CTRL + R", function() session.restore() end)
+-- Leave the session. The save has to happen here, with the compositor still
+-- running: anything sequenced outside it (a systemd ExecStop, a logout hook)
+-- runs once the windows are already gone and records nothing. The 30 s timer
+-- still covers a crash or a power cut.
+hl.bind(mainMod .. " + SHIFT + M",  function() session.exit() end)
 hl.bind(mainMod .. " + E",         hl.dsp.exec_cmd("~/.config/hypr/open-explorer-cwd.sh"))
 hl.bind(mainMod .. " + SHIFT + S", hl.dsp.exec_cmd("hyprshot -m region --clipboard-only"))
 hl.bind("CTRL + SHIFT + C",        hl.dsp.exec_cmd("~/Repos/obsidian-capture/hotkey/capture-linux.sh"))

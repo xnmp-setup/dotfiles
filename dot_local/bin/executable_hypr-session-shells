@@ -131,14 +131,61 @@ def read_cmdline(proc: str, pid: int) -> str:
 
 
 def read_cwd(proc: str, pid: int) -> str:
+    """The shell's working directory, or "" when it no longer has a usable one.
+
+    The kernel renders a deleted directory as "/gone/path (deleted)". Replaying
+    that verbatim hands ghostty a --working-directory that cannot exist, so the
+    restored window opens somewhere arbitrary with no indication why. The suffix
+    is only trusted as a marker when the literal path is really not a directory,
+    since a directory may legitimately be named that way.
+    """
     try:
-        return os.readlink(os.path.join(proc, str(pid), "cwd"))
+        target = os.readlink(os.path.join(proc, str(pid), "cwd"))
+    except OSError:
+        return ""
+    if target.endswith(" (deleted)") and not os.path.isdir(target):
+        return ""
+    return target
+
+
+def _is_ghostty_name(name: str) -> bool:
+    """Whether an executable or comm names ghostty.
+
+    On NixOS the binary on PATH is a wrapper shim: the real executable is
+    `.ghostty-wrapped`, which is both dot-prefixed and, at 16 characters, one
+    over the 15-character comm the kernel records — so an exact comm match finds
+    no ghostty at all and every terminal drops out of the session. A comm at
+    exactly the truncation limit is therefore accepted as a prefix of the full
+    wrapper name; a shorter one is not, since that is a complete answer.
+    """
+    stripped = name.removesuffix(" (deleted)").lstrip(".")
+    if stripped == GHOSTTY_COMM or stripped.removesuffix("-wrapped") == GHOSTTY_COMM:
+        return True
+    # The length test is on what the kernel stored, dot and all: `.ghostty-wrappe`
+    # is fifteen characters and therefore a prefix of something longer, while a
+    # shorter name is a complete answer and simply is not ghostty.
+    return len(name) == 15 and (GHOSTTY_COMM + "-wrapped").startswith(stripped)
+
+
+def read_exe_name(proc: str, pid: int) -> str:
+    try:
+        return os.path.basename(os.readlink(os.path.join(proc, str(pid), "exe")))
     except OSError:
         return ""
 
 
-def ghostty_pids(stats: dict[int, Stat]) -> list[int]:
-    return sorted(pid for pid, stat in stats.items() if stat.comm == GHOSTTY_COMM)
+def ghostty_pids(stats: dict[int, Stat], proc: str = "/proc") -> list[int]:
+    """The ghostty processes, identified by executable and only then by comm.
+
+    /proc/<pid>/exe is the reliable answer — it is the untruncated path of what
+    is actually running. comm remains the fallback: reading exe needs the same
+    uid, and it is absent for a kernel thread or a process exiting mid-scan.
+    """
+    found = []
+    for pid, stat in stats.items():
+        if _is_ghostty_name(read_exe_name(proc, pid) or stat.comm):
+            found.append(pid)
+    return sorted(found)
 
 
 def surface_shells(stats: dict[int, Stat], parents: set[int]) -> list[Stat]:
@@ -180,7 +227,7 @@ def foreground_pid(stats: dict[int, Stat], shell: Stat) -> int | None:
 
 def collect_shells(proc: str = "/proc") -> list[dict[str, object]]:
     stats = read_stats(proc)
-    parents = set(ghostty_pids(stats))
+    parents = set(ghostty_pids(stats, proc))
     if not parents:
         return []
 

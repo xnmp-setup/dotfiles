@@ -1,0 +1,22 @@
+#!/bin/sh
+# Tell the systemd user manager that its unit files changed.
+#
+# chezmoi writes ~/.config/systemd/user/* directly; systemd keeps its own
+# in-memory copy of every unit and only re-reads them on daemon-reload. Without
+# this, an edited unit keeps running the previous ExecStart until the next login
+# — including one pointing at a script that no longer exists, which fails with
+# 203/EXEC and is easy to misread as a bug in the unit as written.
+#
+# run_onchange, keyed on the hashes below, so it fires exactly when a unit file
+# changes rather than on every apply. Adding or removing a unit changes the list
+# itself, which is also a change.
+{{ range (glob (joinPath .chezmoi.sourceDir "dot_config/systemd/user/*")) -}}
+# {{ base . }}: {{ include . | sha256sum }}
+{{ end }}
+set -eu
+
+# Runtime detection, not a template: these dotfiles are applied on macOS and on
+# WSL images without systemd, where there is no user manager to talk to. A
+# reload there is not a failure, it is a no-op.
+command -v systemctl >/dev/null 2>&1 || exit 0
+systemctl --user daemon-reload >/dev/null 2>&1 || exit 0

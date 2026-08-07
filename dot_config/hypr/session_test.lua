@@ -18,13 +18,20 @@ local function equal(label, got, want)
     check(("%s (got %s, want %s)"):format(label, tostring(got), tostring(want)), got == want)
 end
 
+-- hl hands back an HL.Monitor object, never a name: a fake that used a bare
+-- string would let a snapshot holding the object serialize cleanly here and
+-- throw on every real save.
+local function monitor(name)
+    return { id = 0, name = name or "DP-1", width = 3440, height = 1440 }
+end
+
 local function window(options)
     return {
         class = options.class,
         title = options.title,
         mapped = true,
         workspace = { id = options.workspace, name = options.workspace_name },
-        monitor = options.monitor or "DP-1",
+        monitor = options.monitor or monitor(),
         floating = options.floating or false,
         at = options.at or { x = 0, y = 0 },
         size = options.size or { x = 800, y = 600 },
@@ -161,6 +168,35 @@ do
     })
     equal("a drop-down window is captured", #with_pad.windows, 1)
     equal("with its special workspace", with_pad.windows[1].workspace, -97)
+
+    -- Monitors are objects. Only the name may reach the snapshot: the object
+    -- itself is userdata, which the serializer refuses, so storing it would
+    -- make every save throw.
+    local named = session_model.build_snapshot({
+        workspaces = { { id = 1, name = "Base", monitor = monitor("DP-2") } },
+        windows = { window({ class = "obsidian", workspace = 1, monitor = monitor("DP-2") }) },
+    })
+    equal("a window records the monitor by name", named.windows[1].monitor, "DP-2")
+    equal("and so does a workspace", named.workspaces[1].monitor, "DP-2")
+    check("a snapshot carrying a monitor still serializes",
+        pcall(session_model.serialize, named))
+
+    -- An opaque object stands in for the userdata a real monitor is: it may not
+    -- even be indexable, and that must cost the field, not the save.
+    local opaque = session_model.build_snapshot({
+        workspaces = { { id = 1, name = "Base", monitor = coroutine.create(function() end) } },
+        windows = { window({ class = "obsidian", workspace = 1,
+            monitor = coroutine.create(function() end) }) },
+    })
+    equal("an unreadable monitor is dropped", opaque.windows[1].monitor, nil)
+
+    -- Some callers describe a monitor by id rather than by object.
+    local numbered = session_model.build_snapshot({
+        windows = { window({ class = "obsidian", workspace = 1, monitor = 2 }) },
+    })
+    equal("a numeric monitor id is kept as text", numbered.windows[1].monitor, "2")
+    check("and the snapshot still serializes",
+        pcall(session_model.serialize, opaque))
 end
 
 --------------------------------------------------------------------------
@@ -490,6 +526,36 @@ do
     equal("a shell with no workspace is not restored", #unattributed.launches, 0)
 end
 
+do
+    -- shells.lua is written by a background /proc walk and can legitimately be
+    -- empty — it has never run, or it ran before any shell existed. The saved
+    -- ghostty windows are the fallback; without one every terminal in the
+    -- session is silently dropped.
+    local ghostty = session_model.GHOSTTY_CLASS
+    local plan = session_model.plan_restore(snapshot_for({
+        { class = ghostty, workspace = 3, title = "❯ a", provider = "ghostty" },
+        { class = ghostty, workspace = 5, title = "❯ b", provider = "ghostty" },
+    }, {}), {})
+    equal("a terminal is launched for every saved ghostty window", #plan.launches, 2)
+    equal("each is placed where it was", (plan.placements[2] or {}).workspace, 5)
+    check("with no working directory, since none was recorded",
+        (plan.launches[1] or { cmd = "" }).cmd:find("--working%-directory") == nil)
+
+    -- With a shell list the windows are driven off it, and must not be doubled.
+    local both = session_model.plan_restore(snapshot_for(
+        { { class = ghostty, workspace = 3, title = "❯ a", provider = "ghostty" } },
+        { { pid = 1, cwd = "/a", workspace = 3 } }), {})
+    equal("a known shell does not restore its window twice", #both.launches, 1)
+    check("and it is the one that knows the directory",
+        both.launches[1].cmd:find("/a", 1, true) ~= nil)
+
+    -- A terminal already on screen still claims its saved slot in the fallback.
+    local live = session_model.plan_restore(
+        snapshot_for({ { class = ghostty, workspace = 3, provider = "ghostty" } }, {}),
+        { { class = ghostty, title = "❯ a" } })
+    equal("an open terminal is not relaunched", #live.launches, 0)
+end
+
 
 --------------------------------------------------------------------------
 -- The adapter
@@ -519,6 +585,7 @@ local function fake_hl(live_windows, live_workspaces)
     local hl = {
         dsp = {
             exec_cmd = function(cmd, rules) return { kind = "exec", cmd = cmd, rules = rules } end,
+            exit = record("exit"),
             focus = record("focus"),
             window = {
                 move = record("move"),
@@ -577,12 +644,31 @@ local function fake_hl(live_windows, live_workspaces)
         return found
     end
 
+    -- The shapes a restore plan can produce here. An allowlist, not "everything
+    -- that is not housekeeping": renames, the /proc walk and the state
+    -- directory permissions go through the same exec_cmd, and a denylist
+    -- quietly counts the next piece of housekeeping added as a restored window.
+    control.launch_patterns = { "^ghostty ", "^google%-chrome", "^wezterm" }
+
     function control.launches()
         local found = {}
         for _, command in ipairs(control.executed) do
-            if not (command:match("^rename%-ws") or command:match("hypr%-session%-shells")) then
-                found[#found + 1] = command
+            for _, pattern in ipairs(control.launch_patterns) do
+                if command:match(pattern) then
+                    found[#found + 1] = command
+                    break
+                end
             end
+        end
+        return found
+    end
+
+    -- Requests for the background /proc walk, which must not run while a
+    -- restore is placing windows.
+    function control.walks()
+        local found = {}
+        for _, command in ipairs(control.executed) do
+            if command:match("hypr%-session%-shells") then found[#found + 1] = command end
         end
         return found
     end
@@ -1019,6 +1105,276 @@ do
         second.shells[1].workspace_source, "sighting")
     equal("and it can still be addressed, because the name came along",
         second.shells[1].workspace_name, "Work")
+    os.remove(shells)
+end
+
+local function live_window(class, workspace, title)
+    return { class = class, title = title or "W", mapped = true, workspace = workspace,
+        at = { x = 0, y = 0 }, size = { x = 10, y = 10 } }
+end
+
+do
+    -- The periodic save is the only thing keeping the snapshot fresh. A throw
+    -- inside one tick has to cost that tick, not every tick after it: the timer
+    -- is a oneshot, so a save that dies before re-arming ends the feature for
+    -- the rest of the session and the next boot reads an ever-staler snapshot.
+    local written = {}
+    local workspace = { id = 1, name = "Base" }
+    local hl, control = fake_hl({ live_window("obsidian", workspace) }, { workspace })
+    local explode = false
+    hl.get_windows = function()
+        if explode then explode = false; error("the compositor said no") end
+        return control.windows
+    end
+    local handle = session_restore.new(hl, {
+        snapshot_path = "/nonexistent/session.lua",
+        shells_path = "/nonexistent-shells.lua",
+        map_path = "/dev/null",
+        save_interval = 5000,
+        write_file = function(_, text) written[#written + 1] = text; return true end,
+        log = function() end,
+    })
+    equal("boot declines with no snapshot", handle.boot(), false)
+    control.start()
+
+    explode = true
+    control.advance(5000)
+    equal("a tick that throws writes nothing", #written, 0)
+    control.advance(5000)
+    equal("and the next tick still saves", #written, 1)
+    control.advance(5000)
+    equal("and the one after that", #written, 2)
+end
+
+do
+    -- Claiming the boot makes the caller skip its startup set, so a plan that
+    -- launches nothing leaves an empty desktop: a snapshot whose classes are
+    -- all absent from session-restore-map.conf plans placements and no
+    -- launches, and the windows they wait for are never started.
+    local path = temp_path()
+    write(path, session_model.serialize({
+        version = session_model.VERSION,
+        workspaces = {},
+        windows = { { class = "mystery", workspace = 1, title = "m", provider = "generic" } },
+        shells = {},
+    }))
+    local handle, control = restorer({ snapshot_path = path, map_path = "/dev/null" })
+    equal("a plan with nothing to launch does not claim the boot", handle.boot(), false)
+    equal("and starts nothing", #control.launches(), 0)
+    check("so suppression stays off", not handle.is_restoring())
+
+    -- The manual re-restore is the opposite case: the windows may be open or
+    -- opening already, and placing them is the whole point of the keybind.
+    handle.restore()
+    check("a manual restore still runs on placements alone", handle.is_restoring())
+    os.remove(path)
+end
+
+do
+    -- Terminals on screen with an empty shell list means the background /proc
+    -- walk has not landed yet, not that the terminals are gone. Recording that
+    -- would drop every one of them from the next boot.
+    local path = temp_path()
+    write(path, session_model.serialize({
+        version = session_model.VERSION,
+        workspaces = {},
+        windows = { { class = session_model.GHOSTTY_CLASS, workspace = 3,
+            title = "❯ x", provider = "ghostty" } },
+        shells = { { pid = 1, cwd = "/repo", command = "vim", workspace = 3 } },
+    }))
+    local workspace = { id = 3, name = "Work" }
+
+    local written = {}
+    local hl = fake_hl({ live_window(session_model.GHOSTTY_CLASS, workspace, "❯ x") },
+        { workspace })
+    local handle = session_restore.new(hl, {
+        snapshot_path = path,
+        shells_path = "/nonexistent-shells.lua",
+        map_path = "/dev/null",
+        write_file = function(_, text) written[#written + 1] = text; return true end,
+        log = function() end,
+    })
+    handle.save()
+    local saved = assert(load(written[1]))()
+    equal("terminals with no shell list keep the last known shells", #saved.shells, 1)
+    equal("with the directory that was recorded", (saved.shells[1] or {}).cwd, "/repo")
+
+    -- No terminals on screen is a different fact: there is nothing to carry.
+    local other_written = {}
+    local other = session_restore.new(
+        fake_hl({ live_window("obsidian", workspace) }, { workspace }), {
+            snapshot_path = path,
+            shells_path = "/nonexistent-shells.lua",
+            map_path = "/dev/null",
+            write_file = function(_, text) other_written[#other_written + 1] = text; return true end,
+            log = function() end,
+        })
+    other.save()
+    equal("a desktop with no terminals records none",
+        #assert(load(other_written[1]))().shells, 0)
+    os.remove(path)
+end
+
+do
+    -- An explicit save while a restore is in flight would capture a half-built
+    -- desktop over the snapshot being restored from — the one file that knows
+    -- what the session was.
+    local path = snapshot_file()
+    local written = {}
+    local workspace = { id = 1, name = "Base" }
+    local hl, control = fake_hl({ live_window("obsidian", workspace) }, { workspace })
+    local handle = session_restore.new(hl, {
+        snapshot_path = path,
+        shells_path = "/nonexistent-shells.lua",
+        map_path = "/dev/null",
+        write_file = function(_, text) written[#written + 1] = text; return true end,
+        log = function() end,
+    })
+    handle.boot()
+    check("the restore is in flight", handle.is_restoring())
+    handle.save()
+    equal("a save mid-restore writes nothing", #written, 0)
+
+    control.advance(60000)
+    handle.save()
+    equal("and once the restore has settled it lands", #written, 1)
+    os.remove(path)
+end
+
+do
+    -- Leaving the session: save, then actually leave. The exit has to be
+    -- dispatched inside the call — Hyprland invokes a keybind callback with
+    -- nresults=0, so a dispatcher merely handed back is discarded and the
+    -- desktop saves and then carries on running.
+    local workspace = { id = 1, name = "Base" }
+    local written, dispatches_at_save = {}, nil
+    local hl, control = fake_hl({ live_window("obsidian", workspace) }, { workspace })
+    local handle = session_restore.new(hl, {
+        snapshot_path = temp_path(),
+        shells_path = "/nonexistent-shells.lua",
+        map_path = "/dev/null",
+        write_file = function(_, text)
+            written[#written + 1] = text
+            dispatches_at_save = #control.dispatches
+            return true
+        end,
+        log = function() end,
+    })
+    handle.exit()
+    equal("the session is saved on the way out", #written, 1)
+    equal("and the compositor is told to exit", #control.dispatches_of("exit"), 1)
+    equal("the save comes first", dispatches_at_save, 0)
+    check("and it never shells out to do it",
+        #control.executed == 0 or not table.concat(control.executed, " "):find("hyprctl"))
+
+    -- A save that throws must not strand the user in a session they asked to
+    -- leave; the snapshot is at most one save interval old anyway.
+    local broken, broken_control = fake_hl({ live_window("obsidian", workspace) }, { workspace })
+    broken.get_windows = function() error("the compositor said no") end
+    local leaving = session_restore.new(broken, {
+        snapshot_path = temp_path(),
+        shells_path = "/nonexistent-shells.lua",
+        map_path = "/dev/null",
+        write_file = function() return true end,
+        log = function() end,
+    })
+    leaving.exit()
+    equal("a save that throws still exits", #broken_control.dispatches_of("exit"), 1)
+end
+
+do
+    -- The /proc walk must not run while a restore is in flight: it would report
+    -- the terminals launched so far as if they were all of them, and a short
+    -- but complete-looking list is what every guard downstream trusts.
+    local path = snapshot_file()
+    local hl, control = fake_hl({}, {})
+    local handle = session_restore.new(hl, {
+        snapshot_path = path,
+        shells_path = "/nonexistent-shells.lua",
+        map_path = "/dev/null",
+        save_interval = 5000,
+        write_file = function() return true end,
+        log = function() end,
+    })
+    handle.boot()
+    control.start()
+
+    -- The snapshot and the shell list hold the working directory and full argv
+    -- of every foreground process, so the directory they live in is closed to
+    -- other users. Taken from the paths in use, not from a fixed one, so a
+    -- nested instance protects its own state.
+    local secured = false
+    for _, command in ipairs(control.executed) do
+        if command:find("chmod 700", 1, true)
+            and command:find(path:match("^(.*)/[^/]+$"), 1, true)
+        then
+            secured = true
+        end
+    end
+    check("the state directory is closed to other users at startup", secured)
+
+    control.advance(15000)
+    check("the restore is still in flight", handle.is_restoring())
+    equal("and no shell walk has been asked for", #control.walks(), 0)
+
+    control.advance(60000)
+    check("but it resumes once the restore has settled", #control.walks() >= 1)
+    os.remove(path)
+end
+
+do
+    -- Carrying the previous shell list forward covers a walk that has not
+    -- landed yet. It cannot be forever: if hypr-session-shells breaks for good,
+    -- an unbounded carry pins the terminals of the last working session into
+    -- every snapshot from then on, and the fallback that reopens the ghostty
+    -- windows actually in the capture is never reached.
+    local path = temp_path()
+    write(path, session_model.serialize({
+        version = session_model.VERSION,
+        workspaces = {},
+        windows = { { class = session_model.GHOSTTY_CLASS, workspace = 3,
+            title = "❯ x", provider = "ghostty" } },
+        shells = { { pid = 1, cwd = "/repo", command = "", workspace = 3 } },
+    }))
+    local workspace = { id = 3, name = "Work" }
+    local hl = fake_hl({ live_window(session_model.GHOSTTY_CLASS, workspace, "❯ x") },
+        { workspace })
+    -- No write_file: the bound is counted in the snapshot itself, so the file
+    -- has to be the one being read back.
+    local handle = session_restore.new(hl, {
+        snapshot_path = path,
+        shells_path = "/nonexistent-shells.lua",
+        map_path = "/dev/null",
+        log = function() end,
+    })
+    local function on_disk()
+        local handle_in = assert(io.open(path, "r"))
+        local text = handle_in:read("a")
+        handle_in:close()
+        return assert(load(text))()
+    end
+
+    for index = 1, 3 do
+        handle.save()
+        equal(("save %d still carries the shells"):format(index), #on_disk().shells, 1)
+    end
+    handle.save()
+    equal("a walk that never recovers stops pinning them", #on_disk().shells, 0)
+
+    -- And a walk that does recover clears the count rather than counting on.
+    local shells = temp_path()
+    write(shells, 'return { { ["pid"] = 9, ["cwd"] = "/new", ["command"] = "" } }')
+    local recovered = session_restore.new(hl, {
+        snapshot_path = path,
+        shells_path = shells,
+        map_path = "/dev/null",
+        log = function() end,
+    })
+    recovered.save()
+    equal("a recovered walk is recorded", #on_disk().shells, 1)
+    equal("with the directory it found", on_disk().shells[1].cwd, "/new")
+    equal("and no carry count", on_disk().shells_carried, nil)
+    os.remove(path)
     os.remove(shells)
 end
 

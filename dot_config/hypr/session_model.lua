@@ -121,6 +121,22 @@ end
 
 M.VERSION = 2
 
+-- Monitors arrive as HL.Monitor objects, which the serializer cannot hold: only
+-- the name goes into the snapshot. Read through a pcall because an opaque
+-- object may not even be indexable, and a monitor is recorded for diagnosis
+-- only — placement follows the workspace, which the compositor puts back on the
+-- right output through the workspace rules.
+local function monitor_name(monitor)
+    if type(monitor) == "string" then return monitor end
+    -- Some callers hand back an output id rather than an object; it identifies
+    -- a monitor just as well, and dropping it would lose the field silently.
+    if type(monitor) == "number" then return tostring(monitor) end
+    if monitor == nil then return nil end
+    local ok, name = pcall(function() return monitor.name end)
+    if ok and type(name) == "string" then return name end
+    return nil
+end
+
 local function workspace_of(window)
     local workspace = window.workspace or {}
     return workspace.id, workspace.name
@@ -211,7 +227,7 @@ function M.build_snapshot(input)
                 title = window.title,
                 workspace = workspace_id,
                 workspace_name = workspace_name,
-                monitor = window.monitor,
+                monitor = monitor_name(window.monitor),
                 floating = window.floating or false,
                 at = window.at and { window.at.x or window.at[1], window.at.y or window.at[2] },
                 size = window.size and { window.size.x or window.size[1], window.size.y or window.size[2] },
@@ -244,7 +260,7 @@ function M.build_snapshot(input)
             workspaces[#workspaces + 1] = {
                 id = workspace.id,
                 name = workspace.name,
-                monitor = workspace.monitor,
+                monitor = monitor_name(workspace.monitor),
             }
         end
     end
@@ -427,6 +443,13 @@ function M.plan_restore(snapshot, live_windows, options)
     -- Ghostty first: one window per saved shell, in save order, which is also
     -- the order they will be claimed in (their pid tag does not exist until the
     -- restored shell draws its first prompt).
+    -- shells.lua is written by a background /proc walk and can legitimately be
+    -- empty (it has never run, or it ran before any shell existed). Without a
+    -- fallback every terminal in the snapshot would be silently dropped, so the
+    -- saved ghostty *windows* drive the restore instead — workspace only, since
+    -- with no shell record there is no working directory to reopen in.
+    local have_shells = #(snapshot.shells or {}) > 0
+
     for _, shell in ipairs(snapshot.shells or {}) do
         if shell.workspace and not take_live(pool, M.GHOSTTY_CLASS, nil) then
             launches[#launches + 1] = {
@@ -447,7 +470,21 @@ function M.plan_restore(snapshot, live_windows, options)
     for _, window in ipairs(snapshot.windows or {}) do
         local provider = window.provider or M.provider_for(window.class)
         local title = window.title and M.strip_tags(window.title) or nil
-        if provider ~= "ghostty" and not take_live(pool, window.class, title) then
+        if provider == "ghostty" then
+            if not have_shells and not take_live(pool, window.class, nil) then
+                launches[#launches + 1] = {
+                    provider = "ghostty",
+                    cmd = M.ghostty_command({}, options),
+                }
+                placements[#placements + 1] = {
+                    class = window.class,
+                    provider = "ghostty",
+                    workspace = window.workspace,
+                    workspace_name = window.workspace_name,
+                    floating = false,
+                }
+            end
+        elseif not take_live(pool, window.class, title) then
             if provider == "chrome" then
                 if not launched_provider.chrome then
                     launched_provider.chrome = true

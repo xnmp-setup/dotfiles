@@ -50,6 +50,7 @@ class FakeProc:
         tpgid: int | None = None,
         cwd: str | None = None,
         cmdline: tuple[str, ...] = (),
+        exe: str | None = None,
     ) -> None:
         pgrp = pid if pgrp is None else pgrp
         tpgid = pgrp if tpgid is None else tpgid
@@ -64,6 +65,8 @@ class FakeProc:
             target = self.root / "cwd-targets" / str(pid)
             target.mkdir(parents=True, exist_ok=True)
             os.symlink(cwd, entry / "cwd")
+        if exe is not None:
+            os.symlink(exe, entry / "exe")
 
     def collect(self):
         return shells_module.collect_shells(str(self.root))
@@ -188,6 +191,60 @@ class Traversal(ProcFixture):
         self.proc.add(200, "zsh", ppid=100, cwd=None)
         self.proc.add(210, "zsh", ppid=100, cwd="/b")
         self.assertEqual([shell["cwd"] for shell in self.proc.collect()], ["/b"])
+
+    def test_a_deleted_working_directory_is_not_replayed(self):
+        # The kernel renders a removed directory as "<path> (deleted)". Handing
+        # that to ghostty as --working-directory reopens the window somewhere
+        # arbitrary; the shell is better dropped.
+        self.proc.add(100, "ghostty")
+        self.proc.add(200, "zsh", ppid=100, cwd="/tmp/gone (deleted)")
+        self.proc.add(210, "zsh", ppid=100, cwd="/b")
+        self.assertEqual([shell["cwd"] for shell in self.proc.collect()], ["/b"])
+
+    def test_a_directory_really_named_deleted_survives(self):
+        # The suffix is a rendering, not a reserved name: a directory that
+        # exists under that name is still a working directory.
+        real = Path(self._tmp.name) / "a dir (deleted)"
+        real.mkdir()
+        self.proc.add(100, "ghostty")
+        self.proc.add(200, "zsh", ppid=100, cwd=str(real))
+        self.assertEqual([shell["cwd"] for shell in self.proc.collect()], [str(real)])
+
+    def test_a_wrapped_ghostty_binary_is_still_ghostty(self):
+        # NixOS puts a wrapper shim on PATH and runs `.ghostty-wrapped`, whose
+        # 16 characters the kernel truncates to a 15-character comm. Matching on
+        # comm alone finds no ghostty and loses every terminal in the session.
+        self.proc.add(100, ".ghostty-wrappe", exe="/nix/store/abc/bin/.ghostty-wrapped")
+        self.proc.add(200, "zsh", ppid=100, cwd="/a")
+        self.assertEqual([shell["cwd"] for shell in self.proc.collect()], ["/a"])
+
+    def test_a_truncated_wrapper_comm_is_enough_when_exe_is_unreadable(self):
+        # /proc/<pid>/exe is unreadable for a process running as another uid, so
+        # on NixOS the only evidence left is the comm the kernel cut at 15
+        # characters. Rejecting it loses every terminal in the session.
+        self.proc.add(100, ".ghostty-wrappe")
+        self.proc.add(200, "zsh", ppid=100, cwd="/a")
+        self.assertEqual([shell["cwd"] for shell in self.proc.collect()], ["/a"])
+
+    def test_a_short_comm_that_is_merely_a_prefix_is_not_ghostty(self):
+        # Only a comm at the truncation limit is ambiguous; a shorter one is a
+        # complete name and "ghost" is not ghostty.
+        self.proc.add(100, "ghost")
+        self.proc.add(200, "zsh", ppid=100, cwd="/a")
+        self.assertEqual(self.proc.collect(), [])
+
+    def test_a_process_whose_exe_is_unreadable_falls_back_to_comm(self):
+        # /proc/<pid>/exe needs the same uid and is gone for a process exiting
+        # mid-scan, so comm has to remain a usable answer.
+        self.proc.add(100, "ghostty")
+        self.proc.add(200, "zsh", ppid=100, cwd="/a")
+        self.assertEqual([shell["cwd"] for shell in self.proc.collect()], ["/a"])
+
+    def test_the_exe_name_wins_over_a_misleading_comm(self):
+        # A process can set its own comm; what it is executing is the fact.
+        self.proc.add(100, "ghostty", exe="/usr/bin/kitty")
+        self.proc.add(200, "zsh", ppid=100, cwd="/a")
+        self.assertEqual(self.proc.collect(), [])
 
     def test_an_unreadable_proc_entry_does_not_abort_the_scan(self):
         self.proc.add(100, "ghostty")

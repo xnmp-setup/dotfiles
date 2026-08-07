@@ -1,0 +1,12 @@
+# Targets chezmoi should delete rather than merely stop managing. Removing a
+# file from the source directory leaves the copy already on disk in place, which
+# for a systemd unit means it keeps being loaded and started long after the
+# source stopped describing it.
+#
+# hypr-session-save.service saved the session from ExecStop, outside the
+# compositor: by the time it ran Hyprland was gone and there were no windows
+# left to record, so it failed at every logout. The save happens inside
+# Hyprland now (session.exit(), SUPER+SHIFT+M). The enablement symlink goes with
+# it, or graphical-session.target keeps a dangling want.
+.config/systemd/user/hypr-session-save.service
+.config/systemd/user/graphical-session.target.wants/hypr-session-save.service

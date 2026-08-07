@@ -5,8 +5,8 @@
 -- piece of mutable state that matters: which ghostty tab was last seen on which
 -- workspace.
 --
--- Nothing here calls hyprctl
--- ---------------------------
+-- Nothing here asks hyprctl a question
+-- ------------------------------------
 -- Windows and workspaces come from hl.get_windows() / hl.get_workspaces().
 -- Shelling out to `hyprctl` from Lua deadlocks: the request can only be served
 -- by Hyprland's main event loop, which is exactly the thread blocked waiting
@@ -120,6 +120,24 @@ function M.new(hl, options)
     -- boot would read.
     local savable = false
 
+    -- The snapshot and the shell list record the working directory and the full
+    -- argv of every foreground process, which is nobody else's business on a
+    -- multi-user machine. Derived from the paths actually in use rather than
+    -- from STATE_DIR, so a nested or test instance protects its own directory.
+    -- Done through hl.exec_cmd because Lua has no chmod.
+    local function secure_state_dirs()
+        local seen = {}
+        for _, path in ipairs({ snapshot_path, shells_path }) do
+            local directory = path:match("^(.*)/[^/]+$")
+            if directory and directory ~= "" and not seen[directory] then
+                seen[directory] = true
+                hl.exec_cmd(("sh -c %s"):format(shell_quote(
+                    ("mkdir -p %s && chmod 700 %s"):format(
+                        shell_quote(directory), shell_quote(directory)))))
+            end
+        end
+    end
+
     ----------------------------------------------------------------------
     -- Capture
     ----------------------------------------------------------------------
@@ -127,8 +145,13 @@ function M.new(hl, options)
     local function refresh_shells()
         -- Fire and forget, into a temp file and renamed, so a save that lands
         -- mid-write reads the previous complete file rather than a partial one.
+        --
+        -- umask here rather than in hypr-session-shells: the script only writes
+        -- to stdout, and it is this shell that creates the file. The list holds
+        -- the working directory and full argv of every foreground process, so it
+        -- is not for the rest of the machine to read.
         hl.exec_cmd(("sh -c %s"):format(shell_quote(
-            ("%s > %s.tmp && mv %s.tmp %s"):format(
+            ("umask 077; %s > %s.tmp && mv %s.tmp %s"):format(
                 shells_command, shells_path, shells_path, shells_path))))
     end
 
@@ -187,7 +210,36 @@ function M.new(hl, options)
         return os.rename(temporary, snapshot_path)
     end
 
+    -- The last snapshot written, read back off disk rather than remembered:
+    -- after a reboot the file is the only thing that knows.
+    local function previous_snapshot()
+        return load_lua(read_file(snapshot_path), snapshot_path, log)
+    end
+
+    -- Carrying the previous shell list forward covers a /proc walk that has not
+    -- landed yet. It must not become permanent: if hypr-session-shells breaks
+    -- for good, an unbounded carry pins the terminals of the last working
+    -- session into every snapshot from then on, and the empty-shells fallback
+    -- in plan_restore — which reopens the ghostty windows that *are* in the
+    -- capture — can never be reached. After this many consecutive carries the
+    -- empty list is recorded and that fallback takes over: stale but true,
+    -- rather than confidently wrong.
+    local MAX_CARRIES = 3
+
+    local function has_ghostty(windows)
+        for _, window in ipairs(windows) do
+            if window and window.class == session_model.GHOSTTY_CLASS then return true end
+        end
+        return false
+    end
+
     local function do_save()
+        -- A restore in flight is a half-built desktop. Recording it would throw
+        -- away the very session being rebuilt, so an explicit save waits.
+        if restoring then
+            log("not saving while a restore is in flight")
+            return false
+        end
         local windows = hl.get_windows() or {}
         record_sightings(windows)
         local snapshot = session_model.build_snapshot({
@@ -203,6 +255,25 @@ function M.new(hl, options)
         if #snapshot.windows == 0 then
             log("refusing to overwrite the snapshot with an empty capture")
             return false
+        end
+        -- Same reasoning one level down: terminals on screen but no shell list
+        -- means the background /proc walk has not landed yet, not that the
+        -- terminals are empty. Recording that would drop every one of them.
+        if #snapshot.shells == 0 and has_ghostty(windows) then
+            local previous = previous_snapshot() or {}
+            local carried = type(previous.shells) == "table" and #previous.shells > 0
+                and previous.shells or nil
+            -- Consecutive, because a walk that succeeds writes no counter and
+            -- the next empty one starts again from zero.
+            local carries = (tonumber(previous.shells_carried) or 0) + 1
+            if carried and carries <= MAX_CARRIES then
+                snapshot.shells = carried
+                snapshot.shells_carried = carries
+                log("shell list is empty; carrying %d shells forward (%d of %d)",
+                    #carried, carries, MAX_CARRIES)
+            elseif carried then
+                log("the shell list has been empty for %d saves; recording none", carries)
+            end
         end
         local written = write_snapshot(session_model.serialize(snapshot))
         if written then
@@ -430,7 +501,18 @@ function M.new(hl, options)
             return true
         end
 
-        if #plan.launches == 0 and #plan.placements == 0 then
+        -- At boot, claiming the session means the caller skips its startup set,
+        -- so a plan that launches nothing would leave an empty desktop: a
+        -- snapshot of classes that are all absent from session-restore-map.conf
+        -- produces placements and no launches. Placements alone are worth
+        -- keeping only on a manual re-restore, where the windows they are
+        -- waiting for may already be opening.
+        if request.boot then
+            if #plan.launches == 0 then
+                log("nothing to launch; leaving the startup set to the caller")
+                return false
+            end
+        elseif #plan.launches == 0 and #plan.placements == 0 then
             log("nothing to restore")
             return false
         end
@@ -466,31 +548,65 @@ function M.new(hl, options)
         -- arrangement, not the whole session, so the snapshot is refreshed on a
         -- timer as well as at logout. Re-armed rather than repeating: hl.timer
         -- only offers oneshots.
-        if savable and not restoring then do_save() end
-        refresh_shells()
+        --
+        -- Re-armed *first*, and the body guarded: this is the only thing
+        -- keeping the snapshot fresh, and a single throw out of do_save would
+        -- otherwise end the periodic save for the rest of the session.
         hl.timer(tick, { timeout = save_interval, type = "oneshot" })
+        local ok, err = pcall(function()
+            -- The /proc walk is asked for before the save so that a shell list
+            -- is on disk by the time the next tick reads it — but never during
+            -- a restore, when only some of the terminals have been launched.
+            -- That list would be complete-looking and short, which no guard
+            -- downstream can tell from a real one.
+            if not restoring then refresh_shells() end
+            if savable then do_save() end
+        end)
+        if not ok then log("periodic save failed: %s", tostring(err)) end
     end
 
     -- Armed from the start event rather than here. M.new() runs while the
     -- config is still being read, and every other module in this config only
     -- registers handlers at that point — arming a timer during config load is
     -- unproven ground, and a throw here would take the whole config down.
+    -- No refresh_shells() here: at boot it would run before the restore has
+    -- opened a single terminal and overwrite the saved shell list with an empty
+    -- one. The first tick asks for it, once there is something to see.
     hl.on("hyprland.start", function()
-        refresh_shells()
+        secure_state_dirs()
         hl.timer(tick, { timeout = save_interval, type = "oneshot" })
     end)
 
     return {
         save = function()
-            -- Explicit saves (the keybind, the systemd ExecStop) are not gated
-            -- on `savable`: the caller has asked for one.
+            -- Explicit saves (the keybind, the exit path) are not gated on
+            -- `savable`: the caller has asked for one. They are still refused
+            -- mid-restore, inside do_save, because the desktop is half-built.
             savable = true
-            do_save()
+            local ok, err = pcall(do_save)
+            if not ok then log("save failed: %s", tostring(err)) end
             -- hyprctl wraps its argument as `return hl.dispatch(<arg>)`, so a
             -- function reachable that way has to hand back a dispatcher. This
             -- is the cheapest harmless one; without it every
             -- `hyprctl dispatch "session.save()"` logs a dispatcher error after
             -- doing the work.
+            return hl.dsp.exec_cmd("true")
+        end,
+
+        -- Leaving the session, the only way the last save is guaranteed to
+        -- happen: the compositor is still up here, so the capture is real.
+        -- Nothing outside Hyprland can do this — an ExecStop, a logout hook or
+        -- anything else systemd orders runs after the compositor is gone, with
+        -- no windows left to record.
+        exit = function()
+            local ok, err = pcall(do_save)
+            if not ok then log("save before exit failed: %s", tostring(err)) end
+            -- Dispatched here rather than returned: a keybind callback is
+            -- invoked with nresults=0, so whatever it hands back is discarded
+            -- and the desktop would save and then carry on running. The return
+            -- value exists only for `hyprctl dispatch "session.exit()"`, which
+            -- does read one.
+            hl.dispatch(hl.dsp.exit())
             return hl.dsp.exec_cmd("true")
         end,
         restore = function(request)
@@ -504,7 +620,7 @@ function M.new(hl, options)
         -- a missing, truncated or unreadable snapshot degrades to today's
         -- behaviour instead of an empty desktop.
         boot = function()
-            local claimed = do_restore({})
+            local claimed = do_restore({ boot = true })
             -- Nothing was restored, so nothing is pending and the periodic save
             -- can start immediately. When a restore *is* running, finish() opens
             -- the gate instead.

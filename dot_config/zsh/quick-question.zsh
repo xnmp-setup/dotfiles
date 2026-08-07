@@ -482,7 +482,7 @@ _q_prefill_command() {
     return 1
   fi
 
-  print -z -- "$cmd"
+  print -rz -- "$cmd"
 }
 
 # --- Failed-command tracking (powers a bare `q`) ---

@@ -30,9 +30,11 @@ __wezterm_osc7  # emit on shell startup too
 # hands back whatever was running in it. `print -z` pushes onto zsh's buffer
 # stack, so the command lands on the first prompt ready to edit or run — it is
 # never executed for you. Restoring a session must not relaunch a build, a
-# deploy or an agent behind your back.
+# deploy or an agent behind your back. -r because the command is data: without
+# it print expands escapes, so a Windows path loses its backslashes and a \c
+# truncates the line.
 if [[ -n ${HYPR_RESTORE_CMD:-} ]]; then
-  print -z -- "$HYPR_RESTORE_CMD"
+  print -rz -- "$HYPR_RESTORE_CMD"
   unset HYPR_RESTORE_CMD
 fi
 
