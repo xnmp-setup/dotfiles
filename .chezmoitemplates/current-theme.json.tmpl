@@ -1,0 +1,18 @@
+{{- /* Nord is the bootstrap value until set-theme creates local state. */ -}}
+{{- $stateRoot := env "XDG_STATE_HOME" -}}
+{{- if not $stateRoot -}}
+{{-   $stateRoot = joinPath .chezmoi.homeDir ".local/state" -}}
+{{- end -}}
+{{- $stateFile := joinPath $stateRoot "desktop-theme" "current.json" -}}
+{{- if stat $stateFile -}}
+{{-   output "cat" $stateFile -}}
+{{- else -}}
+{
+  "slug": "nord",
+  "title": "Nord",
+  "mode": "dark",
+  "wezterm": "nord",
+  "vicinae_light": "yosemite-glow",
+  "vicinae_dark": "nord"
+}
+{{- end -}}

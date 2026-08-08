@@ -1,3 +1,4 @@
+{{- $desktopTheme := includeTemplate "current-theme.json.tmpl" . | fromJson -}}
 -- put user settings here
 -- this module will be loaded after everything else when the application starts
 -- it will be automatically reloaded when saved
@@ -20,7 +21,7 @@ local function load_first_theme(names)
   core.warn("No preferred theme found; using default")
 end
 
-load_first_theme { "ayu-mirage", "cosmic-dusk", "default" }
+load_first_theme { {{ $desktopTheme.slug | toJson }}, "ayu-mirage", "cosmic-dusk", "default" }
 
 ------------------------------ Fonts -----------------------------------------
 

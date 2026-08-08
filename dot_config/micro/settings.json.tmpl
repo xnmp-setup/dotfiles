@@ -1,0 +1,4 @@
+{{- $desktopTheme := includeTemplate "current-theme.json.tmpl" . | fromJson -}}
+{
+    "colorscheme": {{ $desktopTheme.slug | toJson }}
+}

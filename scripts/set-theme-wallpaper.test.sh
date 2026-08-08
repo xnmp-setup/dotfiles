@@ -128,6 +128,11 @@ run_set_theme() {
 
 run_set_theme cosmic-dusk > "$test_root/default.out"
 default_path="$test_root/Pictures/Wallpaper/planet_with_sunrise.png"
+theme_state="$test_root/.local/state/desktop-theme/current.json"
+[[ -f "$theme_state" ]] || fail "set-theme did not create local theme state"
+assert_contains "$theme_state" '"slug": "cosmic-dusk"'
+assert_contains "$theme_state" '"title": "Cosmic Dusk"'
+assert_contains "$theme_state" '"mode": "dark"'
 [[ $(grep -Fh "path = $default_path" \
   "$test_root/.config/hypr/hyprpaper.conf" \
   "$test_root/.config/hypr/hyprlock.conf" | wc -l) -eq 3 ]] \

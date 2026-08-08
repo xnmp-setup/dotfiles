@@ -6,6 +6,8 @@
 #
 # The theme slug is the lowercase-hyphenated form (matching filenames).
 # Title Case names are derived automatically for apps that need them.
+# The selected identifiers are also written to XDG_STATE_HOME so chezmoi's
+# managed config templates preserve this machine-local choice.
 
 set -uo pipefail
 
@@ -16,6 +18,8 @@ source "$set_theme_script_dir/lib/theme-wallpaper.sh"
 source "$set_theme_script_dir/lib/chrome-layout.sh"
 # shellcheck source=lib/theme-colors.sh
 source "$set_theme_script_dir/lib/theme-colors.sh"
+# shellcheck source=lib/theme-state.sh
+source "$set_theme_script_dir/lib/theme-state.sh"
 
 usage() {
   cat <<'EOF'
@@ -182,6 +186,25 @@ theme_is_light() {
 }
 
 title=$(title_case "$slug")
+theme_mode="dark"
+theme_is_light && theme_mode="light"
+
+theme_state_file=$(desktop_theme_state_file)
+vicinae_config="$HOME/.config/vicinae/settings.json"
+vicinae_light=$(desktop_theme_read_vicinae_name "$vicinae_config" light || true)
+vicinae_dark=$(desktop_theme_read_vicinae_name "$vicinae_config" dark || true)
+[[ -n "$vicinae_light" ]] \
+  || vicinae_light=$(desktop_theme_read_state_value "$theme_state_file" vicinae_light || true)
+[[ -n "$vicinae_dark" ]] \
+  || vicinae_dark=$(desktop_theme_read_state_value "$theme_state_file" vicinae_dark || true)
+vicinae_light=${vicinae_light:-yosemite-glow}
+vicinae_dark=${vicinae_dark:-nord}
+if [[ "$theme_mode" == "light" ]]; then
+  vicinae_light="$slug"
+else
+  vicinae_dark="$slug"
+fi
+
 changed=0
 skipped=()
 # Reload hints, appended only by sections that actually changed something, so
@@ -241,6 +264,7 @@ wez_builtin_scheme() {
   end)()" show-keys 2>&1 || true; } | grep -m1 -oP 'WEZMATCH<\K[^>]+'
 }
 wez_done=0
+wez_state="$title"
 for config in "$HOME/.config/wezterm/wezterm_appearance.lua" \
               "$HOME/.config/wezterm/wezterm.lua"; do
   [[ -f "$config" ]] || continue
@@ -257,6 +281,7 @@ for config in "$HOME/.config/wezterm/wezterm_appearance.lua" \
     reload+=("WezTerm: Ctrl+Shift+, (reloads config)")
     ((changed++))
     wez_done=1
+    wez_state="$wez_scheme"
   fi
   break
 done
@@ -907,8 +932,7 @@ fi
 # --- Zed ---
 config="$HOME/.config/zed/settings.json"
 if [[ -f "$config" ]]; then
-  zed_mode="dark"
-  theme_is_light && zed_mode="light"
+  zed_mode="$theme_mode"
 
   if grep -q '"theme"' "$config"; then
     sed -i '/\"theme\": {/,/}/ s|"mode": "[^"]*"|"mode": "'"$zed_mode"'"|' "$config"
@@ -925,13 +949,24 @@ else
 fi
 
 # --- Vicinae ---
-if command -v vicinae &>/dev/null; then
-  vicinae theme set "$slug" &>/dev/null
+if command -v vicinae &>/dev/null && vicinae theme set "$slug" &>/dev/null; then
   echo "  ✓ Vicinae → $slug"
   reload+=("Vicinae: applied immediately")
   ((changed++))
 else
-  skipped+=("Vicinae (not installed)")
+  skipped+=("Vicinae (not installed or theme update failed)")
+fi
+
+if desktop_theme_write_state \
+  "$slug" \
+  "$title" \
+  "$theme_mode" \
+  "$wez_state" \
+  "$vicinae_light" \
+  "$vicinae_dark"; then
+  echo "  ✓ Local theme state → $(desktop_theme_state_file)"
+else
+  skipped+=("Local theme state (could not write $(desktop_theme_state_file))")
 fi
 
 # --- Powerlevel10k (zsh prompt) ---

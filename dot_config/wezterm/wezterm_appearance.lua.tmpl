@@ -1,3 +1,4 @@
+{{- $desktopTheme := includeTemplate "current-theme.json.tmpl" . | fromJson -}}
 -- Platform defaults, renderer selection and visual configuration.
 local wezterm = require 'wezterm'
 local act = wezterm.action
@@ -158,12 +159,9 @@ function M.apply(config)
       brights = { '#928374', '#fb4934', '#b8bb26', '#fabd2f', '#83a598', '#d3869b', '#8ec07c', '#ebdbb2' },
     },
   }
-  -- NOTE: the "Set Theme..." palette entry persists your choice by rewriting the
-  -- color_scheme line in this APPLIED module, not its chezmoi source. Therefore
-  -- `chezmoi apply` resets the theme to whatever is written here.
-  -- Keep this line in sync with your current theme (or re-pick from the palette
-  -- after applying).
-  config.color_scheme = 'nord'
+  -- set-theme persists the machine-local selection outside chezmoi's source
+  -- state; this template renders that exact scheme on each apply.
+  config.color_scheme = '{{ $desktopTheme.wezterm }}'
   config.font_size = 14
   config.window_background_opacity = 0.92
   config.window_padding = { left = 10, right = 10, top = 6, bottom = 6 }

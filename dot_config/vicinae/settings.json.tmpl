@@ -1,6 +1,6 @@
-// Managed by chezmoi. Vicinae rewrites this file when you change settings in the GUI,
-// so after doing that run `chezmoi add ~/.config/vicinae/settings.json` and re-apply the
-// templating below, or your edits will drift out of the repo.
+{{- $desktopTheme := includeTemplate "current-theme.json.tmpl" . | fromJson -}}
+// Managed by chezmoi. Vicinae may rewrite this file after GUI changes; merge useful
+// non-theme changes back into this source template instead of replacing it wholesale.
 //
 // Templated because .desktop files live in different places per distro: Arch uses
 // /usr/share/applications, NixOS exposes them via /run/current-system/sw and the user
@@ -9,8 +9,11 @@
    "$schema": "https://vicinae.com/schemas/config.json",
    "close_on_focus_loss": true,
    "theme": {
+      "light": {
+         "name": {{ $desktopTheme.vicinae_light | toJson }}
+      },
       "dark": {
-         "name": "cosmic-dusk"
+         "name": {{ $desktopTheme.vicinae_dark | toJson }}
       }
    },
    "providers": {

@@ -1,3 +1,4 @@
+{{- $desktopTheme := includeTemplate "current-theme.json.tmpl" . | fromJson -}}
 # Quick terminal: top + centered, 60% tall, 75% wide
 quick-terminal-position = top
 quick-terminal-size = 65%,1000px
@@ -29,7 +30,7 @@ freetype-load-flags = hinting,no-force-autohint,no-monochrome,autohint,no-light
 # Match WezTerm's bold ANSI promotion and native sRGB glyph blending.
 bold-color = bright
 alpha-blending = native
-theme = Cosmic Dusk
+theme = {{ $desktopTheme.title }}
 mouse-scroll-multiplier = 5
 
 window-padding-x = 10
