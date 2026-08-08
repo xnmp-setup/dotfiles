@@ -9,8 +9,8 @@
           "segments": "1"
         },
         "rawValue": true,
-        "color": "white",
-        "backgroundColor": "ansi256:25"
+        "color": "ansi256:110",
+        "backgroundColor": "ansi256:236"
       },
       {
         "id": "2",

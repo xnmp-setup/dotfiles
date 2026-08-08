@@ -390,7 +390,7 @@ for line in sys.stdin:
                 line = line.rstrip("\n") + seg + "\n"
     # cache re-warm countdown (⟳ COST in Nm): fixed cost to rebuild the prompt
     # cache once it expires, and how long until that happens. Color = proportion
-    # of the 1h window still warm: green >=80%, yellow >=50%, bright red <50%.
+    # of the 1h window still warm: muted green >=80%, amber >=50%, red <50%.
     rewarm = os.environ.get("REWARM", "").strip()
     mins_left = os.environ.get("MINS_LEFT", "").strip()
     fc = os.environ.get("FRAC_CACHED", "").strip()
@@ -401,9 +401,11 @@ for line in sys.stdin:
             rv = None
         # Only surface the countdown once the cache is within 45m of expiring —
         # earlier than that it is just noise (plenty of runway, always green).
-        if rv is not None and ml < 45:
-            col = "196" if fcv < 0.5 else "221" if fcv < 0.8 else "114"
-            when = "now" if ml < 1 else f"in {int(round(ml))}m"
+        # Below 1m the cache is (about to be) dead and the cold notice further
+        # down says so — showing both would just repeat the same fact twice.
+        if rv is not None and 1 <= ml < 45:
+            col = "203" if fcv < 0.5 else "179" if fcv < 0.8 else "108"
+            when = f"in {int(round(ml))}m"
             seg = f"  \x1b[38;5;{col}m⟳{format_cost(rv)} {when}\x1b[0m"
             line = line.rstrip("\n") + seg + "\n"
     # append cost of the last user turn (blue, "+" = accrued this turn)
@@ -427,11 +429,11 @@ for line in sys.stdin:
         if usd is not None:
             seg = f"  \x1b[38;5;220m{format_cost(usd)}\x1b[0m"
             line = line.rstrip("\n") + seg + "\n"
-    # GIANT expiry banner: if the last reply is over an hour old the 1h prompt
-    # cache is dead, so the next message pays full re-warm. AGE_MIN is recomputed
-    # live at every render (needs refreshInterval in settings, else the statusline
-    # freezes while idle and this never fires). Printed as its own leading line,
-    # bold + blinking white-on-red, so it is impossible to miss.
+    # Expiry notice: if the last reply is over an hour old the 1h prompt cache is
+    # dead, so the next message pays full re-warm. AGE_MIN is recomputed live at
+    # every render (needs refreshInterval in settings, else the statusline freezes
+    # while idle and this never fires). Printed as its own leading line so it is
+    # not missed, but in a muted red — no blinking, no filled background.
     age_min = os.environ.get("AGE_MIN", "").strip()
     if age_min:
         try:
@@ -441,14 +443,13 @@ for line in sys.stdin:
         if am is not None and am > 60:
             rw = os.environ.get("REWARM", "").strip()
             try:
-                cost_txt = f" — next msg re-warms {format_cost(float(rw))}" if rw else ""
+                cost_txt = f", next msg re-warms {format_cost(float(rw))}" if rw else ""
             except ValueError:
                 cost_txt = ""
-            banner = (
-                f"\x1b[1;5;38;5;231;48;5;196m "
-                f"⚠ CACHE EXPIRED — last reply {int(round(am))}m ago{cost_txt} ⚠ "
-                f"\x1b[0m\n"
+            notice = (
+                f"\x1b[38;5;131m⚠ cache cold — last reply {int(round(am))}m ago"
+                f"{cost_txt}\x1b[0m\n"
             )
-            line = banner + line
+            line = notice + line
     sys.stdout.write(line)
 '
