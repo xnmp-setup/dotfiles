@@ -24,6 +24,7 @@ import argparse
 import math
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -190,6 +191,21 @@ def compositor_gone(socket: Optional[str]) -> bool:
     return socket is not None and not os.path.exists(socket)
 
 
+class Reassert(Exception):
+    """Raised from the SIGUSR1 handler to force a shader re-apply.
+
+    `hyprctl reload` resets decoration:screen_shader to its config-file value
+    (unset), silently undoing whatever hyprshade applied at runtime. Anything
+    that reloads Hyprland (set-theme.sh does) sends us SIGUSR1 afterwards so
+    the current day/night state gets re-asserted. An exception rather than a
+    flag because PEP 475 makes time.sleep() resume after a handler returns.
+    """
+
+
+def _on_reassert(signum: int, frame: object) -> None:
+    raise Reassert
+
+
 def apply_shader(hyprshade: str, shader: str, night: bool) -> None:
     command = [hyprshade, "on", shader] if night else [hyprshade, "off"]
     result = subprocess.run(command, capture_output=True, text=True)
@@ -247,23 +263,30 @@ def main(argv: Optional[list[str]] = None) -> int:
     # instance forever, and a second copy at the next login.
     socket = compositor_socket()
 
+    signal.signal(signal.SIGUSR1, _on_reassert)
+
     applied: Optional[bool] = None
     while True:
-        if compositor_gone(socket):
-            return 0
-        now = time.time()
-        day_start = solar_day_start(now, args.lon)
-        sun = calc_sun(day_start, args.lat)
-        night = is_night(now, sun)
+        try:
+            if compositor_gone(socket):
+                return 0
+            now = time.time()
+            day_start = solar_day_start(now, args.lon)
+            sun = calc_sun(day_start, args.lat)
+            night = is_night(now, sun)
 
-        # Only act on a change, so a manual `hyprshade off` during the
-        # evening stays off until the sun next moves.
-        if night != applied:
-            apply_shader(hyprshade, args.shader, night)
-            applied = night
+            # Only act on a change, so a manual `hyprshade off` during the
+            # evening stays off until the sun next moves.
+            if night != applied:
+                apply_shader(hyprshade, args.shader, night)
+                applied = night
 
-        deadline = min(next_transition(now, sun, day_start), now + MAX_SLEEP_SECONDS)
-        time.sleep(max(1.0, deadline - now))
+            deadline = min(
+                next_transition(now, sun, day_start), now + MAX_SLEEP_SECONDS
+            )
+            time.sleep(max(1.0, deadline - now))
+        except Reassert:
+            applied = None
 
 
 if __name__ == "__main__":

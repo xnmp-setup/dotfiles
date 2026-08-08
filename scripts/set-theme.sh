@@ -725,6 +725,10 @@ EOF
     # Only reload a compositor that is actually up; set-theme also runs over ssh.
     if [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]] && command -v hyprctl &>/dev/null; then
       hyprctl reload &>/dev/null && echo "    reloaded"
+      # Reload resets decoration:screen_shader to unset, wiping the runtime
+      # night-light shader; tell the solar daemon (laptops) to re-assert it.
+      # No-op where the daemon isn't running (desktops use wlsunset).
+      pkill -USR1 -f hyprshade_solar.py 2>/dev/null || true
       reload+=("Hyprland: reloaded automatically")
     else
       reload+=("Hyprland: hyprctl reload (next session picks it up otherwise)")
