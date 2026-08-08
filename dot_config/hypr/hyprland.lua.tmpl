@@ -395,7 +395,10 @@ hl.bind(mainMod .. " + CTRL + R", function() session.restore() end)
 -- still covers a crash or a power cut.
 hl.bind(mainMod .. " + SHIFT + M",  function() session.exit() end)
 hl.bind(mainMod .. " + E",         hl.dsp.exec_cmd("~/.config/hypr/open-explorer-cwd.sh"))
-hl.bind(mainMod .. " + SHIFT + S", hl.dsp.exec_cmd("hyprshot -m region --clipboard-only"))
+-- The focuscurrentorlast pair works around Hyprland sometimes leaving keyboard
+-- focus on slurp's dead exclusive-grab layer after region selection: the window
+-- still looks focused but keys go nowhere until focus is cycled away and back.
+hl.bind(mainMod .. " + SHIFT + S", hl.dsp.exec_cmd("hyprshot -m region --clipboard-only; hyprctl dispatch focuscurrentorlast; hyprctl dispatch focuscurrentorlast"))
 hl.bind("CTRL + SHIFT + C",        hl.dsp.exec_cmd("~/Repos/obsidian-capture/hotkey/capture-linux.sh"))
 hl.bind("CTRL + ALT + U",          hl.dsp.exec_cmd("qs -c statusbar ipc call bar toggle"))
 hl.bind("ALT + F2",                hl.dsp.exec_cmd("qs -c statusbar ipc call bar renameCurrentWorkspace"))
