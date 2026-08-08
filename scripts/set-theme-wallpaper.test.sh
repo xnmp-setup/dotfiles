@@ -18,11 +18,57 @@ fail() {
   exit 1
 }
 
+command -v jq >/dev/null || fail "jq is required"
+
 assert_contains() {
   local file="$1"
   local expected="$2"
   grep -Fq -- "$expected" "$file" || fail "$file does not contain: $expected"
 }
+
+# A wallpaper association denotes a complete desktop theme. Keep Chrome in
+# lockstep with that registry so adding a wallpaper-backed theme cannot leave
+# the browser on the previous theme.
+for associated_slug in "${!theme_wallpapers[@]}"; do
+  chrome_dir="$repo_root/dot_local/share/chrome-themes/$associated_slug"
+  chrome_manifest="$chrome_dir/manifest.json"
+  darkreader_preset="$chrome_dir/darkreader-$associated_slug.json"
+
+  [[ -f "$chrome_manifest" ]] \
+    || fail "wallpaper-associated theme has no Chrome manifest: $associated_slug"
+  [[ -f "$darkreader_preset" ]] \
+    || fail "wallpaper-associated theme has no Dark Reader preset: $associated_slug"
+
+  jq -e '
+    .manifest_version == 3 and
+    (.name | type == "string" and length > 0) and
+    (.version | type == "string" and length > 0) and
+    ([
+      "frame", "frame_inactive", "frame_incognito",
+      "frame_incognito_inactive", "toolbar", "background_tab", "tab_text",
+      "tab_background_text", "bookmark_text", "ntp_background", "ntp_text",
+      "ntp_link", "ntp_header", "omnibox_background", "omnibox_text",
+      "toolbar_button_icon", "button_background"
+    ] - (.theme.colors | keys) | length == 0)
+  ' "$chrome_manifest" >/dev/null \
+    || fail "invalid or incomplete Chrome manifest: $associated_slug"
+
+  while IFS= read -r chrome_asset; do
+    [[ -f "$chrome_dir/$chrome_asset" ]] \
+      || fail "Chrome manifest references a missing asset: $associated_slug/$chrome_asset"
+  done < <(jq -r '.theme.images // {} | .[]' "$chrome_manifest")
+
+  jq -e '
+    .theme.mode == 1 and
+    .theme.engine == "dynamicTheme" and
+    ([
+      "darkSchemeBackgroundColor", "darkSchemeTextColor",
+      "lightSchemeBackgroundColor", "lightSchemeTextColor",
+      "scrollbarColor", "selectionColor"
+    ] - (.theme | keys) | length == 0)
+  ' "$darkreader_preset" >/dev/null \
+    || fail "invalid or incomplete Dark Reader preset: $associated_slug"
+done
 
 mkdir -p "$test_root/.config/hypr" "$test_root/Pictures/Wallpaper" "$test_root/bin"
 touch "$test_root/Pictures/Wallpaper/planet_with_sunrise.png"

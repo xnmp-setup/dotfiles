@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "Cosmic Dusk",
+  "version": "1.0.0",
+  "description": "Deep space indigo dark theme with warm coral accents",
+  "theme": {
+    "colors": {
+      "frame": [12, 16, 36],
+      "frame_inactive": [8, 11, 28],
+      "frame_incognito": [10, 14, 32],
+      "frame_incognito_inactive": [6, 9, 24],
+      "toolbar": [14, 19, 48, 0.95],
+      "tab_text": [216, 220, 232],
+      "tab_background_text": [138, 144, 184],
+      "background_tab": [12, 16, 36, 0.95],
+      "bookmark_text": [216, 220, 232],
+      "ntp_background": [14, 19, 48],
+      "ntp_text": [216, 220, 232],
+      "ntp_link": [212, 96, 122],
+      "ntp_header": [42, 48, 96],
+      "omnibox_background": [22, 27, 64],
+      "omnibox_text": [216, 220, 232],
+      "toolbar_button_icon": [138, 144, 184],
+      "button_background": [212, 96, 122]
+    },
+    "tints": {
+      "buttons": [-1, -1, -1],
+      "frame_incognito": [-1, 0.2, 0.15],
+      "frame_incognito_inactive": [-1, 0.15, 0.1]
+    },
+    "properties": {
+      "ntp_background_alignment": "center",
+      "ntp_background_repeat": "no-repeat"
+    }
+  }
+}

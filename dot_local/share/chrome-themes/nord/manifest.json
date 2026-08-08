@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "Nord",
+  "version": "1.0.0",
+  "description": "Arctic, north-bluish clean and elegant dark theme",
+  "theme": {
+    "colors": {
+      "frame": [59, 66, 82],
+      "frame_inactive": [46, 52, 64],
+      "frame_incognito": [52, 58, 74],
+      "frame_incognito_inactive": [40, 45, 56],
+      "toolbar": [46, 52, 64, 0.95],
+      "tab_text": [236, 239, 244],
+      "tab_background_text": [168, 178, 196],
+      "background_tab": [59, 66, 82, 0.95],
+      "bookmark_text": [216, 222, 233],
+      "ntp_background": [46, 52, 64],
+      "ntp_text": [216, 222, 233],
+      "ntp_link": [136, 192, 208],
+      "ntp_header": [76, 86, 106],
+      "omnibox_background": [59, 66, 82],
+      "omnibox_text": [216, 222, 233],
+      "toolbar_button_icon": [168, 178, 196],
+      "button_background": [136, 192, 208]
+    },
+    "tints": {
+      "buttons": [-1, -1, -1],
+      "frame_incognito": [-1, 0.2, 0.15],
+      "frame_incognito_inactive": [-1, 0.15, 0.1]
+    },
+    "properties": {
+      "ntp_background_alignment": "center",
+      "ntp_background_repeat": "no-repeat"
+    }
+  }
+}

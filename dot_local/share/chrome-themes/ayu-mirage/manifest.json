@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "Ayu Mirage",
+  "version": "1.0.0",
+  "description": "Deep blue-grey Ayu Mirage dark theme with warm gold accents",
+  "theme": {
+    "colors": {
+      "frame": [35, 40, 52],
+      "frame_inactive": [27, 31, 41],
+      "frame_incognito": [31, 36, 48],
+      "frame_incognito_inactive": [23, 27, 36],
+      "toolbar": [31, 36, 48, 0.95],
+      "tab_text": [203, 204, 198],
+      "tab_background_text": [112, 122, 140],
+      "background_tab": [35, 40, 52, 0.95],
+      "bookmark_text": [203, 204, 198],
+      "ntp_background": [31, 36, 48],
+      "ntp_text": [203, 204, 198],
+      "ntp_link": [255, 204, 102],
+      "ntp_header": [23, 27, 36],
+      "omnibox_background": [31, 36, 48],
+      "omnibox_text": [203, 204, 198],
+      "toolbar_button_icon": [112, 122, 140],
+      "button_background": [255, 204, 102]
+    },
+    "tints": {
+      "buttons": [-1, -1, -1],
+      "frame_incognito": [-1, 0.2, 0.15],
+      "frame_incognito_inactive": [-1, 0.15, 0.1]
+    },
+    "properties": {
+      "ntp_background_alignment": "center",
+      "ntp_background_repeat": "no-repeat"
+    }
+  }
+}

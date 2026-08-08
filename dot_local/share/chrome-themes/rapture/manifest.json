@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "Rapture",
+  "version": "1.0.0",
+  "description": "Deep navy dark theme with pastel neon accents",
+  "theme": {
+    "colors": {
+      "frame": [8, 20, 32],
+      "frame_inactive": [6, 14, 24],
+      "frame_incognito": [7, 17, 28],
+      "frame_incognito_inactive": [5, 12, 20],
+      "toolbar": [17, 30, 42, 0.95],
+      "tab_text": [192, 201, 229],
+      "tab_background_text": [122, 135, 168],
+      "background_tab": [8, 20, 32, 0.95],
+      "bookmark_text": [192, 201, 229],
+      "ntp_background": [17, 30, 42],
+      "ntp_text": [192, 201, 229],
+      "ntp_link": [100, 224, 255],
+      "ntp_header": [48, 75, 102],
+      "omnibox_background": [24, 40, 56],
+      "omnibox_text": [192, 201, 229],
+      "toolbar_button_icon": [160, 170, 206],
+      "button_background": [100, 224, 255]
+    },
+    "tints": {
+      "buttons": [-1, -1, -1],
+      "frame_incognito": [-1, 0.2, 0.15],
+      "frame_incognito_inactive": [-1, 0.15, 0.1]
+    },
+    "images": {
+      "theme_ntp_background": "background.png"
+    },
+    "properties": {
+      "ntp_background_alignment": "center",
+      "ntp_background_repeat": "repeat"
+    }
+  }
+}
