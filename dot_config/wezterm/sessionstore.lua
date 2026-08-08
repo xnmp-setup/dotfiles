@@ -345,6 +345,11 @@ end
 
 -- opts.dir: directory to hold session.json (defaults to ~/.local/share/wezterm).
 -- opts.local_domain: replacement domain for legacy snapshots named "local".
+-- opts.session_restore: whole-session persistence, on by default. Setting it to
+--   false registers neither handler, so a launch is a plain default window (one
+--   tab, cwd resolved by wezterm's own rules) and nothing is written to disk.
+--   capture_tab/restore_tab are unaffected — the recently-closed-tab stack keeps
+--   working, since it snapshots in memory on close rather than on a timer.
 function M.setup(opts)
   opts = opts or {}
   if opts.dir then
@@ -353,6 +358,7 @@ function M.setup(opts)
   end
   if opts.save_interval then SAVE_INTERVAL = opts.save_interval end
   restored_local_domain = opts.local_domain
+  if opts.session_restore == false then return end
 
   -- gui-startup fires once, before the default window is spawned. Creating panes
   -- here suppresses that default window; creating none lets it happen as usual —

@@ -18,12 +18,16 @@ local windowing = require('wezterm_windowing').setup()
 local utilities = require('wezterm_utilities').setup(config)
 local output = require('wezterm_output').setup()
 
--- Restore normal panes from the last GUI session. Background panes are excluded
--- because their dedicated mux domains already outlive the GUI.
+-- Whole-session restore is OFF: a launch should be a plain window with one tab,
+-- inheriting the spawning pane's cwd (or $HOME when launched from a launcher),
+-- not a rebuild of whatever was open at the last quit. Set session_restore =
+-- true to bring the save/restore pair back. Loaded regardless because
+-- wezterm_recent_tabs drives ctrl+shift+T through its per-tab snapshot API.
 local sessionstore = require 'sessionstore'
 sessionstore.setup {
   dir = background.socket_dir,
   local_domain = scheduling.pane_domain(),
+  session_restore = false,
 }
 
 local agent = require('wezterm_agent').setup { log = recent_tabs_log.emit }
