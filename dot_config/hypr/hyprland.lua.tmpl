@@ -285,6 +285,13 @@ hl.on("hyprland.start", function()
     -- receive the same 3500K night tint. Desktops retain solar-time wlsunset.
     nightlight.start(hl, is_laptop)
     hl.exec_cmd("dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP")
+    -- Take the http association back from Chrome, which reclaims it whenever
+    -- its "make Chrome default" prompt is accepted. Losing it is silent and
+    -- costs the thing open-link.sh exists for: links then open in whichever
+    -- Chrome window was last active, typically on another workspace. The script
+    -- self-guards on every condition it needs, so it is a no-op where it does
+    -- not apply.
+    hl.exec_cmd("sh -c '\"$HOME\"/.local/bin/set-default-browser'")
     hl.exec_cmd("gnome-keyring-daemon --start --components=secrets")
     -- Idle dimming, blanking and locking (see hypridle.conf) are things a
     -- machine wants because it runs on a battery and closes shut, so they
