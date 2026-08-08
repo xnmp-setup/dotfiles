@@ -157,6 +157,28 @@ hl.config({
         -- XDG_CURRENT_DESKTOP is deliberately GNOME (set below, for portals);
         -- silence the "managed externally" banner Hyprland shows about it.
         disable_xdg_env_checks = true,
+
+        -- This config is one Lua chunk that requires a dozen sibling modules,
+        -- but chezmoi writes those files one at a time. With autoreload on,
+        -- Hyprland reloads the instant hyprland.lua lands and before the
+        -- sibling it now requires does, `require` raises, and an uncaught error
+        -- at chunk top level aborts the whole config: no binds, no rules. The
+        -- failure then sticks, because Hyprland serves the last load result
+        -- until something asks it to reload again — so the desktop stays broken
+        -- long after the directory on disk is complete and correct, which is a
+        -- genuinely baffling thing to debug.
+        --
+        -- So reloading is manual: `hyprctl reload` after an apply. That is the
+        -- point rather than the cost. A reload you asked for happens while you
+        -- are at the keyboard to see `hyprctl configerrors`, whereas the one
+        -- this disables fired at whatever instant chezmoi happened to be
+        -- halfway through the directory.
+        --
+        -- To check a config without disturbing the running session (it parses
+        -- in a throwaway process, and must be pointed at the .lua — given a
+        -- .conf it validates the legacy path instead):
+        --     Hyprland --verify-config --config ~/.config/hypr/hyprland.lua
+        disable_autoreload = true,
     },
 
     input = {
