@@ -20,3 +20,5 @@ the other three.
 
 When making a change, double check that it won't break anything on the other platforms. 
 If it's a high risk change, run an adversarial reviewer to verify this. 
+
+- If adding laptop-specific functionality, gate it behind a check that the machine is a laptop (eg checking its battery)
