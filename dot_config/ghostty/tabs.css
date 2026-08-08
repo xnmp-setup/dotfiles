@@ -1,7 +1,10 @@
 /* Ghostty's config exposes the tab font family, but GTK CSS controls its
  * weight and size. Scope this to AdwTabBar so terminal content is unaffected. */
 .window tabbar tab {
-  font-family: "Inter", "Adwaita Sans", sans-serif;
+  /* Keep animated agent glyphs on one fixed-metric fallback. Without this,
+   * Pango splits Codex's original diamond frames across fonts on NixOS and
+   * their differing advances move the title on every frame. */
+  font-family: "Inter", "Adwaita Mono", "Adwaita Sans", sans-serif;
   font-size: 19px;
   font-weight: bold;
   box-shadow: inset -1px 0 rgba(255, 255, 255, 0.25);
