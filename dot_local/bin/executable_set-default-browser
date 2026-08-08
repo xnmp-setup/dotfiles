@@ -46,10 +46,42 @@ case "$(cat /proc/sys/kernel/osrelease 2>/dev/null)" in
     *[Mm]icrosoft*) exit 0 ;;
 esac
 
+# Reclaim the association from Chrome, but only from Chrome. Setting a default
+# browser by any route — Chrome's own prompt, the desktop's settings panel,
+# another browser asking — goes through `xdg-settings set default-web-browser`,
+# which runs `xdg-mime default` over these same keys. So this script cannot tell
+# *how* an association changed, only what it changed to, and that is the useful
+# distinction:
+#
+#   chrome-window.desktop   already ours, nothing to do
+#   a Chrome entry          Chrome taking back what it hands to an unfocused
+#                           window; this is the drift worth undoing, and undoing
+#                           it silently is right because the two entries launch
+#                           the same browser — only the window routing differs
+#   anything else           a deliberate choice of a different browser. Reverting
+#                           that at every login would be this script overruling
+#                           you about which browser you use, which is a different
+#                           and much larger claim than fixing where a Chrome
+#                           window opens
+#   unset                   first run on a new machine, nothing to overrule
+#
+# Chrome's own entry is spelled differently across packagings (google-chrome,
+# google-chrome-stable, com.google.Chrome), so match the family rather than one
+# literal — a machine whose Chrome ships under a fourth name still self-repairs.
+#
+# Decided per key rather than once: the five can drift apart, and a run that
+# bailed on the strength of one of them would leave the others pointing at the
+# handler this exists to avoid.
 for mime in text/html \
             x-scheme-handler/http \
             x-scheme-handler/https \
             x-scheme-handler/about \
             x-scheme-handler/unknown; do
+    current=$(xdg-mime query default "$mime" 2>/dev/null) || current=
+    case "$current" in
+        "$ENTRY") continue ;;
+        "" | *google-chrome*.desktop | com.google.Chrome.desktop) ;;
+        *) continue ;;
+    esac
     xdg-mime default "$ENTRY" "$mime"
 done

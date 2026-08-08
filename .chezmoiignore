@@ -1,3 +1,5 @@
 .secrets
 .config/hypr/theme-colors.lua
 .claude/scripts/__pycache__
+# Everything else in .local/bin lands on PATH; a test is not a command.
+.local/bin/*_test.sh
