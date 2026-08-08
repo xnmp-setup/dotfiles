@@ -3,19 +3,10 @@
 -- puts the GUI in its own high-weight sibling scope.
 local M = {}
 
-local GUI_CPU_WEIGHT = 1000
-local GUI_SCOPE = table.concat({
-    "systemd-run",
-    "--user",
-    "--scope",
-    "--quiet",
-    "--collect",
-    "--property=CPUWeight=" .. GUI_CPU_WEIGHT,
-    "--",
-    "wezterm",
-}, " ")
+local HOME = os.getenv("HOME") or ""
+local LAUNCHER = HOME .. "/.local/bin/wezterm-hypr-launch"
 
-M.launch = GUI_SCOPE
-M.new_window = GUI_SCOPE .. " start"
+M.launch = LAUNCHER
+M.new_window = LAUNCHER .. " start"
 
 return M

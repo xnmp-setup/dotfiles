@@ -1,0 +1,55 @@
+#!/bin/sh
+# Launch the Hyprland WezTerm GUI in its high-weight systemd scope while
+# preserving enough evidence to diagnose a process that starts without ever
+# presenting a Wayland surface. One log is shared by every launch in a given
+# Hyprland session; a new compositor session gets a new file.
+
+set -eu
+
+if [ "${1:-}" = "--sample-clients" ]; then
+    previous=0
+    for elapsed in 1 4 10; do
+        sleep "$((elapsed - previous))"
+        previous=$elapsed
+        printf '[%s] hyprland elapsed=%ss clients=' "$(date --iso-8601=seconds)" "$elapsed"
+        if clients=$(hyprctl clients -j 2>&1); then
+            printf '%s' "$clients" | jq -c \
+                '[.[] | select(.class == "org.wezfurlong.wezterm") | {address, mapped, hidden, visible, workspace, monitor, pid}]'
+        else
+            printf 'query-failed %s\n' "$clients"
+        fi
+    done
+    exit 0
+fi
+
+state_root=${XDG_STATE_HOME:-"$HOME/.local/state"}
+log_dir="$state_root/wezterm"
+session_id=$(printf '%s' "${HYPRLAND_INSTANCE_SIGNATURE:-unknown}" | tr -cd 'A-Za-z0-9_.-')
+[ -n "$session_id" ] || session_id=unknown
+log_file="$log_dir/hypr-startup-$session_id.log"
+
+mkdir -p "$log_dir"
+chmod 700 "$log_dir"
+exec >>"$log_file" 2>&1
+
+printf '\n[%s] launcher pid=%s argv=' "$(date --iso-8601=seconds)" "$$"
+printf ' %s' "$@"
+printf '\n'
+printf 'WAYLAND_DISPLAY=%s DISPLAY=%s XDG_RUNTIME_DIR=%s HYPRLAND_INSTANCE_SIGNATURE=%s\n' \
+    "${WAYLAND_DISPLAY:-}" "${DISPLAY:-}" "${XDG_RUNTIME_DIR:-}" \
+    "${HYPRLAND_INSTANCE_SIGNATURE:-}"
+printf 'dbus=%s portal=%s\n' \
+    "$(systemctl --user is-active dbus.service 2>/dev/null || true)" \
+    "$(systemctl --user is-active xdg-desktop-portal.service 2>/dev/null || true)"
+wezterm --version
+
+# A mux pane and even a WezTerm GUI-layer Window object can exist without a
+# compositor client. Sample Hyprland itself after progressively longer startup
+# intervals; omit titles so diagnostic logs do not retain terminal contents.
+nohup "$0" --sample-clients >>"$log_file" 2>&1 </dev/null &
+
+# INFO includes renderer/backend failures without debug_key_events recording
+# every key pressed for the lifetime of the terminal.
+export WEZTERM_LOG=${WEZTERM_LOG:-info}
+exec systemd-run --user --scope --quiet --collect \
+    --property=CPUWeight=1000 -- wezterm "$@"

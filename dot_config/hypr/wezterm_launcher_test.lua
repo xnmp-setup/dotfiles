@@ -11,10 +11,9 @@ local function equal(label, got, want)
         :format(label, tostring(got), tostring(want)))
 end
 
-local prefix = "systemd-run --user --scope --quiet --collect"
-    .. " --property=CPUWeight=1000 -- wezterm"
-equal("GUI launch has high CPU weight", launcher.launch, prefix)
-equal("new windows retain the GUI scope", launcher.new_window, prefix .. " start")
+local prefix = (os.getenv("HOME") or "") .. "/.local/bin/wezterm-hypr-launch"
+equal("GUI launch uses the diagnostic wrapper", launcher.launch, prefix)
+equal("new windows use the same wrapper", launcher.new_window, prefix .. " start")
 
 io.write(("2 checks, %d failures\n"):format(failures))
 os.exit(failures == 0 and 0 or 1)

@@ -11,6 +11,7 @@ recent_tabs_log.emit('config.loaded', {
   config = wezterm.config_file or 'unknown',
   version = wezterm.version or 'unknown',
 })
+require('wezterm_startup').setup { log = recent_tabs_log.emit }
 
 local navigation = require 'wezterm_navigation'
 local background = require('wezterm_background').setup(config)
