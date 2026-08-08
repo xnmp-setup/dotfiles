@@ -1,10 +1,23 @@
+# Reference copy of /etc/greetd/config.toml. Nothing reads this file in place —
+# run_once_setup-system-configs.sh copies it into /etc/greetd, which is why it
+# has to be kept in step with what is actually installed there by hand.
+#
+# Linux-only: greetd does not exist on macOS or WSL, and on NixOS the greeter is
+# declared by a module instead, so this file is never copied there.
+
 [terminal]
 vt = 1
 
 [default_session]
-command = "agreety --cmd start-hyprland"
+# cage -s keeps VT switching enabled, so Ctrl+Alt+F2 still reaches the
+# tty2 getty from the greeter. Do not drop -s: it is the escape hatch.
+#
+# -m last confines the greeter to one output. cage's default is -m extend,
+# which stretches its single surface across every connected monitor: on a
+# multi-head machine that smears the background over the whole layout and
+# centres the login form on the *combined* area, so it straddles the seam and
+# lands half off both screens. "last" is a display count of one, which is the
+# only geometry regreet is laid out for. Harmless on a single-head machine,
+# where the last output is the only output.
+command = "cage -s -m last -- regreet"
 user = "greeter"
-
-[initial_session]
-command = "start-hyprland"
-user = "chong"

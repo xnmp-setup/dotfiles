@@ -170,6 +170,54 @@ rewrite_hypr_section_paths() {
   rm -f -- "$tmp"
 }
 
+# The greetd greeter (regreet) reads its background from a path named in its own
+# config. Read that path rather than assuming a location, so the script follows
+# the greeter instead of dictating to it. Returns non-zero when there is no
+# readable regreet config — a machine with no greeter of this kind (macOS, WSL,
+# a plain TTY login) is simply skipped, not failed.
+regreet_background_path() {
+  local config="${1:-/etc/greetd/regreet.toml}"
+  local path
+
+  [[ -r "$config" ]] || return 1
+
+  path=$(awk '
+    /^[[:space:]]*\[/ { in_background = ($0 ~ /^[[:space:]]*\[background\][[:space:]]*$/) }
+    in_background && match($0, /^[[:space:]]*path[[:space:]]*=[[:space:]]*"/) {
+      value = substr($0, RLENGTH + 1)
+      sub(/".*/, "", value)
+      print value
+      exit
+    }
+  ' "$config")
+
+  [[ -n "$path" ]] || return 1
+  printf '%s\n' "$path"
+}
+
+# Put the wallpaper where the greeter expects it. The greeter runs as its own
+# user before anyone has logged in, so it cannot read $HOME — the image has to
+# be copied to a world-readable location, not symlinked into one.
+#
+# Returns non-zero when the destination is not writable. That is the normal
+# case on a fresh machine (the file is root-owned) and on NixOS (it is a
+# read-only store path), so the caller reports it rather than escalating: this
+# script must stay runnable unprivileged, from hooks and over ssh.
+install_greeter_wallpaper() {
+  local source="$1"
+  local dest="$2"
+
+  [[ -n "$dest" ]] || return 1
+  # Writable either because the file itself is, or because it is absent from a
+  # directory we can write — the greeter's config can name a path that has not
+  # been populated yet.
+  [[ -w "$dest" ]] || { [[ ! -e "$dest" && -w "${dest%/*}" ]]; } || return 1
+  cp -- "$source" "$dest" || return 1
+  # The greeter user only ever needs to read it.
+  chmod a+r -- "$dest" 2>/dev/null
+  return 0
+}
+
 read_hyprpaper_fit_mode() {
   local config="$1"
   local configured_fit_mode

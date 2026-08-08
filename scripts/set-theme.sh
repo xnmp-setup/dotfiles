@@ -14,6 +14,8 @@ set_theme_script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 source "$set_theme_script_dir/lib/theme-wallpaper.sh"
 # shellcheck source=lib/chrome-layout.sh
 source "$set_theme_script_dir/lib/chrome-layout.sh"
+# shellcheck source=lib/theme-colors.sh
+source "$set_theme_script_dir/lib/theme-colors.sh"
 
 usage() {
   cat <<'EOF'
@@ -163,11 +165,8 @@ title_case() {
   echo "$1" | tr '-' ' ' | sed 's/\b\(.\)/\u\1/g'
 }
 
-# Extract a hex colour for a CSS custom property from a stylesheet.
-#   css_var <file> <var-name-without-dashes>
-css_var() {
-  grep -oP -- "--$2:\s*\K#[0-9a-fA-F]{3,8}" "$1" 2>/dev/null | head -1
-}
+# css_var, norm_hex, mix, rgb_triplet and pick_readable come from
+# lib/theme-colors.sh.
 
 # Whether the theme is a light theme. The theme's own files are the authority —
 # a slug like "yosemite-glow" carries no hint, so a name test alone misfiles
@@ -617,7 +616,7 @@ else
   skipped+=("Dark Reader (no tauri theme CSS at $dr_css to derive colours)")
 fi
 
-# --- Hyprpaper + Hyprlock wallpaper ---
+# --- Hyprpaper + Hyprlock + greeter wallpaper ---
 if [[ -n "$wallpaper_path" ]]; then
   hyprpaper_config="$HOME/.config/hypr/hyprpaper.conf"
   hyprlock_config="$HOME/.config/hypr/hyprlock.conf"
@@ -639,6 +638,27 @@ if [[ -n "$wallpaper_path" ]]; then
     skipped+=("Hyprlock wallpaper (no config at $hyprlock_config)")
   else
     skipped+=("Hyprlock wallpaper (no background path in $hyprlock_config)")
+  fi
+
+  # The greeter is the one wallpaper consumer that is not a config file to
+  # rewrite: it reads a fixed path, so switching themes means replacing the
+  # image at that path. Its config names the path, and this only ever writes to
+  # the file already named there — a machine with no regreet config has no
+  # greeter of this kind and is skipped.
+  #
+  # The file is root-owned out of the box, and a theme switch must not need
+  # privileges (set-theme also runs from hooks and over ssh). So an unwritable
+  # destination becomes a one-time chown hint, the same arrangement the Chrome
+  # section above uses for /usr/share/google-chrome/extensions.
+  if greeter_background=$(regreet_background_path); then
+    if install_greeter_wallpaper "$wallpaper_path" "$greeter_background"; then
+      wallpaper_configs+=("greeter")
+      reload+=("Greeter: applies at next logout")
+    else
+      skipped+=("Greeter wallpaper ($greeter_background is not writable; one-time setup: sudo chown $USER $greeter_background)")
+    fi
+  else
+    skipped+=("Greeter wallpaper (no [background] path in /etc/greetd/regreet.toml)")
   fi
 
   if (( ${#wallpaper_configs[@]} > 0 )); then
@@ -671,25 +691,6 @@ fi
 hypr_css="$HOME/.config/tauri-explorer/themes/$slug.css"
 hypr_dir="$HOME/.config/hypr"
 if [[ -f "$hypr_css" && -d "$hypr_dir" ]]; then
-  # Expand #abc to #aabbcc so the mixer always has six digits to work with.
-  norm_hex() {
-    local h="${1#\#}"
-    if (( ${#h} == 3 )); then
-      h="${h:0:1}${h:0:1}${h:1:1}${h:1:1}${h:2:1}${h:2:1}"
-    fi
-    echo "${h:0:6}"
-  }
-
-  # mix <hex-a> <hex-b> <percent-of-b> -> hex
-  mix() {
-    local a b t
-    a=$(norm_hex "$1"); b=$(norm_hex "$2"); t="$3"
-    printf '%02x%02x%02x' \
-      $(( 16#${a:0:2} + (16#${b:0:2} - 16#${a:0:2}) * t / 100 )) \
-      $(( 16#${a:2:2} + (16#${b:2:2} - 16#${a:2:2}) * t / 100 )) \
-      $(( 16#${a:4:2} + (16#${b:4:2} - 16#${a:4:2}) * t / 100 ))
-  }
-
   h_bg=$(css_var "$hypr_css" background-solid)
   h_accent=$(css_var "$hypr_css" accent)
   h_accent_light=$(css_var "$hypr_css" accent-light)
@@ -736,6 +737,167 @@ elif [[ -d "$hypr_dir" ]]; then
   skipped+=("Hyprland (no tauri theme CSS at $hypr_css to derive colours)")
 else
   skipped+=("Hyprland (no config dir at $hypr_dir)")
+fi
+
+# --- Greeter appearance (regreet) ---
+# The greeter's wallpaper is handled with the other wallpapers above; this is
+# the login box drawn on top of it. regreet is a GTK4 app and takes a custom
+# global stylesheet — /etc/greetd/regreet.css by default — so the theme reaches
+# it the same way it reaches Hyprland: a generated file derived from the tauri
+# stylesheet, rather than a per-app theme someone has to install.
+#
+# The rules target regreet's own widget tree (see its templates.rs): the login
+# box, the clock and the notification bar are all a GtkFrame carrying the
+# "background" class, Login is .suggested-action and the power buttons are
+# .destructive-action. Styling those nodes directly, rather than redefining
+# Adwaita's named colours, keeps this working whichever GTK theme regreet.toml
+# happens to name — and means a light theme needs no special case.
+greeter_css_source="$HOME/.config/tauri-explorer/themes/$slug.css"
+# regreet takes the stylesheet path as a CLI flag (--style), so it is not
+# discoverable from its config the way the background path is. This follows the
+# upstream default and lets a machine that passes --style, or a dry run against
+# a scratch file, point the generator at the same place.
+greeter_css="${SET_THEME_GREETER_CSS:-/etc/greetd/regreet.css}"
+if [[ ! -f "$greeter_css_source" ]]; then
+  skipped+=("Greeter appearance (no tauri theme CSS at $greeter_css_source to derive colours)")
+elif [[ ! -d "${greeter_css%/*}" ]]; then
+  skipped+=("Greeter appearance (no greetd config dir at ${greeter_css%/*})")
+else
+  g_bg=$(css_var "$greeter_css_source" background-solid)
+  g_accent=$(css_var "$greeter_css_source" accent)
+  g_accent_light=$(css_var "$greeter_css_source" accent-light)
+  g_text=$(css_var "$greeter_css_source" text-primary)
+  g_text_dim=$(css_var "$greeter_css_source" text-secondary)
+
+  if [[ -z "$g_bg" || -z "$g_accent" || -z "$g_text" ]]; then
+    skipped+=("Greeter appearance (could not read colours from $greeter_css_source)")
+  elif [[ ! -w "$greeter_css" ]]; then
+    # Same arrangement as the greeter wallpaper and the Chrome extensions dir:
+    # a theme switch must never need privileges, so an unwritable target is
+    # reported as one-time setup rather than escalated to.
+    skipped+=("Greeter appearance ($greeter_css is not writable; one-time setup: sudo touch $greeter_css && sudo chown $USER $greeter_css)")
+  else
+    [[ -z "$g_accent_light" ]] && g_accent_light="$g_accent"
+    [[ -z "$g_text_dim" ]] && g_text_dim="$g_text"
+
+    # The same two mixes Hyprland gets, for the same reason: a surface that
+    # reads as raised off the background, and an edge that reads as an edge.
+    g_surface=$(mix "$g_bg" "$g_text" 18)
+    g_border=$(mix "$g_bg" "$g_text_dim" 30)
+    g_bg_rgb=$(rgb_triplet "$g_bg")
+    g_accent_rgb=$(rgb_triplet "$g_accent")
+    # Label for anything filled with the accent — measured, not assumed, since
+    # the winner flips between light and dark themes.
+    g_on_accent=$(pick_readable "$g_accent" "$g_bg" "$g_text")
+
+    cat > "$greeter_css" <<EOF
+/* Generated by set-theme.sh from $slug — do not edit.
+   Regenerate with: set-theme $slug */
+
+/* Let the wallpaper through everywhere the login box is not. */
+window,
+window > overlay,
+picture {
+    background-color: transparent;
+}
+
+/* The login box, the clock and the notification frame. Translucent so the
+   wallpaper stays legible behind it, which is the whole point of having one. */
+frame.background {
+    background-color: rgba($g_bg_rgb, 0.82);
+    border: 1px solid #$g_border;
+    border-radius: 14px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+}
+
+label {
+    color: #$(norm_hex "$g_text");
+}
+
+/* Text inputs sit on the raised surface, and take the accent when focused so
+   there is never any doubt about where typing goes. */
+entry,
+passwordentry,
+combobox button.combo {
+    background-color: #$g_surface;
+    background-image: none;
+    color: #$(norm_hex "$g_text");
+    border: 1px solid #$g_border;
+    border-radius: 8px;
+    min-height: 34px;
+    caret-color: #$(norm_hex "$g_accent");
+}
+
+/* GTK draws the focus ring as an outline, not as the border, so recolouring
+   the border alone leaves the stock Adwaita blue sitting on the theme. */
+entry:focus-within,
+passwordentry:focus-within,
+combobox button.combo:focus {
+    border-color: #$(norm_hex "$g_accent");
+    outline-color: rgba($g_accent_rgb, 0.6);
+    box-shadow: 0 0 0 2px rgba($g_accent_rgb, 0.35);
+}
+
+button:focus-visible {
+    outline-color: rgba($g_accent_rgb, 0.6);
+}
+
+button {
+    background-color: #$g_surface;
+    background-image: none;
+    color: #$(norm_hex "$g_text");
+    border: 1px solid #$g_border;
+    border-radius: 8px;
+}
+
+button:hover {
+    background-color: #$g_border;
+}
+
+/* Login. The background sits on the accent, so its label has to return to the
+   page colour to stay readable — text-primary on accent is not a safe pair. */
+button.suggested-action {
+    background-color: #$(norm_hex "$g_accent");
+    background-image: none;
+    color: #$g_on_accent;
+    border-color: #$(norm_hex "$g_accent");
+    font-weight: bold;
+}
+
+button.suggested-action:hover {
+    background-color: #$(norm_hex "$g_accent_light");
+    border-color: #$(norm_hex "$g_accent_light");
+}
+
+/* Reboot and power off. Deliberately quiet until pointed at: they are the two
+   controls on this screen that are destructive to press by accident. */
+button.destructive-action {
+    background-color: transparent;
+    background-image: none;
+    color: #$(norm_hex "$g_text_dim");
+    border-color: #$g_border;
+}
+
+button.destructive-action:hover {
+    background-color: #$(norm_hex "$g_accent");
+    color: #$g_on_accent;
+    border-color: #$(norm_hex "$g_accent");
+}
+
+infobar,
+infobar > revealer > box {
+    background-color: #$g_surface;
+    background-image: none;
+    color: #$(norm_hex "$g_text");
+}
+EOF
+    echo "  ✓ Greeter → $slug (bg $g_bg, accent $g_accent)"
+    # The wallpaper section may already have said this; the greeter is one
+    # screen and wants one line about it however many pieces were written.
+    [[ " ${reload[*]} " == *" Greeter: applies at next logout "* ]] \
+      || reload+=("Greeter: applies at next logout")
+    ((changed++))
+  fi
 fi
 
 # --- Zed ---
