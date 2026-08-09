@@ -42,6 +42,8 @@ GHOSTTY_COMM = "ghostty"
 # Shells whose foreground process group we report. Anything else that ends up
 # as a direct child of ghostty is a helper, not a surface.
 SHELL_COMMS = frozenset({"zsh", "bash", "sh", "fish", "dash", "nu"})
+NODE_NAMES = frozenset({"node", "nodejs"})
+CODEX_TERMINAL_TITLE_OVERRIDE = ("-c", "tui.terminal_title=[]")
 
 
 @dataclass(frozen=True)
@@ -113,6 +115,35 @@ def read_stats(proc: str) -> dict[int, Stat]:
     return stats
 
 
+def present_command(argv: list[str]) -> str:
+    """Render process argv as the command the user recognizes.
+
+    Script interpreters are implementation details. In particular, the npm
+    Codex launcher appears in procfs as ``node /path/to/codex`` and the Ghostty
+    integration adds a private title override. Restoring either detail into the
+    prompt is noisy and couples the snapshot to the installed Node version.
+    """
+    if not argv:
+        return ""
+
+    executable = os.path.basename(argv[0])
+    if (
+        executable in NODE_NAMES
+        and len(argv) > 1
+        and os.path.basename(argv[1]) == "codex"
+    ):
+        command = ["codex", *argv[2:]]
+    elif executable == "codex":
+        command = ["codex", *argv[1:]]
+    else:
+        return " ".join(argv)
+
+    if tuple(command[1:3]) == CODEX_TERMINAL_TITLE_OVERRIDE:
+        command = [command[0], *command[3:]]
+
+    return " ".join(command)
+
+
 def read_cmdline(proc: str, pid: int) -> str:
     """The foreground command, for display and for pre-typing.
 
@@ -127,7 +158,8 @@ def read_cmdline(proc: str, pid: int) -> str:
             raw = handle.read()
     except OSError:
         return ""
-    return " ".join(part.decode("utf-8", "replace") for part in raw.split(b"\0") if part)
+    argv = [part.decode("utf-8", "replace") for part in raw.split(b"\0") if part]
+    return present_command(argv)
 
 
 def read_cwd(proc: str, pid: int) -> str:

@@ -121,7 +121,58 @@ class ForegroundResolution(ProcFixture):
         self.proc.add(500, "npm", ppid=400, pgrp=500, cmdline=("npm", "run", "test:e2e"))
         self.proc.add(600, "node", ppid=500, pgrp=500, cmdline=("node", "test-server.ts"))
         (shell,) = self.proc.collect()
-        self.assertEqual(shell["command"], "node codex resume")
+        self.assertEqual(shell["command"], "codex resume")
+
+    def test_the_codex_node_launcher_is_presented_as_the_cli(self):
+        self.proc.add(100, "ghostty")
+        self.proc.add(200, "zsh", ppid=100, cwd="/home/chong/repo", tpgid=300)
+        self.proc.add(
+            300,
+            "node",
+            ppid=200,
+            pgrp=300,
+            cmdline=(
+                "node",
+                "/home/chong/.nvm/versions/node/v25.6.0/bin/codex",
+                "-c",
+                "tui.terminal_title=[]",
+            ),
+        )
+        (shell,) = self.proc.collect()
+        self.assertEqual(shell["command"], "codex")
+
+    def test_codex_user_arguments_survive_presentation_normalization(self):
+        self.proc.add(100, "ghostty")
+        self.proc.add(200, "zsh", ppid=100, cwd="/home/chong/repo", tpgid=300)
+        self.proc.add(
+            300,
+            "node",
+            ppid=200,
+            pgrp=300,
+            cmdline=(
+                "/home/chong/.nvm/versions/node/v25.6.0/bin/node",
+                "/home/chong/.nvm/versions/node/v25.6.0/bin/codex",
+                "-c",
+                "tui.terminal_title=[]",
+                "resume",
+                "thread-id",
+            ),
+        )
+        (shell,) = self.proc.collect()
+        self.assertEqual(shell["command"], "codex resume thread-id")
+
+    def test_codex_override_text_is_not_removed_from_an_unrelated_command(self):
+        self.proc.add(100, "ghostty")
+        self.proc.add(200, "zsh", ppid=100, cwd="/home/chong/repo", tpgid=300)
+        self.proc.add(
+            300,
+            "node",
+            ppid=200,
+            pgrp=300,
+            cmdline=("node", "-c", "tui.terminal_title=[]"),
+        )
+        (shell,) = self.proc.collect()
+        self.assertEqual(shell["command"], "node -c tui.terminal_title=[]")
 
     def test_background_helper_shells_are_not_mistaken_for_the_foreground(self):
         # quick-question.zsh parks helpers under every prompt; they are in their
