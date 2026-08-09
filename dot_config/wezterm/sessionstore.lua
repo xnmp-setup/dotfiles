@@ -28,6 +28,7 @@
 
 local wezterm = require('wezterm')
 local session = require('session')
+local window_identity = require('wezterm_window_identity')
 
 local M = {}
 
@@ -35,6 +36,8 @@ local M = {}
 local session_dir = wezterm.home_dir .. '/.local/share/wezterm'
 local session_file = session_dir .. '/session.json'
 local restored_local_domain = nil
+local save_full_session = true
+local workspace_restore_enabled = false
 
 -- Floor on how often the layout is written. WezTerm has no "about to quit" hook,
 -- so the saved state is only ever this stale — the tradeoff is between losing a
@@ -42,6 +45,7 @@ local restored_local_domain = nil
 local SAVE_INTERVAL = 10  -- seconds
 
 local last_digest = nil
+local last_window_digests = {}
 local last_save = 0
 
 -- ---------- capture ----------
@@ -78,7 +82,10 @@ local function scan()
       if not pane_infos then return nil end
       tabs[#tabs + 1] = { tab = tab_info.tab, active = tab_info.is_active, panes = pane_infos }
     end
-    windows[#windows + 1] = tabs
+    windows[#windows + 1] = {
+      identity = window_identity.id(mux_win:window_id()),
+      tabs = tabs,
+    }
   end
   return windows
 end
@@ -118,14 +125,15 @@ local function capture()
   local scanned = scan()
   if not scanned then return nil end
   local windows = {}
-  for _, win_tabs in ipairs(scanned) do
+  for _, scanned_window in ipairs(scanned) do
     local tabs, size = {}, nil
-    for _, tab in ipairs(win_tabs) do
+    for _, tab in ipairs(scanned_window.tabs) do
       local panes = capture_panes(tab.panes)
       size = size or tab.tab:get_size()
       tabs[#tabs + 1] = { panes = panes, active = tab.active }
     end
     windows[#windows + 1] = {
+      identity = scanned_window.identity,
       tabs = tabs,
       cols = size and size.cols,
       rows = size and size.rows,
@@ -170,11 +178,11 @@ local function ensure_dir()
   end
 end
 
-local function write(state)
+local function write_to(path, state)
   local encoded = wezterm.json_encode(state)
   -- Write-then-rename: a crash or a power cut mid-write can otherwise leave a
   -- truncated file that fails to parse, losing the session it was meant to save.
-  local tmp = session_file .. '.tmp'
+  local tmp = path .. '.tmp'
   local fh = io.open(tmp, 'w')
   if not fh then
     ensure_dir()
@@ -184,14 +192,36 @@ local function write(state)
   fh:close()
   -- POSIX rename replaces atomically; Windows refuses when the target exists, so
   -- only there do we drop the old file first (and give up atomicity).
-  if not os.rename(tmp, session_file) then
-    os.remove(session_file)
-    if not os.rename(tmp, session_file) then
+  if not os.rename(tmp, path) then
+    os.remove(path)
+    if not os.rename(tmp, path) then
       os.remove(tmp)
       return false
     end
   end
   return true
+end
+
+local function window_file(identity)
+  identity = window_identity.valid(identity)
+  if not identity then return nil end
+  return session_dir .. '/workspace-window-' .. identity .. '.json'
+end
+
+local function save_workspace_windows(raw)
+  for _, window in ipairs(raw.windows or {}) do
+    local path = window_file(window.identity)
+    local state = session.sanitize({ windows = { window } })
+    if path and not session.is_empty(state) then
+      state.saved_at = os.time()
+      local digest = session.digest(state)
+      if last_window_digests[window.identity] ~= digest
+        and write_to(path, state)
+      then
+        last_window_digests[window.identity] = digest
+      end
+    end
+  end
 end
 
 -- Capture and persist, unless nothing changed or the capture isn't trustworthy.
@@ -201,13 +231,15 @@ function M.save()
   -- nil means the capture wasn't trustworthy (zoom; see scan()) — keep the last
   -- good save rather than persist over it.
   if not raw then return end
+  if workspace_restore_enabled then save_workspace_windows(raw) end
+  if not save_full_session then return end
   local state = session.sanitize(raw)
   -- Never replace a real session with an empty one. During teardown the mux can
   -- briefly report no windows, and that's exactly when the file must survive.
   if session.is_empty(state) then return end
   local digest = session.digest(state)
   if digest == last_digest then return end
-  if write(state) then last_digest = digest end
+  if write_to(session_file, state) then last_digest = digest end
 end
 
 -- ---------- restore ----------
@@ -295,8 +327,8 @@ function M.restore_tab(mux_win, tab_state)
   return tab, active_pane
 end
 
-local function read()
-  local fh = io.open(session_file, 'r')
+local function read_from(path)
+  local fh = io.open(path, 'r')
   if not fh then return nil end
   local encoded = fh:read('*a')
   fh:close()
@@ -306,10 +338,12 @@ local function read()
   return session.sanitize(state)
 end
 
--- Rebuild the saved session. Returns true if anything was restored, so the
--- caller can tell "nothing to restore" from "restored".
-function M.restore()
-  local state = read()
+
+local function read()
+  return read_from(session_file)
+end
+
+local function restore_state(state, remembered_identity)
   if not state or session.is_empty(state) then return false end
 
   for _, win in ipairs(state.windows) do
@@ -328,6 +362,9 @@ function M.restore()
         args.width = win.cols
         args.height = win.rows
         tab, pane, mux_win = wezterm.mux.spawn_window(args)
+        if remembered_identity and mux_win then
+          window_identity.remember(mux_win:window_id(), remembered_identity)
+        end
       else
         tab, pane = mux_win:spawn_tab(args)
       end
@@ -335,21 +372,39 @@ function M.restore()
       if tab_state.active then tab:activate() end
     end
   end
+  return true
+end
+
+-- Rebuild the saved session. Returns true if anything was restored, so the
+-- caller can tell "nothing to restore" from "restored".
+function M.restore()
+  local state = read()
+  if not restore_state(state) then return false end
   -- Seed the digest so the first tick after startup doesn't rewrite an identical
   -- file; real drift (the restored geometry rounding differently) still saves.
   last_digest = session.digest(state)
   return true
 end
 
+-- Restore exactly one OS window for a Hyprland workspace snapshot. The file is
+-- retained after close and rewritten under the same stable identity once the
+-- window is back, so this remains additive and never pulls in unrelated
+-- WezTerm windows.
+function M.restore_window(identity)
+  identity = window_identity.valid(identity)
+  local path = identity and window_file(identity)
+  if not path then return false end
+  return restore_state(read_from(path), identity)
+end
+
 -- ---------- wiring ----------
 
 -- opts.dir: directory to hold session.json (defaults to ~/.local/share/wezterm).
 -- opts.local_domain: replacement domain for legacy snapshots named "local".
--- opts.session_restore: whole-session persistence, on by default. Setting it to
---   false registers neither handler, so a launch is a plain default window (one
---   tab, cwd resolved by wezterm's own rules) and nothing is written to disk.
---   capture_tab/restore_tab are unaffected — the recently-closed-tab stack keeps
---   working, since it snapshots in memory on close rather than on a timer.
+-- opts.session_restore: whole-session persistence, on by default.
+-- opts.workspace_restore: persist each OS window independently and allow a
+--   Hyprland restore launch to rebuild just that window. This can remain on
+--   while whole-session restore is off.
 function M.setup(opts)
   opts = opts or {}
   if opts.dir then
@@ -358,7 +413,9 @@ function M.setup(opts)
   end
   if opts.save_interval then SAVE_INTERVAL = opts.save_interval end
   restored_local_domain = opts.local_domain
-  if opts.session_restore == false then return end
+  save_full_session = opts.session_restore ~= false
+  workspace_restore_enabled = opts.workspace_restore == true
+  if not save_full_session and not workspace_restore_enabled then return end
 
   -- gui-startup fires once, before the default window is spawned. Creating panes
   -- here suppresses that default window; creating none lets it happen as usual —
@@ -371,7 +428,13 @@ function M.setup(opts)
     -- `wezterm start -- some-program` asked for something specific; honour it by
     -- creating nothing and letting wezterm spawn that program itself.
     if cmd then return end
-    local ok, err = pcall(M.restore)
+    local restore_identity = workspace_restore_enabled
+      and window_identity.valid(os.getenv('HYPR_WEZTERM_RESTORE_WINDOW_ID'))
+    local restore = restore_identity
+      and function() return M.restore_window(restore_identity) end
+      or (save_full_session and M.restore or nil)
+    if not restore then return end
+    local ok, err = pcall(restore)
     if not ok then
       wezterm.log_error('session restore failed: ' .. tostring(err))
     end

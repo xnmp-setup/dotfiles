@@ -19,16 +19,16 @@ local windowing = require('wezterm_windowing').setup()
 local utilities = require('wezterm_utilities').setup(config)
 local output = require('wezterm_output').setup()
 
--- Whole-session restore is OFF: a launch should be a plain window with one tab,
--- inheriting the spawning pane's cwd (or $HOME when launched from a launcher),
--- not a rebuild of whatever was open at the last quit. Set session_restore =
--- true to bring the save/restore pair back. Loaded regardless because
--- wezterm_recent_tabs drives ctrl+shift+T through its per-tab snapshot API.
+-- Whole-session restore is OFF: ordinary launches remain plain one-tab windows.
+-- Per-window snapshots stay on so Hyprland can explicitly reopen one workspace
+-- window with its tabs, panes and working directories, without pulling in every
+-- other terminal window from the previous desktop.
 local sessionstore = require 'sessionstore'
 sessionstore.setup {
   dir = background.socket_dir,
   local_domain = scheduling.pane_domain(),
   session_restore = false,
+  workspace_restore = true,
 }
 
 local agent = require('wezterm_agent').setup { log = recent_tabs_log.emit }

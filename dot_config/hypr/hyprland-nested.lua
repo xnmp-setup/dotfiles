@@ -44,6 +44,7 @@ session = require("session_restore").new(hl, {
         or ((os.getenv("HOME") or ".") .. "/.local/state"))
         .. "/hypr/workspaces-nested",
     wezterm_command = wezterm_launcher.launch,
+    wezterm_restore_command = wezterm_launcher.restore_window,
 })
 
 terminal_groups.new(hl, {

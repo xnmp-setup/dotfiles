@@ -22,6 +22,30 @@ if [ "${1:-}" = "--sample-clients" ]; then
     exit 0
 fi
 
+restore_window_id=
+if [ "${1:-}" = "--restore-window" ]; then
+    restore_window_id=${2:-}
+    case "$restore_window_id" in
+        ''|*[!0-9-]*|*-*-*)
+            printf 'invalid WezTerm workspace-window identity: %s\n' "$restore_window_id" >&2
+            exit 2
+            ;;
+    esac
+    case "$restore_window_id" in
+        -*)
+            printf 'invalid WezTerm workspace-window identity: %s\n' "$restore_window_id" >&2
+            exit 2
+            ;;
+        *-)
+            printf 'invalid WezTerm workspace-window identity: %s\n' "$restore_window_id" >&2
+            exit 2
+            ;;
+    esac
+    export HYPR_WEZTERM_RESTORE_WINDOW_ID=$restore_window_id
+    shift 2
+    set -- start --always-new-process "$@"
+fi
+
 state_root=${XDG_STATE_HOME:-"$HOME/.local/state"}
 log_dir="$state_root/wezterm"
 session_id=$(printf '%s' "${HYPRLAND_INSTANCE_SIGNATURE:-unknown}" | tr -cd 'A-Za-z0-9_.-')
@@ -35,6 +59,9 @@ exec >>"$log_file" 2>&1
 printf '\n[%s] launcher pid=%s argv=' "$(date --iso-8601=seconds)" "$$"
 printf ' %s' "$@"
 printf '\n'
+if [ -n "$restore_window_id" ]; then
+    printf 'restore_window_id=%s\n' "$restore_window_id"
+fi
 printf 'WAYLAND_DISPLAY=%s DISPLAY=%s XDG_RUNTIME_DIR=%s HYPRLAND_INSTANCE_SIGNATURE=%s\n' \
     "${WAYLAND_DISPLAY:-}" "${DISPLAY:-}" "${XDG_RUNTIME_DIR:-}" \
     "${HYPRLAND_INSTANCE_SIGNATURE:-}"

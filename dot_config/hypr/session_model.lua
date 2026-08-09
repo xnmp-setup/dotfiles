@@ -90,9 +90,14 @@ function M.shell_pid_from_title(title)
     return tonumber(tagged_value(title, "pid"))
 end
 
--- WezTerm's mux window id, stamped by wezterm_window_identity.lua.
+-- WezTerm's stable OS-window id, stamped by wezterm_window_identity.lua. Old
+-- snapshots contain a bare mux id; new ones use "gui-pid-mux-id" so separate
+-- GUI processes cannot collide.
 function M.wezterm_id_from_title(title)
-    return tonumber(tagged_value(title, "wid"))
+    local value = tagged_value(title, "wid")
+    if not value then return nil end
+    if value:match("^%d+$") or value:match("^%d+%-%d+$") then return value end
+    return nil
 end
 
 --------------------------------------------------------------------------
@@ -588,7 +593,17 @@ function M.plan_restore(snapshot, live_windows, options)
                     }
                 end
             elseif provider == "wezterm" then
-                if not launched_provider.wezterm then
+                local wezterm_id = window.title and M.wezterm_id_from_title(window.title)
+                if wezterm_id and options.wezterm_restore_command then
+                    -- One saved OS window per launch. The WezTerm config reads
+                    -- this identity on gui-startup and rebuilds only that
+                    -- window's tabs and panes.
+                    launches[#launches + 1] = {
+                        provider = "wezterm",
+                        cmd = options.wezterm_restore_command .. " "
+                            .. quote_shell(wezterm_id),
+                    }
+                elseif not launched_provider.wezterm then
                     launched_provider.wezterm = true
                     launches[#launches + 1] = {
                         provider = "wezterm",

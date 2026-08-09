@@ -70,7 +70,13 @@ do
 
     -- Byte-compatible with dot_config/wezterm/wezterm_window_identity.lua.
     equal("wezterm window ids decode with the same scheme",
-        session_model.wezterm_id_from_title("shell" .. session_model.encode_tag("wid:7")), 7)
+        session_model.wezterm_id_from_title("shell" .. session_model.encode_tag("wid:7")), "7")
+    equal("process-qualified wezterm window ids are retained",
+        session_model.wezterm_id_from_title(
+            "shell" .. session_model.encode_tag("wid:1234-7")), "1234-7")
+    equal("malformed wezterm identities are rejected",
+        session_model.wezterm_id_from_title(
+            "shell" .. session_model.encode_tag("wid:1;touch /tmp/x")), nil)
     equal("a wid tag is not mistaken for a pid tag",
         session_model.shell_pid_from_title("shell" .. session_model.encode_tag("wid:7")), nil)
 
@@ -497,6 +503,19 @@ do
     local untagged = session_model.match_window(plan.placements,
         { class = session_model.WEZTERM_CLASS, title = "" })
     equal("an untagged wezterm window falls back to save order", untagged.workspace, 2)
+
+    local restorable = session_model.plan_restore(snapshot_for({
+        { class = session_model.WEZTERM_CLASS, workspace = 2, provider = "wezterm",
+          title = "editing" .. session_model.encode_tag("wid:120-0") },
+        { class = session_model.WEZTERM_CLASS, workspace = 8, provider = "wezterm",
+          title = "building" .. session_model.encode_tag("wid:120-1") },
+    }), {}, { wezterm_restore_command = "wezterm-restore-window" })
+    equal("each tagged wezterm OS window gets its own restore launch",
+        #restorable.launches, 2)
+    equal("the first wezterm launch selects only its saved window",
+        restorable.launches[1].cmd, "wezterm-restore-window '120-0'")
+    equal("the second wezterm launch selects only its saved window",
+        restorable.launches[2].cmd, "wezterm-restore-window '120-1'")
 end
 
 do
@@ -1308,6 +1327,12 @@ do
         closes[1].args.window ~= pinned and closes[2].args.window ~= pinned)
     check("another workspace is left open",
         closes[1].args.window ~= chat_window and closes[2].args.window ~= chat_window)
+    local next_workspace = control.dispatches_of("focus")
+    equal("close workspace switches once after closing", #next_workspace, 1)
+    equal("close workspace selects the next open workspace",
+        next_workspace[1].args.workspace, "m+1")
+    equal("the workspace switch follows every close request",
+        control.dispatches[#control.dispatches], next_workspace[1])
 
     -- Nothing is live now, so restoring the recent workspace has to relaunch
     -- its browser and remains in flight until the normal settle completes.
@@ -1319,6 +1344,16 @@ do
         #control.launches() > launches_before)
     control.advance(60000)
     check("workspace restore eventually settles", not handle.is_restoring())
+
+    -- Only one of the two saved windows appeared. A normal save must keep the
+    -- richer two-window source rather than making this failed restore the new
+    -- truth.
+    control.windows, control.workspaces = { project_browser }, { project }
+    control.active_workspace = project
+    handle.save()
+    local still_complete = assert(load(files[project_path], "protected", "t", {}))()
+    equal("an incomplete restore cannot shrink its workspace snapshot",
+        #still_complete.windows, 2)
 
     handle.forget_workspace(2)
     index = assert(load(files[catalog_path], "catalog", "t", {}))()

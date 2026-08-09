@@ -91,6 +91,7 @@ function M.new(hl, options)
     local shells_command = options.shells_command or (HOME .. "/.local/bin/hypr-session-shells")
     local map_path = options.map_path or (CONFIG_DIR .. "/session-restore-map.conf")
     local wezterm_command = options.wezterm_command or "wezterm"
+    local wezterm_restore_command = options.wezterm_restore_command
     local chrome_command = options.chrome_command or "google-chrome-stable"
     local save_interval = options.save_interval or 30000
     local workspace_retention = options.workspace_retention
@@ -129,6 +130,11 @@ function M.new(hl, options)
     -- with half the session missing — permanently, since that is what the next
     -- boot would read.
     local savable = false
+    -- A manual workspace restore that fails to recreate every saved window must
+    -- not let the next periodic capture replace the richer source snapshot with
+    -- that incomplete result. An explicit close is authoritative and clears the
+    -- floor; a successful restore clears it once the expected count is live.
+    local protected_workspace_counts = {}
 
     -- The snapshot and the shell list record the working directory and the full
     -- argv of every foreground process, which is nobody else's business on a
@@ -318,25 +324,35 @@ function M.new(hl, options)
     -- ordinary workspace. Missing workspaces are retained in the catalog until
     -- they age out; that is what makes a workspace remain restorable after all
     -- of its windows have closed.
-    local function save_workspaces(snapshot, only_workspace_id)
-        local updated, saved_any = read_catalog(), false
+    local function save_workspaces(snapshot, only_workspace_id, authoritative)
+        local updated, handled_any = read_catalog(), false
         for _, workspace in ipairs(snapshot.workspaces or {}) do
             if not only_workspace_id or workspace.id == only_workspace_id then
                 local isolated = session_model.for_workspace(snapshot, workspace.id)
                 if isolated then
-                    local path = workspace_snapshot_path(workspace.id)
-                    if write_atomic(path, session_model.serialize(isolated)) then
-                        local next_catalog = workspace_catalog.upsert(updated, {
-                            workspace_id = workspace.id,
-                            name = workspace.name,
-                            saved_at = snapshot.saved_at,
-                            window_count = #isolated.windows,
-                            app_count = app_count(isolated.windows),
-                            shell_count = #isolated.shells,
-                        })
-                        updated, saved_any = next_catalog, true
+                    local expected = protected_workspace_counts[workspace.id]
+                    if expected and #isolated.windows < expected and not authoritative then
+                        handled_any = true
+                        log("keeping workspace %d snapshot with %d windows; restore has %d",
+                            workspace.id, expected, #isolated.windows)
                     else
-                        log("cannot save workspace %d", workspace.id)
+                        local path = workspace_snapshot_path(workspace.id)
+                        if write_atomic(path, session_model.serialize(isolated)) then
+                            local next_catalog = workspace_catalog.upsert(updated, {
+                                workspace_id = workspace.id,
+                                name = workspace.name,
+                                saved_at = snapshot.saved_at,
+                                window_count = #isolated.windows,
+                                app_count = app_count(isolated.windows),
+                                shell_count = #isolated.shells,
+                            })
+                            updated, handled_any = next_catalog, true
+                            if authoritative or (expected and #isolated.windows >= expected) then
+                                protected_workspace_counts[workspace.id] = nil
+                            end
+                        else
+                            log("cannot save workspace %d", workspace.id)
+                        end
                     end
                 end
             end
@@ -354,7 +370,7 @@ function M.new(hl, options)
                     entry.workspace_id)
             end
         end
-        return saved_any
+        return handled_any
     end
 
     local function do_save()
@@ -414,7 +430,7 @@ function M.new(hl, options)
         end
 
         local snapshot = capture_snapshot()
-        if not snapshot or not save_workspaces(snapshot, workspace.id) then
+        if not snapshot or not save_workspaces(snapshot, workspace.id, true) then
             log("workspace %d was not closed because its snapshot could not be saved",
                 workspace.id)
             return false
@@ -429,6 +445,9 @@ function M.new(hl, options)
                 hl.dispatch(hl.dsp.window.close({ window = window }))
                 closed = closed + 1
             end
+        end
+        if closed > 0 then
+            hl.dispatch(hl.dsp.focus({ workspace = "m+1" }))
         end
         log("closed workspace %d after saving %d windows", workspace.id, closed)
         return closed > 0
@@ -601,6 +620,18 @@ function M.new(hl, options)
         if not ok then log("restore cleanup failed: %s", tostring(err)) end
         restoring = false
         savable = true
+        local counts = {}
+        for _, window in ipairs(hl.get_windows() or {}) do
+            local workspace = window.workspace
+            if window.mapped and not window.pinned and workspace and workspace.id then
+                counts[workspace.id] = (counts[workspace.id] or 0) + 1
+            end
+        end
+        for workspace_id, expected in pairs(protected_workspace_counts) do
+            if (counts[workspace_id] or 0) >= expected then
+                protected_workspace_counts[workspace_id] = nil
+            end
+        end
         placements, groups, placed = {}, {}, {}
         workspace_names = {}
     end
@@ -649,6 +680,7 @@ function M.new(hl, options)
         return session_model.plan_restore(snapshot, hl.get_windows(), {
             class_commands = class_commands(),
             wezterm_command = wezterm_command,
+            wezterm_restore_command = wezterm_restore_command,
             chrome_command = chrome_command,
             shell_bin = options.shell_bin,
         })
@@ -693,6 +725,10 @@ function M.new(hl, options)
             return false
         end
 
+        if request.protect_workspace_id and request.protect_window_count then
+            protected_workspace_counts[request.protect_workspace_id] =
+                request.protect_window_count
+        end
         start(plan)
         return true
     end
@@ -846,6 +882,8 @@ function M.new(hl, options)
             else
                 local ok, result = pcall(do_restore, {
                     snapshot_path = workspace_snapshot_path(entry.workspace_id),
+                    protect_workspace_id = entry.workspace_id,
+                    protect_window_count = entry.window_count,
                 })
                 if not ok then
                     log("workspace restore failed: %s", tostring(result))

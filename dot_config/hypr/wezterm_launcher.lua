@@ -8,5 +8,6 @@ local LAUNCHER = HOME .. "/.local/bin/wezterm-hypr-launch"
 
 M.launch = LAUNCHER
 M.new_window = LAUNCHER .. " start"
+M.restore_window = LAUNCHER .. " --restore-window"
 
 return M

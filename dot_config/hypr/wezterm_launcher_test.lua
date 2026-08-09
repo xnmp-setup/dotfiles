@@ -14,6 +14,8 @@ end
 local prefix = (os.getenv("HOME") or "") .. "/.local/bin/wezterm-hypr-launch"
 equal("GUI launch uses the diagnostic wrapper", launcher.launch, prefix)
 equal("new windows use the same wrapper", launcher.new_window, prefix .. " start")
+equal("workspace windows select a single saved WezTerm window",
+    launcher.restore_window, prefix .. " --restore-window")
 
-io.write(("2 checks, %d failures\n"):format(failures))
+io.write(("3 checks, %d failures\n"):format(failures))
 os.exit(failures == 0 and 0 or 1)

@@ -54,7 +54,7 @@ local counts = { cwd = 0, domain = 0 }
 --         width, height, active, zoomed } } } } } }
 local function fake_windows(spec)
   local windows = {}
-  for _, win in ipairs(spec) do
+  for index, win in ipairs(spec) do
     local tabs = {}
     for _, tab in ipairs(win.tabs) do
       local infos = {}
@@ -78,24 +78,33 @@ local function fake_windows(spec)
         },
       }
     end
-    windows[#windows + 1] = { tabs_with_info = function() return tabs end }
+    windows[#windows + 1] = {
+      tabs_with_info = function() return tabs end,
+      window_id = function() return win.id or index end,
+    }
   end
   return windows
 end
 
 local mux_windows = {}
+local parsed_json
+local spawn_window = function() error('unexpected spawn') end
+local fake_global = {}
 
 package.preload['wezterm'] = function()
   return {
     home_dir = '.',
     target_triple = 'x86_64-unknown-linux-gnu',
+    GLOBAL = fake_global,
+    procinfo = { pid = function() return 4242 end },
     json_encode = encode,
-    json_parse = function() error('not used') end,
+    json_parse = function() return parsed_json end,
     log_error = function() end,
     background_child_process = function() end,
     on = function() end,
     mux = {
       all_windows = function() return mux_windows end,
+      spawn_window = function(args) return spawn_window(args) end,
       get_domain = function()
         return { is_spawnable = function() return true end }
       end,
@@ -113,10 +122,22 @@ local dir = ((os.getenv('TMPDIR') or '/tmp'):gsub('/+$', ''))
   .. '/sessionstore-test-' .. os.time() .. '-' .. math.random(1, 1e6)
 os.execute('mkdir -p ' .. dir)
 local session_file = dir .. '/session.json'
-sessionstore.setup { dir = dir, local_domain = 'cpu-limited' }
+sessionstore.setup { dir = dir, local_domain = 'cpu-limited', workspace_restore = true }
 
 local function saved_bytes()
   local fh = io.open(session_file, 'r')
+  if not fh then return nil end
+  local body = fh:read('*a')
+  fh:close()
+  return body
+end
+
+local function window_file(identity)
+  return dir .. '/workspace-window-' .. identity .. '.json'
+end
+
+local function file_bytes(path)
+  local fh = io.open(path, 'r')
   if not fh then return nil end
   local body = fh:read('*a')
   fh:close()
@@ -203,6 +224,11 @@ do
   eq('mixed/domain-queried-per-pane', counts.domain, 5)
   eq('mixed/cwd-skipped-for-bg', counts.cwd, 3)
   eq('mixed/bytes-identical', saved_bytes(), want)
+  local first_window = file_bytes(window_file('4242-1'))
+  eq('mixed/per-window-snapshot-written', type(first_window), 'string')
+  eq('mixed/per-window-excludes-other-window', first_window:find('/tmp', 1, true), nil)
+  eq('mixed/second-window-snapshot-written',
+    file_bytes(window_file('4242-2')):find('/tmp', 1, true) ~= nil, true)
 
   -- Same mux state, so the digest must short-circuit the second save; if capture
   -- had drifted from the oracle the digest would differ and it would rewrite.
@@ -338,7 +364,48 @@ do
   eq('restore-single/tab activated', activated_tab, true)
 end
 
+
+-- 7. A workspace restore reads only the requested OS-window snapshot, restores
+-- all of its tabs, and pins the new mux window to the old stable identity.
+do
+  parsed_json = session.sanitize({ windows = { { tabs = {
+    { active = false, panes = {
+      { cwd = '/one', domain = 'local', active = true, width = 80, height = 24 },
+    } },
+    { active = true, panes = {
+      { cwd = '/two', domain = 'local', active = true, width = 80, height = 24 },
+    } },
+  } } } })
+  local requested_file = assert(io.open(window_file('777-3'), 'w'))
+  requested_file:write('{}')
+  requested_file:close()
+
+  local spawned_cwds = {}
+  local restored_window = {
+    window_id = function() return 99 end,
+    spawn_tab = function(_, args)
+      spawned_cwds[#spawned_cwds + 1] = args.cwd
+      return { activate = function() end }, { activate = function() end }
+    end,
+  }
+  spawn_window = function(args)
+    spawned_cwds[#spawned_cwds + 1] = args.cwd
+    return { activate = function() end }, { activate = function() end }, restored_window
+  end
+
+  eq('restore-window/restored', sessionstore.restore_window('777-3'), true)
+  eq('restore-window/first-tab-cwd', spawned_cwds[1], '/one')
+  eq('restore-window/second-tab-cwd', spawned_cwds[2], '/two')
+  eq('restore-window/stable-identity-retained',
+    fake_global.hypr_window_identities['99'], '777-3')
+  eq('restore-window/rejects-command-text',
+    sessionstore.restore_window('777; touch /tmp/nope'), false)
+end
+
 os.remove(session_file)
+os.remove(window_file('4242-1'))
+os.remove(window_file('4242-2'))
+os.remove(window_file('777-3'))
 os.execute('rmdir ' .. dir)
 
 io.write(string.format('\n%d passed, %d failed\n', passed, failed))

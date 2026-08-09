@@ -39,6 +39,7 @@ local terminal_groups = require("terminal_grouping")
 local session_ok, session_module = pcall(function()
     return require("session_restore").new(hl, {
         wezterm_command = wezterm_launcher.launch,
+        wezterm_restore_command = wezterm_launcher.restore_window,
     })
 end)
 if session_ok then
