@@ -16,6 +16,8 @@ set_theme_script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 source "$set_theme_script_dir/lib/theme-wallpaper.sh"
 # shellcheck source=lib/chrome-layout.sh
 source "$set_theme_script_dir/lib/chrome-layout.sh"
+# shellcheck source=lib/chrome-theme.sh
+source "$set_theme_script_dir/lib/chrome-theme.sh"
 # shellcheck source=lib/theme-colors.sh
 source "$set_theme_script_dir/lib/theme-colors.sh"
 # shellcheck source=lib/theme-state.sh
@@ -33,6 +35,8 @@ Options:
                                   An extension is optional for files in
                                   ~/Pictures/Wallpaper.
       --list-wallpapers           List available wallpaper filenames.
+      --list-desktop-themes       List complete desktop theme names.
+      --restart-chrome            Restart a running Chrome after installing its theme.
   -h, --help                      Show this help.
 
 Examples:
@@ -42,9 +46,22 @@ Examples:
 EOF
 }
 
+title_case() {
+  echo "$1" | tr '-' ' ' | sed 's/\b\(.\)/\u\1/g'
+}
+
+list_desktop_themes() {
+  local theme
+
+  while IFS= read -r theme; do
+    printf '%s\n' "$(title_case "$theme")"
+  done < <(printf '%s\n' "${!theme_wallpapers[@]}" | sort)
+}
+
 slug=""
 wallpaper_override=""
 wallpaper_override_set=0
+restart_chrome=0
 while (( $# > 0 )); do
   case "$1" in
     -w|--wallpaper)
@@ -65,6 +82,14 @@ while (( $# > 0 )); do
     --list-wallpapers)
       list_wallpapers
       exit
+      ;;
+    --list-desktop-themes)
+      list_desktop_themes
+      exit
+      ;;
+    --restart-chrome)
+      restart_chrome=1
+      shift
       ;;
     -h|--help)
       usage
@@ -163,11 +188,6 @@ if (( wallpaper_override_set )) || [[ -n "$wallpaper_request" ]]; then
     wallpaper_resolution_error="associated file not found: $wallpaper_request"
   fi
 fi
-
-# Derive title case name from slug: "golden-hour-light" -> "Golden Hour Light"
-title_case() {
-  echo "$1" | tr '-' ' ' | sed 's/\b\(.\)/\u\1/g'
-}
 
 # css_var, norm_hex, mix, rgb_triplet and pick_readable come from
 # lib/theme-colors.sh.
@@ -456,18 +476,27 @@ else
   # packed manifest exactly or Chrome silently ignores the descriptor.
   chrome_version=$(grep -oP '"version"\s*:\s*"\K[^"]+' "$chrome_manifest" | head -1)
 
-  # One RSA key per machine, never rotated — rotating it changes the extension
-  # ID and turns the next switch back into a first install.
+  # Keep one RSA key per machine so ordinary switches remain updates. Rotate it
+  # only when Chrome has explicitly blocklisted that external extension ID.
   if [[ ! -f "$chrome_key" ]]; then
-    (umask 077; openssl genrsa -out "$chrome_key" 2048 &>/dev/null)
-    chmod 600 "$chrome_key"
+    chrome_theme_generate_key "$chrome_key"
   fi
 
   # Extension ID: SHA-256 of the DER-encoded public key, first 16 bytes, hex
   # digits remapped 0-f -> a-p (Chrome's mpdecimal-ish alphabet).
-  chrome_id=$(openssl rsa -in "$chrome_key" -pubout -outform DER 2>/dev/null \
-    | openssl dgst -sha256 -binary \
-    | head -c 16 | od -An -vtx1 | tr -d ' \n' | tr '0-9a-f' 'a-p')
+  chrome_id=$(chrome_theme_extension_id "$chrome_key")
+  chrome_blocked_ids=()
+  chrome_identity_attempts=0
+  while chrome_theme_profile_blocklists_id "$chrome_id"; do
+    chrome_blocked_ids+=("$chrome_id")
+    ((chrome_identity_attempts += 1))
+    if ((chrome_identity_attempts >= 10)) \
+      || ! chrome_theme_generate_key "$chrome_key" \
+      || ! chrome_id=$(chrome_theme_extension_id "$chrome_key"); then
+      chrome_id=""
+      break
+    fi
+  done
 
   # --pack-extension runs headless and exits; it does not contend with a
   # running browser's profile singleton.
@@ -489,6 +518,7 @@ EOF
     }
 
     chrome_installed=()
+    chrome_descriptor_dirs=()
 
     # Google Chrome on Linux is the odd one out: chromium's chrome_paths.cc
     # gates the per-user "External Extensions" dir to macOS and
@@ -501,9 +531,10 @@ EOF
     # makes every later switch here work without privileges.
     chrome_sudo_hint=""
     if [[ -d "$HOME/.config/google-chrome" ]]; then
-      gc_sys="/usr/share/google-chrome/extensions"
+      gc_sys="${SET_THEME_GOOGLE_CHROME_EXTENSION_DIR:-/usr/share/google-chrome/extensions}"
       if [[ -w "$gc_sys" ]] || { [[ -e "$gc_sys/$chrome_id.json" && -w "$gc_sys/$chrome_id.json" ]]; }; then
         chrome_descriptor "$gc_sys/$chrome_id.json"
+        chrome_descriptor_dirs+=("$gc_sys")
         chrome_installed+=("google-chrome")
       else
         chrome_sudo_hint="$gc_sys"
@@ -513,20 +544,27 @@ EOF
     # Per-user profile roots that DO scan "External Extensions": every browser
     # on macOS, and Chromium-branded builds on Linux. Only existing dirs are
     # touched, which is also how we avoid branching on the OS.
-    for browser_dir in "$HOME/.config/chromium" \
-                       "$HOME/.config/vivaldi" \
-                       "$HOME/.config/microsoft-edge" \
-                       "$HOME/.config/BraveSoftware/Brave-Browser" \
-                       "$HOME/Library/Application Support/Google/Chrome" \
-                       "$HOME/Library/Application Support/Chromium" \
-                       "$HOME/Library/Application Support/Vivaldi" \
-                       "$HOME/Library/Application Support/Microsoft Edge" \
-                       "$HOME/Library/Application Support/BraveSoftware/Brave-Browser"; do
+    while IFS= read -r browser_dir; do
       [[ -d "$browser_dir" ]] || continue
       mkdir -p "$browser_dir/External Extensions"
       chrome_descriptor "$browser_dir/External Extensions/$chrome_id.json"
+      chrome_descriptor_dirs+=("$browser_dir/External Extensions")
       chrome_installed+=("$(basename "$browser_dir")")
-    done
+    done < <(chrome_theme_user_external_roots)
+
+    # Removing an externally installed theme adds its ID to this profile pref.
+    # Chrome will then ignore that ID forever, even when its descriptor points
+    # to a newer CRX. A fresh signing key gives the replacement a fresh ID and
+    # restores unattended installs without modifying Chrome's live profile.
+    if (( ${#chrome_blocked_ids[@]} > 0 )); then
+      echo "    Chrome had blocked the previous external theme; reset its install identity"
+      for blocked_id in "${chrome_blocked_ids[@]}"; do
+        for descriptor_dir in "${chrome_descriptor_dirs[@]}"; do
+          [[ -e "$descriptor_dir/$blocked_id.json" ]] || continue
+          [[ -w "$descriptor_dir" ]] && rm -f -- "$descriptor_dir/$blocked_id.json"
+        done
+      done
+    fi
 
     echo "  ✓ Chrome → $title (applies at next browser launch)"
     reload+=("Chrome: applies at next launch (or via the restart prompt)")
@@ -540,9 +578,9 @@ EOF
     fi
     ((changed++))
 
-    # Offer the restart only when a human is watching and the browser is
-    # actually up; scripted runs (chezmoi hooks, ssh) must never block or kill
-    # a browser. Session restore brings the tabs back.
+    # CLI callers get a prompt when interactive. UI callers can explicitly
+    # request the same controlled restart because Chrome only scans external
+    # theme descriptors while starting. Session restore brings the tabs back.
     case "$(basename "$chrome_bin")" in
       google-chrome*|chrome) chrome_proc="chrome" ;;
       chromium*)             chrome_proc="chromium" ;;
@@ -551,9 +589,13 @@ EOF
       brave*)                chrome_proc="brave" ;;
       *)                     chrome_proc="$(basename "$chrome_bin")" ;;
     esac
-    if [[ -t 0 ]] && pgrep -x "$chrome_proc" &>/dev/null; then
-      read -r -p "    Restart Chrome now to apply? [y/N] " chrome_answer
-      if [[ "$chrome_answer" =~ ^[Yy]$ ]]; then
+    if pgrep -x "$chrome_proc" &>/dev/null; then
+      chrome_should_restart=$restart_chrome
+      if (( ! chrome_should_restart )) && [[ -t 0 ]]; then
+        read -r -p "    Restart Chrome now to apply? [y/N] " chrome_answer
+        [[ "$chrome_answer" =~ ^[Yy]$ ]] && chrome_should_restart=1
+      fi
+      if (( chrome_should_restart )); then
         chrome_layout=""
         if chrome_layout=$(chrome_layout_snapshot "$chrome_proc"); then
           echo "    saved Chrome workspaces, groups, and focus"

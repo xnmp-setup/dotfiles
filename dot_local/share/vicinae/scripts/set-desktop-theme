@@ -2,13 +2,40 @@
 # before parsing directives on systems where that MIME type is executable.
 # @vicinae.schemaVersion 1
 # @vicinae.title Set Desktop Theme
-# @vicinae.mode fullOutput
+# @vicinae.mode silent
 # @vicinae.icon 🎨
-# @vicinae.argument1 { "type": "text", "placeholder": "Theme slug (for example, cosmic-dusk)" }
 # @vicinae.keywords ["appearance", "colors", "set-theme"]
 # @vicinae.description Apply a theme to desktop applications and the wallpaper
 # @vicinae.exec ["/usr/bin/env", "bash"]
 
 set -euo pipefail
 
-exec bash "$HOME/.local/share/chezmoi/scripts/set-theme.sh" "$1"
+notify() {
+  command -v notify-send >/dev/null 2>&1 || return 0
+  notify-send "$1" "$2" --urgency="${3:-normal}"
+}
+
+theme_cli="$HOME/.local/share/chezmoi/scripts/set-theme.sh"
+themes=$(bash "$theme_cli" --list-desktop-themes)
+if [[ -z "$themes" ]]; then
+  notify "No desktop themes" "No complete desktop themes are configured."
+  exit 0
+fi
+
+selection=$(printf '%s\n' "$themes" | vicinae dmenu \
+  --navigation-title "Set Desktop Theme" \
+  --section-title "Desktop themes ({count})" \
+  --placeholder "Search desktop themes" \
+  --width 800 \
+  --no-quick-look)
+[[ -n "$selection" ]] || exit 0
+
+title=$selection
+slug=$(printf '%s\n' "$title" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+if output=$(bash "$theme_cli" "$slug" --restart-chrome 2>&1); then
+  notify "Desktop theme set" "$title"
+else
+  error=$(printf '%s\n' "$output" | tail -n 3 | tr '\n' ' ' | cut -c 1-300)
+  notify "Desktop theme was not set" "${error:-Unknown error}" critical
+  exit 1
+fi
