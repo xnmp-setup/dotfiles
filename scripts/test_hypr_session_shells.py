@@ -121,9 +121,9 @@ class ForegroundResolution(ProcFixture):
         self.proc.add(500, "npm", ppid=400, pgrp=500, cmdline=("npm", "run", "test:e2e"))
         self.proc.add(600, "node", ppid=500, pgrp=500, cmdline=("node", "test-server.ts"))
         (shell,) = self.proc.collect()
-        self.assertEqual(shell["command"], "codex resume")
+        self.assertEqual(shell["command"], "cxr")
 
-    def test_the_codex_node_launcher_is_presented_as_the_cli(self):
+    def test_the_codex_node_launcher_uses_the_resume_alias(self):
         self.proc.add(100, "ghostty")
         self.proc.add(200, "zsh", ppid=100, cwd="/home/chong/repo", tpgid=300)
         self.proc.add(
@@ -139,9 +139,9 @@ class ForegroundResolution(ProcFixture):
             ),
         )
         (shell,) = self.proc.collect()
-        self.assertEqual(shell["command"], "codex")
+        self.assertEqual(shell["command"], "cxr")
 
-    def test_codex_user_arguments_survive_presentation_normalization(self):
+    def test_codex_arguments_are_replaced_by_the_resume_alias(self):
         self.proc.add(100, "ghostty")
         self.proc.add(200, "zsh", ppid=100, cwd="/home/chong/repo", tpgid=300)
         self.proc.add(
@@ -159,7 +159,43 @@ class ForegroundResolution(ProcFixture):
             ),
         )
         (shell,) = self.proc.collect()
-        self.assertEqual(shell["command"], "codex resume thread-id")
+        self.assertEqual(shell["command"], "cxr")
+
+    def test_a_native_claude_command_is_replaced_by_the_resume_alias(self):
+        self.proc.add(100, "ghostty")
+        self.proc.add(200, "zsh", ppid=100, cwd="/home/chong/repo", tpgid=300)
+        self.proc.add(
+            300,
+            "claude",
+            ppid=200,
+            pgrp=300,
+            cmdline=(
+                "/home/chong/.local/bin/claude",
+                "--permission-mode",
+                "auto",
+                "--model",
+                "fable",
+            ),
+        )
+        (shell,) = self.proc.collect()
+        self.assertEqual(shell["command"], "ccr")
+
+    def test_a_node_launched_claude_command_uses_the_same_resume_alias(self):
+        self.proc.add(100, "ghostty")
+        self.proc.add(200, "zsh", ppid=100, cwd="/home/chong/repo", tpgid=300)
+        self.proc.add(
+            300,
+            "node",
+            ppid=200,
+            pgrp=300,
+            cmdline=(
+                "node",
+                "/home/chong/.nvm/versions/node/v25.6.0/bin/claude",
+                "--resume",
+            ),
+        )
+        (shell,) = self.proc.collect()
+        self.assertEqual(shell["command"], "ccr")
 
     def test_codex_override_text_is_not_removed_from_an_unrelated_command(self):
         self.proc.add(100, "ghostty")
