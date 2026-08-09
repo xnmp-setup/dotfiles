@@ -346,6 +346,7 @@ end
 local function restore_state(state, remembered_identity)
   if not state or session.is_empty(state) then return false end
 
+  local restored_window_id
   for _, win in ipairs(state.windows) do
     local mux_win
     for i, tab_state in ipairs(win.tabs) do
@@ -363,7 +364,7 @@ local function restore_state(state, remembered_identity)
         args.height = win.rows
         tab, pane, mux_win = wezterm.mux.spawn_window(args)
         if remembered_identity and mux_win then
-          window_identity.remember(mux_win:window_id(), remembered_identity)
+          restored_window_id = mux_win:window_id()
         end
       else
         tab, pane = mux_win:spawn_tab(args)
@@ -371,6 +372,12 @@ local function restore_state(state, remembered_identity)
       finish_restored_tab(tab, pane, tab_state, plan)
       if tab_state.active then tab:activate() end
     end
+  end
+  if remembered_identity then
+    if restored_window_id then
+      window_identity.remember(restored_window_id, remembered_identity)
+    end
+    window_identity.activate_restore(remembered_identity)
   end
   return true
 end

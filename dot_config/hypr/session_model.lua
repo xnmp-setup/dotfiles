@@ -447,6 +447,7 @@ local function live_pool(live_windows)
             bucket[#bucket + 1] = {
                 title = M.strip_tags(window.title),
                 shell_pid = M.shell_pid_from_title(window.title),
+                wezterm_id = M.wezterm_id_from_title(window.title),
                 -- Where it is *now*, which is what tells two identically titled
                 -- windows apart when one of them is a stale duplicate.
                 workspace = select(1, workspace_of(window)),
@@ -486,20 +487,53 @@ end
 -- same failure one level down, where the titles are identical too — a stale
 -- duplicate of "Inbox - Tauri Explorer" parked on another workspace would
 -- otherwise answer for the one that was closed.
-local function claim_live(pool, windows, titles)
+local function claim_live(pool, windows, titles, strict_workspace)
     local claimed = {}
+    -- A tagged WezTerm window is an independently persisted OS window. Another
+    -- live WezTerm process is not evidence that this one is already open; class
+    -- fallback here made restoring workspace A a no-op whenever workspace B also
+    -- contained WezTerm.
+    for index, window in ipairs(windows) do
+        local identity = window.class == M.WEZTERM_CLASS
+            and M.wezterm_id_from_title(window.title)
+        if identity and take_live(pool, window.class, function(candidate)
+            return candidate.wezterm_id == identity
+        end) then
+            claimed[index] = true
+        end
+    end
     local passes = {
         function(window, title)
+            if window.class == M.WEZTERM_CLASS
+                and M.wezterm_id_from_title(window.title)
+            then return nil end
             if not (title and title ~= "" and window.workspace) then return nil end
             return function(candidate)
                 return candidate.title == title and candidate.workspace == window.workspace
             end
         end,
-        function(_, title)
+        function(window, title)
+            -- Tagged WezTerm windows were handled by identity above and must not
+            -- degrade to title/class matching against a different OS window.
+            if window.class == M.WEZTERM_CLASS
+                and M.wezterm_id_from_title(window.title)
+            then
+                return nil
+            end
             if not (title and title ~= "") then return nil end
             return function(candidate) return candidate.title == title end
         end,
-        function() return function() return true end end,
+        function(window)
+            if window.class == M.WEZTERM_CLASS
+                and M.wezterm_id_from_title(window.title)
+            then return nil end
+            if strict_workspace and window.workspace then
+                return function(candidate)
+                    return candidate.workspace == window.workspace
+                end
+            end
+            return function() return true end
+        end,
     }
 
     for _, pass in ipairs(passes) do
@@ -521,6 +555,8 @@ end
 -- `launches` is what produces them. The two are deliberately not 1:1 — one
 -- Chrome launch yields every Chrome window, and one WezTerm launch yields
 -- every mux window.
+-- `options.strict_workspace` keeps class-only deduplication inside the saved
+-- workspace; individual workspace restores enable it, whole-session restore does not.
 function M.plan_restore(snapshot, live_windows, options)
     options = options or {}
     local pool = live_pool(live_windows)
@@ -537,7 +573,7 @@ function M.plan_restore(snapshot, live_windows, options)
     for index, window in ipairs(windows) do
         titles[index] = window.title and M.strip_tags(window.title) or nil
     end
-    local already_open = claim_live(pool, windows, titles)
+    local already_open = claim_live(pool, windows, titles, options.strict_workspace)
 
     -- The saved shells by pid, so a ghostty window can find the shell that was
     -- its visible tab. Only that one comes back: ghostty tabs are surfaces of a

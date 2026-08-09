@@ -516,6 +516,52 @@ do
         restorable.launches[1].cmd, "wezterm-restore-window '120-0'")
     equal("the second wezterm launch selects only its saved window",
         restorable.launches[2].cmd, "wezterm-restore-window '120-1'")
+
+    local other_window_live = session_model.plan_restore(snapshot_for({
+        { class = session_model.WEZTERM_CLASS, workspace = 2, provider = "wezterm",
+          title = "editing" .. session_model.encode_tag("wid:120-0") },
+    }), {
+        { class = session_model.WEZTERM_CLASS, workspace = { id = 8 },
+          title = "other" .. session_model.encode_tag("wid:999-0") },
+    }, { wezterm_restore_command = "wezterm-restore-window" })
+    equal("a different live wezterm window does not consume the saved identity",
+        other_window_live.launches[1].cmd, "wezterm-restore-window '120-0'")
+    equal("the missing wezterm window still has a placement",
+        #other_window_live.placements, 1)
+
+    local same_window_live = session_model.plan_restore(snapshot_for({
+        { class = session_model.WEZTERM_CLASS, workspace = 2, provider = "wezterm",
+          title = "editing" .. session_model.encode_tag("wid:120-0") },
+    }), {
+        { class = session_model.WEZTERM_CLASS, workspace = { id = 8 },
+          title = "renamed" .. session_model.encode_tag("wid:120-0") },
+    }, { wezterm_restore_command = "wezterm-restore-window" })
+    equal("the same wezterm identity is recognized even after moving",
+        #same_window_live.launches, 0)
+end
+
+do
+    local source = snapshot_for({
+        { class = "tauri-explorer", workspace = 3, title = "Inbox",
+          provider = "generic" },
+    })
+    local other_workspace = {
+        { class = "tauri-explorer", workspace = { id = 1 }, title = "Documents" },
+    }
+    local strict = session_model.plan_restore(source, other_workspace, {
+        class_commands = { ["tauri-explorer"] = "tauri-explorer" },
+        strict_workspace = true,
+    })
+    equal("another workspace's app cannot consume a named-workspace slot",
+        #strict.launches, 1)
+    equal("the missing named-workspace window is still placed",
+        strict.placements[1].workspace, 3)
+
+    local whole_session = session_model.plan_restore(source, other_workspace, {
+        class_commands = { ["tauri-explorer"] = "tauri-explorer" },
+    })
+    equal("whole-session restore retains class-level deduplication",
+        #whole_session.launches, 0)
 end
 
 do
@@ -774,7 +820,7 @@ local function fake_hl(live_windows, live_workspaces)
         get_active_window = function() return control.active end,
         get_active_workspace = function() return control.active_workspace end,
         get_active_monitor = function()
-            return { active_workspace = control.active_workspace }
+            return control.active_monitor or { active_workspace = control.active_workspace }
         end,
     }
 
@@ -995,7 +1041,7 @@ do
     control.advance(500)
     equal("a window nobody asked for is not moved", #control.dispatches_of("move"), before)
 
-    control.advance(60000)  -- past the settle
+    control.advance(120000)  -- past the slow-provider settle
     equal("suppression is released when the restore ends", handle.is_restoring(), false)
     equal("the pinned window is pinned at the end, once", #control.dispatches_of("pin"), 1)
     local focuses = control.dispatches_of("focus")
@@ -1066,7 +1112,7 @@ do
     local path = snapshot_file()
     local handle, control = restorer({ snapshot_path = path, map_path = "/dev/null" })
     handle.boot()
-    control.advance(60000)
+    control.advance(120000)
     equal("the restore has ended", handle.is_restoring(), false)
     control.open({ class = "google-chrome", title = "Inbox", mapped = true })
     control.advance(500)
@@ -1105,7 +1151,7 @@ do
         return count
     end
     equal("no grouping happens while windows are still being placed", grouped(), 0)
-    control.advance(60000)
+    control.advance(120000)
     equal("the group is rebuilt when the restore ends", grouped(), 1)
     os.remove(path)
 end
@@ -1129,7 +1175,7 @@ do
         log = function() end,
     })
     equal("the restore still claims the boot", handle.boot(), true)
-    control.advance(60000)
+    control.advance(120000)
     equal("and a failed launch does not wedge the restore",
         handle.is_restoring(), false)
     os.remove(path)
@@ -1260,7 +1306,7 @@ do
     check("the restore is still in flight", handle.is_restoring())
     equal("and no save has landed", #written, 0)
 
-    control.advance(60000)
+    control.advance(120000)
     check("the first save lands once the restore has settled", #written >= 1)
     local before = #written
     control.advance(6000)
@@ -1275,8 +1321,8 @@ do
     local files, removed_paths = {}, {}
     local workspaces_dir = "/state/hypr/workspaces"
     local catalog_path = workspaces_dir .. "/index.lua"
-    local project = { id = 2, name = "Project Alpha" }
-    local chat = { id = 3, name = "3" }
+    local project = { id = 2, name = "Project Alpha", monitor = "DP-2" }
+    local chat = { id = 3, name = "3", monitor = "DP-2" }
     local project_browser = { class = "google-chrome", title = "Project", mapped = true,
         workspace = project, at = { x = 0, y = 0 }, size = { x = 10, y = 10 } }
     local project_notes = { class = "obsidian", title = "Notes", mapped = true,
@@ -1288,6 +1334,9 @@ do
     local hl, control = fake_hl({
         project_browser, project_notes, pinned, chat_window,
     }, { project, chat })
+    -- This is the live API shape: Monitor exposes numeric id plus connector name,
+    -- while Workspace.monitor is just the connector name.
+    control.active_monitor = { id = 0, name = "DP-2", active_workspace = project }
     local handle = session_restore.new(hl, {
         snapshot_path = "/state/hypr/session.lua",
         shells_path = "/state/hypr/shells.lua",
@@ -1345,7 +1394,7 @@ do
     check("workspace restore uses the normal lifecycle", handle.is_restoring())
     check("workspace restore launches the missing provider",
         #control.launches() > launches_before)
-    control.advance(60000)
+    control.advance(120000)
     check("workspace restore eventually settles", not handle.is_restoring())
 
     -- Only one of the two saved windows appeared. A normal save must keep the
@@ -1431,7 +1480,7 @@ do
         at = { x = 0, y = 0 }, size = { x = 10, y = 10 },
     } }
     control.workspaces = { workspace }
-    control.advance(60000)
+    control.advance(120000)
     handle.save()
     equal("a fallback one-tab window cannot replace the richer wezterm snapshot",
         files[workspace_path], source)
@@ -1654,7 +1703,7 @@ do
     handle.save()
     equal("a save mid-restore writes nothing", #written, 0)
 
-    control.advance(60000)
+    control.advance(120000)
     handle.save()
     equal("and once the restore has settled it lands", #written, 3)
     os.remove(path)
@@ -1726,7 +1775,7 @@ do
         log = function() end,
     })
     wedged.boot()
-    broken.advance(60000)
+    broken.advance(120000)
     check("a rename that throws at the end still ends the restore",
         not wedged.is_restoring())
     os.remove(path)

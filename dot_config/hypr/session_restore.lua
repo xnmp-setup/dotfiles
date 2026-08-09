@@ -42,6 +42,7 @@ local M = {}
 local HOME = os.getenv("HOME") or ""
 local STATE_DIR = (os.getenv("XDG_STATE_HOME") or (HOME .. "/.local/state")) .. "/hypr"
 local CONFIG_DIR = (os.getenv("XDG_CONFIG_HOME") or (HOME .. "/.config")) .. "/hypr"
+local RUNTIME_VERSION = "2026-08-09.4"
 
 -- Goes to Hyprland's log. Overridable per instance (options.log) so the test
 -- suite is not narrated by the failure paths it deliberately exercises.
@@ -102,7 +103,11 @@ function M.new(hl, options)
     local match_delay = options.match_delay or 200
     -- How long the restore stays open for windows to appear. Chrome with a
     -- large session is the slow case.
-    local settle = options.settle or 20000
+    -- Tauri Explorer has taken 34 seconds from exec to first surface under real
+    -- load. This is a bounded reconciliation deadline, not a launch delay: fast
+    -- windows are placed and named immediately, while slow providers remain
+    -- claimable instead of opening on whichever workspace is active later.
+    local settle = options.settle or 60000
     -- Ghostty windows are launched one at a time (see launch_ghostty). This is
     -- how long to wait for one to appear before giving up and starting the
     -- next, so a single failure cannot stall the rest.
@@ -114,6 +119,34 @@ function M.new(hl, options)
     local remove_file = options.remove_file
     local direction_towards = options.direction_towards or window_model.direction_towards
 
+    -- A narrow persistent trace for failures that only occur in the compositor
+    -- process. Do not record titles, cwd or full argv: workspace snapshots already
+    -- contain those privately, while this file should be safe to paste into a bug
+    -- report. Test instances inject write_file and therefore stay side-effect free.
+    local audit = options.audit
+    if not audit and not write_file then
+        local audit_path = options.audit_path or (STATE_DIR .. "/workspace-restore.log")
+        audit = function(event, fields)
+            local handle = io.open(audit_path, "a")
+            if not handle then return end
+            local parts = { os.date("!%Y-%m-%dT%H:%M:%SZ"), RUNTIME_VERSION, event }
+            local keys = {}
+            for key in pairs(fields or {}) do keys[#keys + 1] = key end
+            table.sort(keys)
+            for _, key in ipairs(keys) do
+                local value = tostring(fields[key]):gsub("[%c]", "?"):sub(1, 256)
+                parts[#parts + 1] = tostring(key) .. "=" .. value
+            end
+            handle:write(table.concat(parts, "\t"), "\n")
+            handle:close()
+        end
+    end
+    audit = audit or function() end
+    audit("runtime.loaded", {
+        restore_window = wezterm_restore_command or "none",
+        wezterm = wezterm_command,
+    })
+
     -- pid -> workspace id. A ghostty tab that is not currently visible has no
     -- window to read a workspace off, so the last workspace it *was* seen on is
     -- the best answer available. Lives only for the session; a cold boot has an
@@ -124,6 +157,7 @@ function M.new(hl, options)
     -- Kept past the launches because the renames are re-run at the end, when
     -- the workspaces the placements created finally exist.
     local workspace_names = {}
+    local renamed_workspaces = {}
     local ghostty_queue, ghostty_pending = {}, 0
     -- Saving is held off until the first restore has settled. Otherwise the
     -- 30 s timer can fire while Chrome is still coming up and write a snapshot
@@ -445,7 +479,10 @@ function M.new(hl, options)
             return tostring(monitor)
         end
         if not monitor then return nil end
-        local ok, value = pcall(function() return monitor.id or monitor.name end)
+        -- Workspace objects expose the connector name ("DP-2"), while the active
+        -- monitor object also exposes a numeric id. The name is the common stable
+        -- representation; preferring id made every live candidate look off-monitor.
+        local ok, value = pcall(function() return monitor.name or monitor.id end)
         return ok and value ~= nil and tostring(value) or nil
     end
 
@@ -462,6 +499,11 @@ function M.new(hl, options)
             end
         end
         table.sort(candidates)
+        audit("close.candidates", {
+            active_monitor = wanted_monitor or "unknown",
+            candidates = table.concat(candidates, ","),
+            workspace = workspace.id,
+        })
         for _, workspace_id in ipairs(candidates) do
             if workspace_id > workspace.id then return workspace_id end
         end
@@ -483,6 +525,10 @@ function M.new(hl, options)
         end
 
         local next_workspace = next_ordinary_workspace(workspace)
+        audit("close.begin", {
+            next_workspace = next_workspace or "none",
+            workspace = workspace.id,
+        })
         local closed = 0
         for _, window in ipairs(hl.get_windows() or {}) do
             local owner = window.workspace
@@ -499,6 +545,11 @@ function M.new(hl, options)
             -- disappearing can resolve back to that same workspace.
             hl.dispatch(hl.dsp.focus({ workspace = next_workspace }))
         end
+        audit("close.end", {
+            closed = closed,
+            focused = next_workspace or "none",
+            workspace = workspace.id,
+        })
         log("closed workspace %d after saving %d windows", workspace.id, closed)
         return closed > 0
     end
@@ -516,6 +567,7 @@ function M.new(hl, options)
     end
 
     local function rename_workspace(workspace)
+        if renamed_workspaces[workspace.id] == workspace.name then return true end
         local ok, err = pcall(function()
             hl.dispatch(hl.dsp.workspace.rename({
                 workspace = workspace.id,
@@ -525,7 +577,10 @@ function M.new(hl, options)
         if not ok then
             log("could not rename workspace %d to %q: %s",
                 workspace.id, workspace.name, tostring(err))
+            return false
         end
+        renamed_workspaces[workspace.id] = workspace.name
+        return true
     end
 
     local function rename_workspaces(existing_only)
@@ -562,6 +617,11 @@ function M.new(hl, options)
                 silent = true,
                 window = window,
             }))
+            -- Moving the first restored window creates its workspace. Name it in
+            -- the same handler instead of waiting for the long restore settle.
+            if placement.workspace and placement.workspace > 0 then
+                rename_saved_workspace(placement.workspace)
+            end
         end
 
         if placement.floating then
@@ -665,11 +725,12 @@ function M.new(hl, options)
         -- Every step is guarded: a throw in one must not leave `restoring`
         -- stuck true, which would permanently suppress terminal grouping and
         -- silently stop all further saves.
+        local unclaimed = session_model.unclaimed(placements)
         local ok, err = pcall(function()
             rename_workspaces(true)
             rebuild_groups()
             apply_focus_states()
-            for _, placement in ipairs(session_model.unclaimed(placements)) do
+            for _, placement in ipairs(unclaimed) do
                 -- Not an error: an app may be uninstalled, absent from
                 -- session-restore-map.conf, or just slower than the settle
                 -- window. Naming it is the difference between a bug report and
@@ -678,6 +739,7 @@ function M.new(hl, options)
                     placement.class, tostring(placement.workspace))
             end
         end)
+        audit("restore.finish", { unclaimed = #unclaimed })
         if not ok then log("restore cleanup failed: %s", tostring(err)) end
         restoring = false
         savable = true
@@ -699,22 +761,32 @@ function M.new(hl, options)
         end
         placements, groups, placed = {}, {}, {}
         workspace_names = {}
+        renamed_workspaces = {}
     end
 
     local function start(plan)
         restoring = true
         placements, groups, placed = plan.placements, plan.groups, {}
         workspace_names = plan.workspace_names or {}
+        renamed_workspaces = {}
         ghostty_queue, ghostty_pending = {}, 0
 
         local immediate = {}
+        local providers = {}
         for _, launch in ipairs(plan.launches) do
+            providers[#providers + 1] = launch.provider
             if launch.provider == "ghostty" then
                 ghostty_queue[#ghostty_queue + 1] = launch
             else
                 immediate[#immediate + 1] = launch
             end
         end
+        audit("restore.start", {
+            launches = #plan.launches,
+            placements = #plan.placements,
+            providers = table.concat(providers, ","),
+            workspaces = #workspace_names,
+        })
 
         -- Armed before anything can throw, and wide enough to cover the
         -- serialized ghostty launches in the worst case. If a launch or a
@@ -727,6 +799,10 @@ function M.new(hl, options)
         local ok, err = pcall(function()
             rename_workspaces(true)
             for _, launch in ipairs(immediate) do
+                audit("restore.launch", {
+                    command = launch.cmd,
+                    provider = launch.provider,
+                })
                 hl.exec_cmd(launch.cmd)
             end
             launch_ghostty(1)
@@ -748,6 +824,9 @@ function M.new(hl, options)
             wezterm_restore_command = wezterm_restore_command,
             chrome_command = chrome_command,
             shell_bin = options.shell_bin,
+            -- An independently saved workspace must not be considered present
+            -- merely because another workspace has an app of the same class.
+            strict_workspace = snapshot.workspace_id ~= nil,
         })
         plan.wezterm_ids = {}
         for _, window in ipairs(snapshot.windows or {}) do
@@ -760,12 +839,19 @@ function M.new(hl, options)
 
     local function do_restore(request)
         request = request or {}
+        audit("restore.request", {
+            already_restoring = restoring,
+            source = request.snapshot_path or snapshot_path,
+        })
         if restoring then
             log("a restore is already in flight")
             return false
         end
         local plan = plan_from_snapshot(request.snapshot_path)
-        if not plan then return false end
+        if not plan then
+            audit("restore.rejected", { reason = "unusable_snapshot" })
+            return false
+        end
 
         if request.dry_run then
             for _, workspace in ipairs(plan.workspace_names) do
@@ -829,14 +915,23 @@ function M.new(hl, options)
     hl.on("window.open", function(window)
         schedule_save()
         if not (restoring and window and window.class) then return end
+        audit("restore.window_open", { class = window.class })
         -- Deliberately deferred: WezTerm windows map before their title carries
         -- a window id, and Chromium windows map with a placeholder class that
         -- is corrected a frame later.
         hl.timer(function()
             if not (restoring and window.mapped) then return end
             local placement = session_model.match_window(placements, window)
-            if not placement then return end
+            if not placement then
+                audit("restore.window_unmatched", { class = window.class })
+                return
+            end
             apply(window, placement)
+            audit("restore.window_placed", {
+                class = window.class,
+                provider = placement.provider,
+                workspace = placement.workspace or "none",
+            })
             if placement.provider == "ghostty" then ghostty_claimed() end
         end, { timeout = match_delay, type = "oneshot" })
     end)
@@ -847,13 +942,9 @@ function M.new(hl, options)
 
     hl.on("window.move_to_workspace", schedule_save)
     hl.on("workspace.active", schedule_save)
-    hl.on("workspace.created", function(workspace)
-        schedule_save()
-        if not restoring then return end
-        local workspace_id = type(workspace) == "table" and workspace.id
-            or tonumber(workspace)
-        if workspace_id then rename_saved_workspace(workspace_id) end
-    end)
+    -- workspace.created arrives before the rename dispatcher reliably accepts
+    -- that workspace. apply() names it after its first window has been moved.
+    hl.on("workspace.created", schedule_save)
 
     local tick, tick_armed
     local function arm_tick()
@@ -966,8 +1057,16 @@ function M.new(hl, options)
                     protect_window_count = entry.window_count,
                 })
                 if not ok then
+                    audit("restore.error", {
+                        error = result,
+                        workspace = entry.workspace_id,
+                    })
                     log("workspace restore failed: %s", tostring(result))
                 elseif not result then
+                    audit("restore.rejected", {
+                        reason = "request_declined",
+                        workspace = entry.workspace_id,
+                    })
                     log("workspace %d could not be restored", entry.workspace_id)
                 end
             end
