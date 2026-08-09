@@ -86,7 +86,6 @@ function M.new(hl, options)
     local snapshot_path = options.snapshot_path or (STATE_DIR .. "/session.lua")
     local shells_path = options.shells_path or (STATE_DIR .. "/shells.lua")
     local shells_command = options.shells_command or (HOME .. "/.local/bin/hypr-session-shells")
-    local rename_command = options.rename_command or (HOME .. "/.local/bin/rename-hypr-workspace")
     local map_path = options.map_path or (CONFIG_DIR .. "/session-restore-map.conf")
     local wezterm_command = options.wezterm_command or "wezterm"
     local chrome_command = options.chrome_command or "google-chrome-stable"
@@ -405,9 +404,6 @@ function M.new(hl, options)
         end
     end
 
-    -- rename-hypr-workspace owns the length cap, the Lua %q quoting of the name
-    -- and the lock against concurrent renames from the bar.
-    --
     -- Run twice, at the start of the restore and again at the end, because a
     -- workspace that does not exist yet cannot be renamed and the attempt fails
     -- silently. At login only the workspace being looked at exists; the rest are
@@ -417,8 +413,20 @@ function M.new(hl, options)
     -- renaming is idempotent.
     local function rename_workspaces()
         for _, workspace in ipairs(workspace_names) do
-            hl.exec_cmd(("%s %d %s"):format(
-                rename_command, workspace.id, shell_quote(workspace.name)))
+            -- Dispatch in-process and in order. hl.exec_cmd is asynchronous;
+            -- launching one rename-hypr-workspace helper per entry made the
+            -- helper's non-blocking global lock discard every concurrent rename
+            -- except one.
+            local ok, err = pcall(function()
+                hl.dispatch(hl.dsp.workspace.rename({
+                    workspace = workspace.id,
+                    name = workspace.name,
+                }))
+            end)
+            if not ok then
+                log("could not rename workspace %d to %q: %s",
+                    workspace.id, workspace.name, tostring(err))
+            end
         end
     end
 

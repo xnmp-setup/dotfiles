@@ -695,6 +695,9 @@ local function fake_hl(live_windows, live_workspaces)
             exec_cmd = function(cmd, rules) return { kind = "exec", cmd = cmd, rules = rules } end,
             exit = record("exit"),
             focus = record("focus"),
+            workspace = {
+                rename = record("rename"),
+            },
             window = {
                 move = record("move"),
                 float = record("float"),
@@ -782,11 +785,7 @@ local function fake_hl(live_windows, live_workspaces)
     end
 
     function control.renames()
-        local found = {}
-        for _, command in ipairs(control.executed) do
-            if command:match("^rename%-ws") then found[#found + 1] = command end
-        end
-        return found
+        return control.dispatches_of("rename")
     end
 
     return hl, control
@@ -816,7 +815,6 @@ local function restorer(options)
         snapshot_path = options.snapshot_path or temp_path(),
         shells_path = options.shells_path or "/nonexistent-shells.lua",
         shells_command = "hypr-session-shells",
-        rename_command = "rename-ws",
         map_path = options.map_path or "/nonexistent-map.conf",
         write_file = options.write_file,
         log = function() end,
@@ -881,8 +879,9 @@ do
 
     local renames = control.renames()
     equal("only renamed workspaces are renamed", #renames, 2)
-    check("the workspace name is shell-quoted, quotes and all",
-        renames[2]:find([[rename-ws 2 'It'\''s "quoted"']], 1, true) ~= nil)
+    equal("the workspace id is dispatched directly", renames[2].args.workspace, 2)
+    equal("the workspace name reaches Hyprland without shell encoding",
+        renames[2].args.name, [[It's "quoted"]])
 
     local launches = control.launches()
     local saw_chrome, saw_ghostty = false, false
@@ -1381,8 +1380,8 @@ do
 
     local function renamed_to(name)
         local count = 0
-        for _, command in ipairs(control.renames()) do
-            if command:find(name, 1, true) then count = count + 1 end
+        for _, rename in ipairs(control.renames()) do
+            if rename.args.name == name then count = count + 1 end
         end
         return count
     end
@@ -1405,14 +1404,13 @@ do
     -- restore still has to end, or saving stops for the session.
     local broken_path = snapshot_file()
     local hl, broken = fake_hl({}, {})
-    hl.exec_cmd = function(command)
-        broken.executed[#broken.executed + 1] = command
-        if command:match("^rename%-ws") then error("rename refused") end
+    hl.dispatch = function(descriptor)
+        broken.dispatches[#broken.dispatches + 1] = descriptor
+        if descriptor.kind == "rename" then error("rename refused") end
     end
     local wedged = session_restore.new(hl, {
         snapshot_path = broken_path,
         shells_path = "/nonexistent-shells.lua",
-        rename_command = "rename-ws",
         map_path = "/dev/null",
         write_file = function() return true end,
         log = function() end,
