@@ -40,6 +40,9 @@ session = require("session_restore").new(hl, {
     snapshot_path = (os.getenv("XDG_STATE_HOME")
         or ((os.getenv("HOME") or ".") .. "/.local/state"))
         .. "/hypr/session-nested.lua",
+    workspaces_dir = (os.getenv("XDG_STATE_HOME")
+        or ((os.getenv("HOME") or ".") .. "/.local/state"))
+        .. "/hypr/workspaces-nested",
     wezterm_command = wezterm_launcher.launch,
 })
 
@@ -102,6 +105,7 @@ hl.bind("F9",                    function() scratchpad.toggle("ghostty-drop") en
 hl.bind(mainMod .. " + S",       function() session.save() end)
 hl.bind(mainMod .. " + CTRL + R", function() session.restore() end)
 hl.bind(mainMod .. " + CTRL + D", function() session.restore({ dry_run = true }) end)
+hl.bind(mainMod .. " + CTRL + W", function() session.close_workspace() end)
 
 -- Multiple workspaces, to exercise the per-space tree partitioning.
 for i = 1, 3 do

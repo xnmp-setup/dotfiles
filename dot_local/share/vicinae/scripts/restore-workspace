@@ -1,0 +1,38 @@
+# Intentionally extensionless: Vicinae 0.19 filters out text/x-shellscript
+# before parsing directives on systems where that MIME type is executable.
+# @vicinae.schemaVersion 1
+# @vicinae.title Restore Workspace
+# @vicinae.mode silent
+# @vicinae.icon ↩️
+# @vicinae.keywords ["hyprland", "workspace", "snapshot", "restore", "recent"]
+# @vicinae.description Reopen apps and windows from a workspace used in the last two weeks
+# @vicinae.exec ["/usr/bin/env", "bash"]
+
+set -euo pipefail
+
+notify() {
+  command -v notify-send >/dev/null 2>&1 || return 0
+  notify-send "$1" "$2" --urgency="${3:-normal}"
+}
+
+workspace_cli="$HOME/.local/bin/hypr-workspace"
+workspaces=$("$workspace_cli" list --picker)
+if [[ -z "$workspaces" ]]; then
+  notify "No recent workspaces" "Workspaces with restorable windows appear here automatically for two weeks."
+  exit 0
+fi
+
+selection=$(printf '%s\n' "$workspaces" | vicinae dmenu \
+  --navigation-title "Restore Workspace" \
+  --section-title "Recent workspaces ({count})" \
+  --placeholder "Choose a workspace to restore" \
+  --no-quick-look)
+[[ -n "$selection" ]] || exit 0
+workspace_id=${selection##*$'\t'}
+
+if message=$("$workspace_cli" restore "$workspace_id" 2>&1); then
+  notify "Restoring workspace" "$message"
+else
+  notify "Workspace was not restored" "$message" critical
+  exit 1
+fi

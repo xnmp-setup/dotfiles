@@ -278,6 +278,49 @@ function M.build_snapshot(input)
     }
 end
 
+-- Extract the independently restorable part of a full desktop snapshot.
+-- Pinned windows are intentionally omitted: they are global, not owned by the
+-- workspace they happened to be visible on when the capture ran.
+function M.for_workspace(snapshot, requested_id)
+    local workspace_id = tonumber(requested_id)
+    if type(snapshot) ~= "table" or not workspace_id or workspace_id % 1 ~= 0
+        or workspace_id < 1
+    then
+        return nil
+    end
+
+    local workspace
+    for _, candidate in ipairs(snapshot.workspaces or {}) do
+        if candidate.id == workspace_id then
+            workspace = candidate
+            break
+        end
+    end
+    if not workspace then return nil end
+
+    local windows = {}
+    for _, window in ipairs(snapshot.windows or {}) do
+        if window.workspace == workspace_id and not window.pinned then
+            windows[#windows + 1] = window
+        end
+    end
+    local shells = {}
+    for _, shell in ipairs(snapshot.shells or {}) do
+        if shell.workspace == workspace_id then shells[#shells + 1] = shell end
+    end
+    if #windows == 0 and #shells == 0 then return nil end
+
+    return {
+        version = M.VERSION,
+        saved_at = snapshot.saved_at,
+        workspace_id = workspace_id,
+        workspace_name = workspace.name,
+        workspaces = { workspace },
+        windows = windows,
+        shells = shells,
+    }
+end
+
 --------------------------------------------------------------------------
 -- Serialization
 --------------------------------------------------------------------------

@@ -10,3 +10,12 @@
 # it, or graphical-session.target keeps a dangling want.
 .config/systemd/user/hypr-session-save.service
 .config/systemd/user/graphical-session.target.wants/hypr-session-save.service
+
+# Superseded by the automatic recent-workspace workflow. These were deployed
+# while the feature was still named "Desktop Session" and would otherwise stay
+# visible in Vicinae after their source files were renamed.
+.local/bin/hypr-session
+.local/share/vicinae/scripts/save-desktop-session
+.local/share/vicinae/scripts/restore-desktop-session
+.local/share/vicinae/scripts/delete-desktop-session
+.config/hypr/session_catalog.lua

@@ -34,6 +34,7 @@
 -- suppression signal those modules already know how to take.
 
 local session_model = require("session_model")
+local workspace_catalog = require("workspace_catalog")
 local window_model = require("window_model")
 
 local M = {}
@@ -85,11 +86,15 @@ function M.new(hl, options)
 
     local snapshot_path = options.snapshot_path or (STATE_DIR .. "/session.lua")
     local shells_path = options.shells_path or (STATE_DIR .. "/shells.lua")
+    local workspaces_dir = options.workspaces_dir or (STATE_DIR .. "/workspaces")
+    local catalog_path = options.catalog_path or (workspaces_dir .. "/index.lua")
     local shells_command = options.shells_command or (HOME .. "/.local/bin/hypr-session-shells")
     local map_path = options.map_path or (CONFIG_DIR .. "/session-restore-map.conf")
     local wezterm_command = options.wezterm_command or "wezterm"
     local chrome_command = options.chrome_command or "google-chrome-stable"
     local save_interval = options.save_interval or 30000
+    local workspace_retention = options.workspace_retention
+        or workspace_catalog.RETENTION_SECONDS
     -- Long enough for WezTerm's tagged title formatter to run — a wezterm
     -- window is mapped before its window id is in the title, so matching at
     -- window.open would see every one of them untagged.
@@ -102,7 +107,10 @@ function M.new(hl, options)
     -- next, so a single failure cannot stall the rest.
     local ghostty_step = options.ghostty_step or 1500
     local log = options.log or default_log
+    local now = options.now or os.time
+    local read_state = options.read_file or read_file
     local write_file = options.write_file
+    local remove_file = options.remove_file
     local direction_towards = options.direction_towards or window_model.direction_towards
 
     -- pid -> workspace id. A ghostty tab that is not currently visible has no
@@ -129,7 +137,7 @@ function M.new(hl, options)
     -- Done through hl.exec_cmd because Lua has no chmod.
     local function secure_state_dirs()
         local seen = {}
-        for _, path in ipairs({ snapshot_path, shells_path }) do
+        for _, path in ipairs({ snapshot_path, shells_path, catalog_path }) do
             local directory = path:match("^(.*)/[^/]+$")
             if directory and directory ~= "" and not seen[directory] then
                 seen[directory] = true
@@ -158,12 +166,12 @@ function M.new(hl, options)
     end
 
     local function read_shells()
-        return load_lua(read_file(shells_path), shells_path, log) or {}
+        return load_lua(read_state(shells_path), shells_path, log) or {}
     end
 
     local function class_commands()
         local commands = {}
-        local text = read_file(map_path)
+        local text = read_state(map_path)
         if not text then return commands end
         for line in text:gmatch("[^\n]+") do
             if not line:match("^%s*#") then
@@ -196,12 +204,12 @@ function M.new(hl, options)
     -- Save
     ----------------------------------------------------------------------
 
-    local function write_snapshot(text)
-        if write_file then return write_file(snapshot_path, text) end
+    local function write_atomic(path, text)
+        if write_file then return write_file(path, text) end
         -- Written beside the target and renamed, so a save interrupted by
         -- shutdown leaves the previous snapshot intact rather than a truncated
         -- file that would fail to load at the next boot.
-        local temporary = snapshot_path .. ".tmp"
+        local temporary = path .. ".tmp"
         local handle = io.open(temporary, "w")
         if not handle then
             log("cannot write %s", temporary)
@@ -209,13 +217,13 @@ function M.new(hl, options)
         end
         handle:write(text)
         handle:close()
-        return os.rename(temporary, snapshot_path)
+        return os.rename(temporary, path)
     end
 
     -- The last snapshot written, read back off disk rather than remembered:
     -- after a reboot the file is the only thing that knows.
     local function previous_snapshot()
-        return load_lua(read_file(snapshot_path), snapshot_path, log)
+        return load_lua(read_state(snapshot_path), snapshot_path, log)
     end
 
     -- Carrying the previous shell list forward covers a /proc walk that has not
@@ -235,17 +243,17 @@ function M.new(hl, options)
         return false
     end
 
-    local function do_save()
+    local function capture_snapshot()
         -- A restore in flight is a half-built desktop. Recording it would throw
         -- away the very session being rebuilt, so an explicit save waits.
         if restoring then
             log("not saving while a restore is in flight")
-            return false
+            return nil
         end
         local windows = hl.get_windows() or {}
         record_sightings(windows)
         local snapshot = session_model.build_snapshot({
-            now = os.time(),
+            now = now(),
             windows = windows,
             workspaces = hl.get_workspaces() or {},
             shells = read_shells(),
@@ -256,7 +264,7 @@ function M.new(hl, options)
         -- with it would lose the session this exists to protect.
         if #snapshot.windows == 0 then
             log("refusing to overwrite the snapshot with an empty capture")
-            return false
+            return nil
         end
         -- Same reasoning one level down: terminals on screen but no shell list
         -- means the background /proc walk has not landed yet, not that the
@@ -277,11 +285,153 @@ function M.new(hl, options)
                 log("the shell list has been empty for %d saves; recording none", carries)
             end
         end
-        local written = write_snapshot(session_model.serialize(snapshot))
-        if written then
+        return snapshot
+    end
+
+    local function read_catalog()
+        return workspace_catalog.normalize(
+            load_lua(read_state(catalog_path), catalog_path, log))
+    end
+
+    local function workspace_snapshot_path(workspace_id)
+        return ("%s/%d.lua"):format(workspaces_dir, workspace_id)
+    end
+
+    local function app_count(windows)
+        local classes, count = {}, 0
+        for _, window in ipairs(windows or {}) do
+            if window.class and not classes[window.class] then
+                classes[window.class], count = true, count + 1
+            end
+        end
+        return count
+    end
+
+    local function remove_snapshot(workspace_id)
+        local path = workspace_snapshot_path(workspace_id)
+        if remove_file then return remove_file(path) end
+        if read_state(path) == nil then return true end
+        return os.remove(path)
+    end
+
+    -- Write the newest independently restorable snapshot for every populated
+    -- ordinary workspace. Missing workspaces are retained in the catalog until
+    -- they age out; that is what makes a workspace remain restorable after all
+    -- of its windows have closed.
+    local function save_workspaces(snapshot, only_workspace_id)
+        local updated, saved_any = read_catalog(), false
+        for _, workspace in ipairs(snapshot.workspaces or {}) do
+            if not only_workspace_id or workspace.id == only_workspace_id then
+                local isolated = session_model.for_workspace(snapshot, workspace.id)
+                if isolated then
+                    local path = workspace_snapshot_path(workspace.id)
+                    if write_atomic(path, session_model.serialize(isolated)) then
+                        local next_catalog = workspace_catalog.upsert(updated, {
+                            workspace_id = workspace.id,
+                            name = workspace.name,
+                            saved_at = snapshot.saved_at,
+                            window_count = #isolated.windows,
+                            app_count = app_count(isolated.windows),
+                            shell_count = #isolated.shells,
+                        })
+                        updated, saved_any = next_catalog, true
+                    else
+                        log("cannot save workspace %d", workspace.id)
+                    end
+                end
+            end
+        end
+
+        local pruned, expired = workspace_catalog.prune(
+            updated, snapshot.saved_at, workspace_retention)
+        if not write_atomic(catalog_path, session_model.serialize(pruned)) then
+            log("cannot update the workspace catalog")
+            return false
+        end
+        for _, entry in ipairs(expired) do
+            if not remove_snapshot(entry.workspace_id) then
+                log("expired workspace %d was hidden but its snapshot remains",
+                    entry.workspace_id)
+            end
+        end
+        return saved_any
+    end
+
+    local function do_save()
+        local snapshot = capture_snapshot()
+        if not snapshot then return false end
+        local rolling_written = write_atomic(snapshot_path, session_model.serialize(snapshot))
+        local workspaces_written = save_workspaces(snapshot)
+        if rolling_written then
             log("saved %d windows, %d shells", #snapshot.windows, #snapshot.shells)
         end
-        return written and true or false
+        return rolling_written and workspaces_written
+    end
+
+    local function do_forget_workspace(requested_id)
+        local updated, entry, message = workspace_catalog.remove(
+            read_catalog(), requested_id)
+        if not updated then
+            log("cannot forget workspace: %s", message)
+            return false
+        end
+        if not entry then
+            log("workspace %s is not restorable", tostring(requested_id))
+            return false
+        end
+        -- Hide the entry first. If removing the snapshot then fails, the stale
+        -- private file is harmless and no picker row points at missing data.
+        if not write_atomic(catalog_path, session_model.serialize(updated)) then
+            log("cannot update the workspace catalog")
+            return false
+        end
+        if not remove_snapshot(entry.workspace_id) then
+            log("forgot workspace %d, but could not remove its snapshot",
+                entry.workspace_id)
+            return false
+        end
+        log("forgot workspace %d", entry.workspace_id)
+        return true
+    end
+
+    local function active_ordinary_workspace()
+        local monitor = hl.get_active_monitor and hl.get_active_monitor()
+        local workspace = monitor and monitor.active_workspace
+        if not (workspace and workspace.id) and hl.get_active_workspace then
+            workspace = hl.get_active_workspace()
+        end
+        if not workspace_catalog.workspace_id(workspace and workspace.id) then
+            return nil
+        end
+        return workspace
+    end
+
+    local function do_close_workspace()
+        local workspace = active_ordinary_workspace()
+        if not workspace then
+            log("cannot close a special or unknown workspace")
+            return false
+        end
+
+        local snapshot = capture_snapshot()
+        if not snapshot or not save_workspaces(snapshot, workspace.id) then
+            log("workspace %d was not closed because its snapshot could not be saved",
+                workspace.id)
+            return false
+        end
+
+        local closed = 0
+        for _, window in ipairs(hl.get_windows() or {}) do
+            local owner = window.workspace
+            if window.mapped and not window.pinned and owner
+                and owner.id == workspace.id
+            then
+                hl.dispatch(hl.dsp.window.close({ window = window }))
+                closed = closed + 1
+            end
+        end
+        log("closed workspace %d after saving %d windows", workspace.id, closed)
+        return closed > 0
     end
 
     ----------------------------------------------------------------------
@@ -488,8 +638,9 @@ function M.new(hl, options)
         if not ok then log("restore could not be started cleanly: %s", tostring(err)) end
     end
 
-    local function plan_from_snapshot()
-        local snapshot = load_lua(read_file(snapshot_path), snapshot_path, log)
+    local function plan_from_snapshot(source_path)
+        source_path = source_path or snapshot_path
+        local snapshot = load_lua(read_state(source_path), source_path, log)
         if not snapshot then return nil end
         if not session_model.validate(snapshot) then
             log("snapshot is not usable; leaving the session alone")
@@ -509,7 +660,7 @@ function M.new(hl, options)
             log("a restore is already in flight")
             return false
         end
-        local plan = plan_from_snapshot()
+        local plan = plan_from_snapshot(request.snapshot_path)
         if not plan then return false end
 
         if request.dry_run then
@@ -550,7 +701,23 @@ function M.new(hl, options)
     -- Events
     ----------------------------------------------------------------------
 
+    -- Event bursts are coalesced into one capture after window properties and
+    -- layout have settled. This closes the only gap in the 30-second timer: a
+    -- workspace created and removed inside one interval is still observed.
+    local auto_save_generation = 0
+    local function schedule_save()
+        if restoring or not savable then return end
+        auto_save_generation = auto_save_generation + 1
+        local generation = auto_save_generation
+        hl.timer(function()
+            if generation ~= auto_save_generation or restoring or not savable then return end
+            local ok, err = pcall(do_save)
+            if not ok then log("event save failed: %s", tostring(err)) end
+        end, { timeout = 1000, type = "oneshot" })
+    end
+
     hl.on("window.open", function(window)
+        schedule_save()
         if not (restoring and window and window.class) then return end
         -- Deliberately deferred: WezTerm windows map before their title carries
         -- a window id, and Chromium windows map with a placeholder class that
@@ -568,7 +735,21 @@ function M.new(hl, options)
         record_sightings({ hl.get_active_window() })
     end)
 
-    local function tick()
+    hl.on("window.move_to_workspace", schedule_save)
+    hl.on("workspace.active", schedule_save)
+    hl.on("workspace.created", schedule_save)
+
+    local tick, tick_armed
+    local function arm_tick()
+        if tick_armed then return end
+        tick_armed = true
+        hl.timer(function()
+            tick_armed = false
+            tick()
+        end, { timeout = save_interval, type = "oneshot" })
+    end
+
+    tick = function()
         -- A crash or a power cut should cost the last half-minute of window
         -- arrangement, not the whole session, so the snapshot is refreshed on a
         -- timer as well as at logout. Re-armed rather than repeating: hl.timer
@@ -577,7 +758,7 @@ function M.new(hl, options)
         -- Re-armed *first*, and the body guarded: this is the only thing
         -- keeping the snapshot fresh, and a single throw out of do_save would
         -- otherwise end the periodic save for the rest of the session.
-        hl.timer(tick, { timeout = save_interval, type = "oneshot" })
+        arm_tick()
         local ok, err = pcall(function()
             -- The /proc walk is asked for before the save so that a shell list
             -- is on disk by the time the next tick reads it — but never during
@@ -599,7 +780,17 @@ function M.new(hl, options)
     -- one. The first tick asks for it, once there is something to see.
     hl.on("hyprland.start", function()
         secure_state_dirs()
-        hl.timer(tick, { timeout = save_interval, type = "oneshot" })
+        arm_tick()
+    end)
+
+    -- A reload does not emit hyprland.start. Open the save gate and arm both
+    -- an immediate coalesced capture and the periodic loop for the new config
+    -- context, so automatic snapshots do not silently stop until next login.
+    hl.on("config.reloaded", function()
+        savable = true
+        secure_state_dirs()
+        schedule_save()
+        arm_tick()
     end)
 
     return {
@@ -636,6 +827,41 @@ function M.new(hl, options)
         end,
         restore = function(request)
             do_restore(request)
+            return hl.dsp.exec_cmd("true")
+        end,
+        close_workspace = function()
+            savable = true
+            local ok, result = pcall(do_close_workspace)
+            if not ok then
+                log("workspace close failed: %s", tostring(result))
+            elseif not result then
+                log("workspace was not closed")
+            end
+            return hl.dsp.exec_cmd("true")
+        end,
+        restore_workspace = function(requested_id)
+            local entry = workspace_catalog.find(read_catalog(), requested_id)
+            if not entry then
+                log("workspace %s is not restorable", tostring(requested_id))
+            else
+                local ok, result = pcall(do_restore, {
+                    snapshot_path = workspace_snapshot_path(entry.workspace_id),
+                })
+                if not ok then
+                    log("workspace restore failed: %s", tostring(result))
+                elseif not result then
+                    log("workspace %d could not be restored", entry.workspace_id)
+                end
+            end
+            return hl.dsp.exec_cmd("true")
+        end,
+        forget_workspace = function(requested_id)
+            local ok, result = pcall(do_forget_workspace, requested_id)
+            if not ok then
+                log("forget workspace failed: %s", tostring(result))
+            elseif not result then
+                log("workspace was not forgotten")
+            end
             return hl.dsp.exec_cmd("true")
         end,
 

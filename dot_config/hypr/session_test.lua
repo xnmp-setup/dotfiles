@@ -160,6 +160,37 @@ do
     equal("an unknown class falls to the generic provider",
         snapshot.windows[2].provider, "generic")
 
+    local partitioned = session_model.build_snapshot({
+        now = 50,
+        workspaces = { { id = 1, name = "Base" }, { id = 2, name = "Project" } },
+        windows = {
+            window({ class = "obsidian", workspace = 2, title = "Notes" }),
+            window({ class = "calculator", workspace = 2, title = "Pinned", pinned = true }),
+            window({ class = "slack", workspace = 1, title = "Chat" }),
+        },
+        shells = {
+            { pid = 1, cwd = "/project", workspace = 2 },
+            { pid = 2, cwd = "/chat", workspace = 1 },
+        },
+    })
+    -- build_snapshot attributes raw shells itself; explicit workspace fields
+    -- are used here to exercise the already-attributed persisted shape.
+    partitioned.shells = {
+        { pid = 1, cwd = "/project", workspace = 2 },
+        { pid = 2, cwd = "/chat", workspace = 1 },
+    }
+    local isolated = assert(session_model.for_workspace(partitioned, 2))
+    equal("one workspace can be isolated for additive restore", #isolated.workspaces, 1)
+    equal("only that workspace's windows are included", #isolated.windows, 1)
+    equal("pinned windows are excluded from workspace ownership",
+        isolated.windows[1].class, "obsidian")
+    equal("only that workspace's shells are included", #isolated.shells, 1)
+    equal("the workspace name is carried for the picker", isolated.workspace_name, "Project")
+    check("an empty workspace has nothing to restore",
+        session_model.for_workspace(partitioned, 9) == nil)
+    check("malformed workspace ids are rejected",
+        session_model.for_workspace(partitioned, "../../escape") == nil)
+
     -- Special *windows* are kept even though special workspaces are not
     -- renamed: that is how the F8/F9 drop-downs come back parked.
     local with_pad = session_model.build_snapshot({
@@ -686,6 +717,7 @@ local function fake_hl(live_windows, live_workspaces)
         dispatches = {}, executed = {}, timers = {}, handlers = {},
         windows = live_windows or {},
         workspaces = live_workspaces or {},
+        active_workspace = (live_workspaces or {})[1],
     }
     local function record(kind)
         return function(arguments) return { kind = kind, args = arguments or {} } end
@@ -699,6 +731,7 @@ local function fake_hl(live_windows, live_workspaces)
                 rename = record("rename"),
             },
             window = {
+                close = record("close"),
                 move = record("move"),
                 float = record("float"),
                 resize = record("resize"),
@@ -720,6 +753,10 @@ local function fake_hl(live_windows, live_workspaces)
         get_windows = function() return control.windows end,
         get_workspaces = function() return control.workspaces end,
         get_active_window = function() return control.active end,
+        get_active_workspace = function() return control.active_workspace end,
+        get_active_monitor = function()
+            return { active_workspace = control.active_workspace }
+        end,
     }
 
     -- A virtual clock rather than a fire-everything tick. The module leans on
@@ -746,6 +783,10 @@ local function fake_hl(live_windows, live_workspaces)
 
     function control.open(window) control.handlers["window.open"](window) end
     function control.start() control.handlers["hyprland.start"]() end
+    function control.emit(event, ...)
+        local handler = assert(control.handlers[event], "no handler for " .. event)
+        handler(...)
+    end
 
     function control.dispatches_of(kind)
         local found = {}
@@ -816,7 +857,13 @@ local function restorer(options)
         shells_path = options.shells_path or "/nonexistent-shells.lua",
         shells_command = "hypr-session-shells",
         map_path = options.map_path or "/nonexistent-map.conf",
+        workspaces_dir = options.workspaces_dir,
+        catalog_path = options.catalog_path,
+        workspace_retention = options.workspace_retention,
+        now = options.now,
+        read_file = options.read_file,
         write_file = options.write_file,
+        remove_file = options.remove_file,
         log = function() end,
     })
     return handle, control
@@ -1084,7 +1131,7 @@ do
         log = function() end,
     })
     handle.save()
-    equal("a real capture is written", #written, 1)
+    equal("the rolling, workspace, and catalog captures are written", #written, 3)
     local reloaded = assert(load(written[1]))()
     equal("with the workspace name that only the compositor knows",
         reloaded.workspaces[1].name, "Notes")
@@ -1108,6 +1155,51 @@ do
     })
     empty.save()
     equal("an empty capture does not overwrite the snapshot", #empty_written, 0)
+end
+
+do
+    -- The periodic timer is not the only observer: a workspace opened and
+    -- closed inside 30 seconds still has to become restorable. Event bursts are
+    -- coalesced so one app mapping several windows performs one capture.
+    local written = {}
+    local workspace = { id = 8, name = "Short Lived" }
+    local live = { class = "obsidian", title = "Quick", mapped = true,
+        workspace = workspace, at = { x = 0, y = 0 }, size = { x = 10, y = 10 } }
+    local hl, control = fake_hl({ live }, { workspace })
+    local handle = session_restore.new(hl, {
+        snapshot_path = "/state/hypr/session.lua",
+        workspaces_dir = "/state/hypr/workspaces",
+        shells_path = "/nonexistent-shells.lua",
+        map_path = "/dev/null",
+        write_file = function(_, text) written[#written + 1] = text; return true end,
+        log = function() end,
+    })
+    equal("an absent boot snapshot opens the automatic-save gate", handle.boot(), false)
+    control.open(live)
+    control.emit("workspace.active", workspace)
+    control.advance(999)
+    equal("event captures wait for window properties to settle", #written, 0)
+    control.advance(1)
+    equal("an event burst produces one rolling/workspace/catalog save", #written, 3)
+
+    -- Reloads do not emit hyprland.start. A fresh module must independently
+    -- open its gate and arm capture when config.reloaded arrives.
+    local reload_written = {}
+    local reload_hl, reload_control = fake_hl({ live }, { workspace })
+    session_restore.new(reload_hl, {
+        snapshot_path = "/state/hypr/reloaded-session.lua",
+        workspaces_dir = "/state/hypr/reloaded-workspaces",
+        shells_path = "/nonexistent-shells.lua",
+        map_path = "/dev/null",
+        write_file = function(_, text)
+            reload_written[#reload_written + 1] = text
+            return true
+        end,
+        log = function() end,
+    })
+    reload_control.emit("config.reloaded")
+    reload_control.advance(1000)
+    equal("a config reload immediately resumes automatic captures", #reload_written, 3)
 end
 
 do
@@ -1155,6 +1247,114 @@ do
 end
 
 do
+    -- Normal saves maintain one recent snapshot per populated workspace. The
+    -- close chord refreshes the active one synchronously before closing only
+    -- its non-pinned windows, and the same snapshot restores additively.
+    local files, removed_paths = {}, {}
+    local workspaces_dir = "/state/hypr/workspaces"
+    local catalog_path = workspaces_dir .. "/index.lua"
+    local project = { id = 2, name = "Project Alpha" }
+    local chat = { id = 3, name = "3" }
+    local project_browser = { class = "google-chrome", title = "Project", mapped = true,
+        workspace = project, at = { x = 0, y = 0 }, size = { x = 10, y = 10 } }
+    local project_notes = { class = "obsidian", title = "Notes", mapped = true,
+        workspace = project, at = { x = 10, y = 0 }, size = { x = 10, y = 10 } }
+    local pinned = { class = "calculator", title = "Pinned", mapped = true, pinned = true,
+        workspace = project, at = { x = 20, y = 0 }, size = { x = 10, y = 10 } }
+    local chat_window = { class = "slack", title = "Chat", mapped = true,
+        workspace = chat, at = { x = 0, y = 0 }, size = { x = 10, y = 10 } }
+    local hl, control = fake_hl({
+        project_browser, project_notes, pinned, chat_window,
+    }, { project, chat })
+    local handle = session_restore.new(hl, {
+        snapshot_path = "/state/hypr/session.lua",
+        shells_path = "/state/hypr/shells.lua",
+        workspaces_dir = workspaces_dir,
+        catalog_path = catalog_path,
+        map_path = "/dev/null",
+        now = function() return 200 end,
+        read_file = function(path) return files[path] end,
+        write_file = function(path, text) files[path] = text; return true end,
+        remove_file = function(path)
+            removed_paths[#removed_paths + 1] = path
+            files[path] = nil
+            return true
+        end,
+        log = function() end,
+    })
+
+    handle.save()
+    local index = assert(load(files[catalog_path], "catalog", "t", {}))()
+    equal("a normal save catalogs every populated workspace", #index.workspaces, 2)
+    equal("the workspace name used by the bar is retained", index.workspaces[1].name,
+        "Project Alpha")
+    equal("pinned windows are not owned by a workspace snapshot",
+        index.workspaces[1].window_count, 2)
+    equal("picker metadata counts distinct apps", index.workspaces[1].app_count, 2)
+    local project_path = workspaces_dir .. "/2.lua"
+    local saved_project = assert(load(files[project_path], "project", "t", {}))()
+    equal("the isolated snapshot contains one workspace", #saved_project.workspaces, 1)
+    equal("the isolated snapshot contains its non-pinned windows", #saved_project.windows, 2)
+    check("the rolling restart snapshot is still maintained",
+        files["/state/hypr/session.lua"] ~= nil)
+
+    control.dispatches = {}
+    handle.close_workspace()
+    local closes = control.dispatches_of("close")
+    equal("close workspace closes each owned window", #closes, 2)
+    equal("the first close targets the actual window object", closes[1].args.window,
+        project_browser)
+    check("a pinned window is left open",
+        closes[1].args.window ~= pinned and closes[2].args.window ~= pinned)
+    check("another workspace is left open",
+        closes[1].args.window ~= chat_window and closes[2].args.window ~= chat_window)
+
+    -- Nothing is live now, so restoring the recent workspace has to relaunch
+    -- its browser and remains in flight until the normal settle completes.
+    control.windows, control.workspaces = {}, {}
+    local launches_before = #control.launches()
+    handle.restore_workspace(2)
+    check("workspace restore uses the normal lifecycle", handle.is_restoring())
+    check("workspace restore launches the missing provider",
+        #control.launches() > launches_before)
+    control.advance(60000)
+    check("workspace restore eventually settles", not handle.is_restoring())
+
+    handle.forget_workspace(2)
+    index = assert(load(files[catalog_path], "catalog", "t", {}))()
+    equal("forget hides only the selected workspace", #index.workspaces, 1)
+    equal("forget removes the selected snapshot file", removed_paths[1], project_path)
+    equal("the forgotten snapshot is gone", files[project_path], nil)
+    local after_forget_launches = #control.launches()
+    handle.restore_workspace(2)
+    equal("a forgotten workspace cannot launch anything", #control.launches(),
+        after_forget_launches)
+end
+
+do
+    -- Persistence is the precondition for closing: an IO failure must leave
+    -- every window on screen so the hotkey cannot turn a save failure into
+    -- data loss.
+    local workspace = { id = 4, name = "Fragile" }
+    local window = { class = "obsidian", title = "Unsaved", mapped = true,
+        workspace = workspace, at = { x = 0, y = 0 }, size = { x = 10, y = 10 } }
+    local hl, control = fake_hl({ window }, { workspace })
+    local handle = session_restore.new(hl, {
+        snapshot_path = "/state/hypr/session.lua",
+        workspaces_dir = "/state/hypr/workspaces",
+        shells_path = "/nonexistent-shells.lua",
+        map_path = "/dev/null",
+        read_file = function() return nil end,
+        write_file = function(path)
+            return path ~= "/state/hypr/workspaces/4.lua"
+        end,
+        log = function() end,
+    })
+    handle.close_workspace()
+    equal("failed persistence closes no windows", #control.dispatches_of("close"), 0)
+end
+
+do
     -- With no snapshot at all, boot() declines and the caller runs its normal
     -- startup set — but saving must still start, or the very first session
     -- after a wipe would never be recorded.
@@ -1174,7 +1374,7 @@ do
     equal("boot declines", handle.boot(), false)
     control.start()
     control.advance(31000)
-    equal("but the first session is still saved", #written, 1)
+    equal("but the first session and workspace are still saved", #written, 3)
 end
 
 do
@@ -1211,7 +1411,7 @@ do
         workspace = base, title = "❯ other",
         at = { x = 0, y = 0 }, size = { x = 10, y = 10 } } }
     handle.save()
-    local second = assert(load(written[#written]))()
+    local second = assert(load(written[4]))()
     equal("a backgrounded tab keeps the workspace it was last seen on",
         second.shells[1].workspace, 7)
     equal("and says the answer came from a sighting",
@@ -1254,9 +1454,9 @@ do
     control.advance(5000)
     equal("a tick that throws writes nothing", #written, 0)
     control.advance(5000)
-    equal("and the next tick still saves", #written, 1)
+    equal("and the next tick still saves", #written, 3)
     control.advance(5000)
-    equal("and the one after that", #written, 2)
+    equal("and the one after that", #written, 6)
 end
 
 do
@@ -1350,7 +1550,7 @@ do
 
     control.advance(60000)
     handle.save()
-    equal("and once the restore has settled it lands", #written, 1)
+    equal("and once the restore has settled it lands", #written, 3)
     os.remove(path)
 end
 
@@ -1443,7 +1643,7 @@ do
         log = function() end,
     })
     handle.exit()
-    equal("the session is saved on the way out", #written, 1)
+    equal("the session and workspace are saved on the way out", #written, 3)
     equal("and the compositor is told to exit", #control.dispatches_of("exit"), 1)
     equal("the save comes first", dispatches_at_save, 0)
     check("and it never shells out to do it",

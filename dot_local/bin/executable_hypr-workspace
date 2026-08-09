@@ -1,0 +1,126 @@
+#!/usr/bin/env lua
+
+-- External read/dispatch interface for recent Hyprland workspaces. Snapshot
+-- capture remains in-process so it cannot race the compositor's other window
+-- handlers; this CLI only feeds Vicinae's picker and requests a restore/forget.
+
+local home = os.getenv("HOME") or ""
+local config_dir = os.getenv("HYPR_WORKSPACE_CONFIG_DIR")
+    or ((os.getenv("XDG_CONFIG_HOME") or (home .. "/.config")) .. "/hypr")
+local state_dir = os.getenv("HYPR_WORKSPACE_STATE_DIR")
+    or ((os.getenv("XDG_STATE_HOME") or (home .. "/.local/state")) .. "/hypr")
+local workspaces_dir = state_dir .. "/workspaces"
+local catalog_path = workspaces_dir .. "/index.lua"
+local hyprctl = os.getenv("HYPR_WORKSPACE_HYPRCTL") or "hyprctl"
+
+package.path = config_dir .. "/?.lua;" .. package.path
+
+local ok, catalog = pcall(require, "workspace_catalog")
+if not ok then
+    io.stderr:write("hypr-workspace: cannot load workspace_catalog.lua: "
+        .. tostring(catalog) .. "\n")
+    os.exit(1)
+end
+
+local function fail(message, status)
+    io.stderr:write("hypr-workspace: " .. message .. "\n")
+    os.exit(status or 1)
+end
+
+local function read_file(path)
+    local handle = io.open(path, "r")
+    if not handle then return nil end
+    local text = handle:read("a")
+    handle:close()
+    return text
+end
+
+local function load_data(path)
+    local text = read_file(path)
+    if not text then return nil end
+    local loaded = load(text, "@" .. path, "t", {})
+    if not loaded then return nil end
+    local loaded_ok, value = pcall(loaded)
+    if not loaded_ok or type(value) ~= "table" then return nil end
+    return value
+end
+
+local function current_catalog()
+    local current = catalog.prune(catalog.normalize(load_data(catalog_path)), os.time())
+    return current
+end
+
+local function shell_quote(value)
+    return "'" .. tostring(value):gsub("'", "'\\''") .. "'"
+end
+
+local function dispatch(method, workspace_id)
+    local expression = ("session.%s(%d)"):format(method, workspace_id)
+    local command = shell_quote(hyprctl) .. " dispatch " .. shell_quote(expression)
+    local executed, _, status = os.execute(command)
+    if executed == true or executed == 0 then return end
+    fail(("Hyprland rejected %s (exit %s)"):format(method, tostring(status)))
+end
+
+local function requested_workspace(value)
+    local workspace_id = catalog.workspace_id(value)
+    if not workspace_id then fail("workspace id must be a positive integer", 2) end
+    local entry = catalog.find(current_catalog(), workspace_id)
+    if not entry then fail(("workspace %d is not restorable"):format(workspace_id), 2) end
+    return entry
+end
+
+local function plural(count, singular)
+    return ("%d %s%s"):format(count, singular, count == 1 and "" or "s")
+end
+
+local function age_label(saved_at)
+    local seconds = math.max(0, os.time() - saved_at)
+    if seconds < 60 then return "opened just now" end
+    if seconds < 3600 then return ("opened %dm ago"):format(math.floor(seconds / 60)) end
+    if seconds < 86400 then return ("opened %dh ago"):format(math.floor(seconds / 3600)) end
+    return ("opened %dd ago"):format(math.floor(seconds / 86400))
+end
+
+local function list_workspaces(picker)
+    for _, entry in ipairs(catalog.list(current_catalog())) do
+        if picker then
+            io.write(("%s\t%s · %s · %s\t%d\n"):format(
+                catalog.display_name(entry),
+                plural(entry.window_count, "window"),
+                plural(entry.app_count, "app"),
+                age_label(entry.saved_at),
+                entry.workspace_id))
+        else
+            io.write(("%d\t%s\t%d\t%d\t%d\t%d\n"):format(
+                entry.workspace_id, entry.name, entry.saved_at, entry.window_count,
+                entry.app_count, entry.shell_count))
+        end
+    end
+end
+
+local command, argument = arg[1], arg[2]
+if command == "list" then
+    if argument and argument ~= "--picker" then
+        fail("usage: hypr-workspace list [--picker]", 2)
+    end
+    list_workspaces(argument == "--picker")
+elseif command == "restore" then
+    local entry = requested_workspace(argument)
+    if not read_file(("%s/%d.lua"):format(workspaces_dir, entry.workspace_id)) then
+        fail(("snapshot data for workspace %d is missing"):format(entry.workspace_id))
+    end
+    dispatch("restore_workspace", entry.workspace_id)
+    io.write(("Restoring %s (%s, %s).\n"):format(
+        catalog.display_name(entry), plural(entry.window_count, "window"),
+        plural(entry.app_count, "app")))
+elseif command == "forget" then
+    local entry = requested_workspace(argument)
+    dispatch("forget_workspace", entry.workspace_id)
+    if catalog.find(current_catalog(), entry.workspace_id) then
+        fail("the compositor did not confirm that the workspace was forgotten")
+    end
+    io.write(("Forgot %s.\n"):format(catalog.display_name(entry)))
+else
+    fail("usage: hypr-workspace {list [--picker]|restore ID|forget ID}", 2)
+end
