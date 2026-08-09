@@ -1,0 +1,16 @@
+# Expire every notification after 10 seconds, including notifications whose
+# sender requests a different timeout (or no timeout at all).
+default-timeout=10000
+ignore-timeout=1
+
+# Claude Code permission prompts arrive as terminal notifications that
+# ghostty forwards to the desktop; keep them off screen entirely (they still
+# land in history: `makoctl restore`).
+[summary="Claude Code"]
+invisible=1
+
+# Focus mode: toggled by the quickshell status bar (and any keybind) via
+# `makoctl mode -t do-not-disturb`. Notifications sent while the mode is
+# active are hidden but still land in history (`makoctl restore`).
+[mode=do-not-disturb]
+invisible=1
