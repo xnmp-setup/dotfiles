@@ -8,6 +8,18 @@
 -- Layout is "lua:nary" (see nary.lua): an N-ary tiling tree, so three windows
 -- can be equal peers rather than dwindle's forced binary nesting.
 
+-- Hyprland keeps Lua's package.loaded table across config reloads. Force the
+-- session module graph fresh before constructing the new handler; otherwise a
+-- chezmoi apply + `hyprctl reload` rereads this file but executes the old code.
+for _, module in ipairs({
+    "wezterm_launcher",
+    "workspace_catalog",
+    "session_model",
+    "session_restore",
+}) do
+    package.loaded[module] = nil
+end
+
 local nary = require("nary")
 local host_capabilities = require("host_capabilities")
 local wezterm_launcher = require("wezterm_launcher")

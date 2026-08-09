@@ -944,10 +944,7 @@ do
     equal("and suppression is on while it runs", handle.is_restoring(), true)
 
     local renames = control.renames()
-    equal("only renamed workspaces are renamed", #renames, 2)
-    equal("the workspace id is dispatched directly", renames[2].args.workspace, 2)
-    equal("the workspace name reaches Hyprland without shell encoding",
-        renames[2].args.name, [[It's "quoted"]])
+    equal("absent workspaces are not renamed before they exist", #renames, 0)
 
     local launches = control.launches()
     local saw_chrome, saw_ghostty = false, false
@@ -967,6 +964,12 @@ do
     equal("then the window is moved", #moves, 1)
     equal("to its saved workspace", moves[1].args.workspace, "2")
     equal("without following it", moves[1].args.silent, true)
+    control.emit("workspace.created", { id = 2 })
+    renames = control.renames()
+    equal("the workspace is renamed as soon as its first window creates it", #renames, 1)
+    equal("the workspace id is dispatched directly", renames[1].args.workspace, 2)
+    equal("the workspace name reaches Hyprland without shell encoding",
+        renames[1].args.name, [[It's "quoted"]])
 
     -- A drop-down is addressed by workspace name, not by its negative id.
     control.open({ class = "google-chrome", title = "Drop", mapped = true })
@@ -1330,7 +1333,7 @@ do
     local next_workspace = control.dispatches_of("focus")
     equal("close workspace switches once after closing", #next_workspace, 1)
     equal("close workspace selects the next open workspace",
-        next_workspace[1].args.workspace, "m+1")
+        next_workspace[1].args.workspace, 3)
     equal("the workspace switch follows every close request",
         control.dispatches[#control.dispatches], next_workspace[1])
 
@@ -1364,6 +1367,74 @@ do
     handle.restore_workspace(2)
     equal("a forgotten workspace cannot launch anything", #control.launches(),
         after_forget_launches)
+end
+
+do
+    -- Window count alone cannot prove a WezTerm restore succeeded: its fallback
+    -- is a valid one-tab window. Keep the source snapshot until the restored
+    -- window carries the same stable identity, which is assigned only after its
+    -- saved tabs and panes were rebuilt.
+    local files = {}
+    local workspaces_dir = "/state/hypr/workspaces"
+    local catalog_path = workspaces_dir .. "/index.lua"
+    local workspace_path = workspaces_dir .. "/5.lua"
+    local workspace = { id = 5, name = "Terminal Project" }
+    local old_identity = "700-0"
+    local source = session_model.serialize({
+        version = session_model.VERSION,
+        saved_at = 200,
+        workspace_id = 5,
+        workspace_name = workspace.name,
+        workspaces = { workspace },
+        windows = { {
+            class = session_model.WEZTERM_CLASS,
+            provider = "wezterm",
+            workspace = 5,
+            workspace_name = workspace.name,
+            title = "project" .. session_model.encode_tag("wid:" .. old_identity),
+        } },
+        shells = {},
+    })
+    files[workspace_path] = source
+    files[catalog_path] = session_model.serialize({
+        version = 1,
+        workspaces = { {
+            workspace_id = 5,
+            name = workspace.name,
+            saved_at = 200,
+            window_count = 1,
+            app_count = 1,
+            shell_count = 0,
+        } },
+    })
+
+    local hl, control = fake_hl({}, {})
+    local handle = session_restore.new(hl, {
+        snapshot_path = "/state/hypr/session.lua",
+        shells_path = "/nonexistent-shells.lua",
+        workspaces_dir = workspaces_dir,
+        catalog_path = catalog_path,
+        map_path = "/dev/null",
+        wezterm_restore_command = "wezterm-restore-window",
+        now = function() return 300 end,
+        read_file = function(path) return files[path] end,
+        write_file = function(path, text) files[path] = text; return true end,
+        log = function() end,
+    })
+    handle.restore_workspace(5)
+
+    control.windows = { {
+        class = session_model.WEZTERM_CLASS,
+        title = "project" .. session_model.encode_tag("wid:701-0"),
+        mapped = true,
+        workspace = workspace,
+        at = { x = 0, y = 0 }, size = { x = 10, y = 10 },
+    } }
+    control.workspaces = { workspace }
+    control.advance(60000)
+    handle.save()
+    equal("a fallback one-tab window cannot replace the richer wezterm snapshot",
+        files[workspace_path], source)
 end
 
 do
@@ -1620,20 +1691,24 @@ do
         end
         return count
     end
-    equal("the names are asserted once up front", renamed_to("SillyTavern"), 1)
+    equal("absent workspaces are not renamed up front", renamed_to("SillyTavern"), 0)
 
     -- The windows arrive, which is what creates workspaces 2 and 3.
     control.open({ class = "google-chrome", title = "Inbox", mapped = true })
     control.open({ class = "google-chrome", title = "Capture", mapped = true })
     control.advance(500)
-    equal("still only the one attempt while the restore runs",
+    control.emit("workspace.created", { id = 2 })
+    control.emit("workspace.created", { id = 3 })
+    equal("the name is applied as soon as the first window creates its workspace",
         renamed_to("SillyTavern"), 1)
+    equal("each created workspace is named immediately",
+        renamed_to("Obsidian Capture"), 1)
 
     control.advance(60000)
     check("the restore has ended", not handle.is_restoring())
-    equal("and the name is asserted again, now that the workspace exists",
-        renamed_to("SillyTavern"), 2)
-    equal("for every renamed workspace", renamed_to("Obsidian Capture"), 2)
+    equal("the settle does not delay or duplicate the rename",
+        renamed_to("SillyTavern"), 1)
+    equal("for every renamed workspace", renamed_to("Obsidian Capture"), 1)
 
     -- A rename that throws must not take the rest of the cleanup with it: the
     -- restore still has to end, or saving stops for the session.

@@ -134,7 +134,7 @@ function M.new(hl, options)
     -- not let the next periodic capture replace the richer source snapshot with
     -- that incomplete result. An explicit close is authoritative and clears the
     -- floor; a successful restore clears it once the expected count is live.
-    local protected_workspace_counts = {}
+    local protected_workspaces = {}
 
     -- The snapshot and the shell list record the working directory and the full
     -- argv of every foreground process, which is nobody else's business on a
@@ -324,17 +324,33 @@ function M.new(hl, options)
     -- ordinary workspace. Missing workspaces are retained in the catalog until
     -- they age out; that is what makes a workspace remain restorable after all
     -- of its windows have closed.
+    local function workspace_is_complete(windows, protection)
+        if not protection or #windows < protection.window_count then return false end
+        local identities = {}
+        for _, window in ipairs(windows) do
+            local identity = window.class == session_model.WEZTERM_CLASS
+                and session_model.wezterm_id_from_title(window.title)
+            if identity then identities[identity] = true end
+        end
+        for identity in pairs(protection.wezterm_ids or {}) do
+            if not identities[identity] then return false end
+        end
+        return true
+    end
+
     local function save_workspaces(snapshot, only_workspace_id, authoritative)
         local updated, handled_any = read_catalog(), false
         for _, workspace in ipairs(snapshot.workspaces or {}) do
             if not only_workspace_id or workspace.id == only_workspace_id then
                 local isolated = session_model.for_workspace(snapshot, workspace.id)
                 if isolated then
-                    local expected = protected_workspace_counts[workspace.id]
-                    if expected and #isolated.windows < expected and not authoritative then
+                    local protection = protected_workspaces[workspace.id]
+                    if protection and not workspace_is_complete(
+                        isolated.windows, protection) and not authoritative
+                    then
                         handled_any = true
-                        log("keeping workspace %d snapshot with %d windows; restore has %d",
-                            workspace.id, expected, #isolated.windows)
+                        log("keeping workspace %d snapshot; restored state is incomplete",
+                            workspace.id)
                     else
                         local path = workspace_snapshot_path(workspace.id)
                         if write_atomic(path, session_model.serialize(isolated)) then
@@ -347,8 +363,10 @@ function M.new(hl, options)
                                 shell_count = #isolated.shells,
                             })
                             updated, handled_any = next_catalog, true
-                            if authoritative or (expected and #isolated.windows >= expected) then
-                                protected_workspace_counts[workspace.id] = nil
+                            if authoritative or (protection and workspace_is_complete(
+                                isolated.windows, protection))
+                            then
+                                protected_workspaces[workspace.id] = nil
                             end
                         else
                             log("cannot save workspace %d", workspace.id)
@@ -422,6 +440,34 @@ function M.new(hl, options)
         return workspace
     end
 
+    local function monitor_id(monitor)
+        if type(monitor) == "number" or type(monitor) == "string" then
+            return tostring(monitor)
+        end
+        if not monitor then return nil end
+        local ok, value = pcall(function() return monitor.id or monitor.name end)
+        return ok and value ~= nil and tostring(value) or nil
+    end
+
+    local function next_ordinary_workspace(workspace)
+        local active_monitor = hl.get_active_monitor and hl.get_active_monitor()
+        local wanted_monitor = monitor_id(active_monitor) or monitor_id(workspace.monitor)
+        local candidates = {}
+        for _, candidate in ipairs(hl.get_workspaces() or {}) do
+            if workspace_catalog.workspace_id(candidate.id)
+                and candidate.id ~= workspace.id
+                and (not wanted_monitor or monitor_id(candidate.monitor) == wanted_monitor)
+            then
+                candidates[#candidates + 1] = candidate.id
+            end
+        end
+        table.sort(candidates)
+        for _, workspace_id in ipairs(candidates) do
+            if workspace_id > workspace.id then return workspace_id end
+        end
+        return candidates[1]
+    end
+
     local function do_close_workspace()
         local workspace = active_ordinary_workspace()
         if not workspace then
@@ -436,6 +482,7 @@ function M.new(hl, options)
             return false
         end
 
+        local next_workspace = next_ordinary_workspace(workspace)
         local closed = 0
         for _, window in ipairs(hl.get_windows() or {}) do
             local owner = window.workspace
@@ -446,8 +493,11 @@ function M.new(hl, options)
                 closed = closed + 1
             end
         end
-        if closed > 0 then
-            hl.dispatch(hl.dsp.focus({ workspace = "m+1" }))
+        if closed > 0 and next_workspace then
+            -- Resolve the target before teardown and focus it by id. A relative
+            -- m+1 dispatched while the source workspace is asynchronously
+            -- disappearing can resolve back to that same workspace.
+            hl.dispatch(hl.dsp.focus({ workspace = next_workspace }))
         end
         log("closed workspace %d after saving %d windows", workspace.id, closed)
         return closed > 0
@@ -463,6 +513,43 @@ function M.new(hl, options)
             return placement.workspace_name
         end
         return placement.workspace and tostring(placement.workspace) or nil
+    end
+
+    local function rename_workspace(workspace)
+        local ok, err = pcall(function()
+            hl.dispatch(hl.dsp.workspace.rename({
+                workspace = workspace.id,
+                name = workspace.name,
+            }))
+        end)
+        if not ok then
+            log("could not rename workspace %d to %q: %s",
+                workspace.id, workspace.name, tostring(err))
+        end
+    end
+
+    local function rename_workspaces(existing_only)
+        local existing = {}
+        if existing_only then
+            for _, workspace in ipairs(hl.get_workspaces() or {}) do
+                existing[workspace.id] = true
+            end
+        end
+        for _, workspace in ipairs(workspace_names) do
+            if not existing_only or existing[workspace.id] then
+                rename_workspace(workspace)
+            end
+        end
+    end
+
+    local function rename_saved_workspace(workspace_id)
+        for _, workspace in ipairs(workspace_names) do
+            if workspace.id == workspace_id then
+                rename_workspace(workspace)
+                return true
+            end
+        end
+        return false
     end
 
     local function apply(window, placement)
@@ -573,39 +660,13 @@ function M.new(hl, options)
         end
     end
 
-    -- Run twice, at the start of the restore and again at the end, because a
-    -- workspace that does not exist yet cannot be renamed and the attempt fails
-    -- silently. At login only the workspace being looked at exists; the rest are
-    -- created by the placements, so the pass that makes their names stick is the
-    -- one after the settle. The early pass is kept because it costs nothing and
-    -- puts the names of the workspaces that *do* exist on the bar immediately;
-    -- renaming is idempotent.
-    local function rename_workspaces()
-        for _, workspace in ipairs(workspace_names) do
-            -- Dispatch in-process and in order. hl.exec_cmd is asynchronous;
-            -- launching one rename-hypr-workspace helper per entry made the
-            -- helper's non-blocking global lock discard every concurrent rename
-            -- except one.
-            local ok, err = pcall(function()
-                hl.dispatch(hl.dsp.workspace.rename({
-                    workspace = workspace.id,
-                    name = workspace.name,
-                }))
-            end)
-            if not ok then
-                log("could not rename workspace %d to %q: %s",
-                    workspace.id, workspace.name, tostring(err))
-            end
-        end
-    end
-
     local function finish()
         if not restoring then return end
         -- Every step is guarded: a throw in one must not leave `restoring`
         -- stuck true, which would permanently suppress terminal grouping and
         -- silently stop all further saves.
         local ok, err = pcall(function()
-            rename_workspaces()
+            rename_workspaces(true)
             rebuild_groups()
             apply_focus_states()
             for _, placement in ipairs(session_model.unclaimed(placements)) do
@@ -620,16 +681,20 @@ function M.new(hl, options)
         if not ok then log("restore cleanup failed: %s", tostring(err)) end
         restoring = false
         savable = true
-        local counts = {}
+        local windows_by_workspace = {}
         for _, window in ipairs(hl.get_windows() or {}) do
             local workspace = window.workspace
             if window.mapped and not window.pinned and workspace and workspace.id then
-                counts[workspace.id] = (counts[workspace.id] or 0) + 1
+                local windows = windows_by_workspace[workspace.id] or {}
+                windows[#windows + 1] = window
+                windows_by_workspace[workspace.id] = windows
             end
         end
-        for workspace_id, expected in pairs(protected_workspace_counts) do
-            if (counts[workspace_id] or 0) >= expected then
-                protected_workspace_counts[workspace_id] = nil
+        for workspace_id, protection in pairs(protected_workspaces) do
+            if workspace_is_complete(
+                windows_by_workspace[workspace_id] or {}, protection)
+            then
+                protected_workspaces[workspace_id] = nil
             end
         end
         placements, groups, placed = {}, {}, {}
@@ -660,7 +725,7 @@ function M.new(hl, options)
         })
 
         local ok, err = pcall(function()
-            rename_workspaces()
+            rename_workspaces(true)
             for _, launch in ipairs(immediate) do
                 hl.exec_cmd(launch.cmd)
             end
@@ -677,13 +742,20 @@ function M.new(hl, options)
             log("snapshot is not usable; leaving the session alone")
             return nil
         end
-        return session_model.plan_restore(snapshot, hl.get_windows(), {
+        local plan = session_model.plan_restore(snapshot, hl.get_windows(), {
             class_commands = class_commands(),
             wezterm_command = wezterm_command,
             wezterm_restore_command = wezterm_restore_command,
             chrome_command = chrome_command,
             shell_bin = options.shell_bin,
         })
+        plan.wezterm_ids = {}
+        for _, window in ipairs(snapshot.windows or {}) do
+            local identity = window.class == session_model.WEZTERM_CLASS
+                and session_model.wezterm_id_from_title(window.title)
+            if identity then plan.wezterm_ids[identity] = true end
+        end
+        return plan
     end
 
     local function do_restore(request)
@@ -726,8 +798,10 @@ function M.new(hl, options)
         end
 
         if request.protect_workspace_id and request.protect_window_count then
-            protected_workspace_counts[request.protect_workspace_id] =
-                request.protect_window_count
+            protected_workspaces[request.protect_workspace_id] = {
+                window_count = request.protect_window_count,
+                wezterm_ids = plan.wezterm_ids,
+            }
         end
         start(plan)
         return true
@@ -773,7 +847,13 @@ function M.new(hl, options)
 
     hl.on("window.move_to_workspace", schedule_save)
     hl.on("workspace.active", schedule_save)
-    hl.on("workspace.created", schedule_save)
+    hl.on("workspace.created", function(workspace)
+        schedule_save()
+        if not restoring then return end
+        local workspace_id = type(workspace) == "table" and workspace.id
+            or tonumber(workspace)
+        if workspace_id then rename_saved_workspace(workspace_id) end
+    end)
 
     local tick, tick_armed
     local function arm_tick()

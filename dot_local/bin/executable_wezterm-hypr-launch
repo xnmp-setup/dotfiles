@@ -78,5 +78,11 @@ nohup "$0" --sample-clients >>"$log_file" 2>&1 </dev/null &
 # INFO includes renderer/backend failures without debug_key_events recording
 # every key pressed for the lifetime of the terminal.
 export WEZTERM_LOG=${WEZTERM_LOG:-info}
+if [ -n "$restore_window_id" ]; then
+    exec systemd-run --user --scope --quiet --collect \
+        --property=CPUWeight=1000 \
+        --setenv="HYPR_WEZTERM_RESTORE_WINDOW_ID=$restore_window_id" \
+        -- wezterm "$@"
+fi
 exec systemd-run --user --scope --quiet --collect \
     --property=CPUWeight=1000 -- wezterm "$@"
