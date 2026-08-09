@@ -18,7 +18,13 @@ it does open-ended web research.
 
 Options:
 
-- `-m MODEL` — model override (e.g. `gpt-5.1-codex-max`). Omit for Codex's default.
+- `-m MODEL` — model override (e.g. `gpt-5.6-sol`, `gpt-5.6-terra`,
+  `gpt-5.6-luna`). Omit for Codex's configured default.
+- `-e EFFORT` — reasoning effort: `minimal` | `low` | `medium` | `high` | `xhigh`.
+  Omit for Codex's default. Pick by task difficulty: `high`/`xhigh` for hard
+  review, debugging, or research; `minimal`/`low` for quick mechanical tasks.
+  Higher effort is slower and costs more, and not every model supports every
+  level.
 - `-s SANDBOX` — `read-only` (default), `workspace-write`, `danger-full-access`.
 - `-C DIR` — working root. Default `$PWD`; pass the repo root explicitly when it matters.
 - `-t SECONDS` — timeout, default 900.
@@ -37,8 +43,9 @@ under `~/.codex`, which Claude Code's command sandbox denies — inside it, Code
 dies with `Read-only file system (os error 30)`. Codex applies its own sandbox to
 whatever it executes, set by `-s`.
 
-**Background anything non-trivial** (`run_in_background: true`). A web-research
-run took ~17 minutes; even a trivial prompt takes ~20s of startup.
+**Background anything non-trivial** (`run_in_background: true`). Web-research
+or high-effort runs can take 15+ minutes; even a trivial prompt has ~20s of
+startup overhead.
 
 **Watch progress via the log, not the task output.** The script prints nothing
 until Codex exits, so a backgrounded run's output file stays empty the whole
@@ -80,9 +87,9 @@ echo.
 
 Codex's output is a subagent result, not user-facing text and not authoritative.
 Summarize what it found, say plainly that it came from Codex, and verify any
-claim before acting on it. In one smoke test it confidently named a file that
-does not exist. For web research, note that its results may come from a crawl
-weeks or months old.
+claim before acting on it — it can confidently name files or facts that do not
+exist. For web research, note that its results may come from a crawl weeks or
+months old.
 
 ## Gotchas already handled in the script
 
@@ -98,6 +105,6 @@ Do not "fix" these back:
 ## Requirements
 
 The `codex` CLI must be installed (`npm i -g @openai/codex`) and authenticated
-(`codex login`). It is not managed by this repo. The script exits 127 with an
+(`codex login`); the skill does not install it. The script exits 127 with an
 install hint when it is missing, so on a machine without Codex the skill fails
 loudly instead of silently doing nothing.

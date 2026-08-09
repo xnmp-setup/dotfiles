@@ -2,8 +2,8 @@
 # Run a Codex CLI agent non-interactively and print only its final message.
 #
 # External dependency: the `codex` CLI (npm `@openai/codex`), authenticated via
-# `codex login`. Not managed by this repo. If it is absent the script exits 127
-# with a clear message rather than failing obscurely.
+# `codex login`. Installed separately, not by this skill. If it is absent the
+# script exits 127 with a clear message rather than failing obscurely.
 set -euo pipefail
 
 usage() {
@@ -12,8 +12,16 @@ Usage: codex-run.sh [options] <prompt>
        <prompt on stdin> | codex-run.sh [options]
 
 Options:
-  -m MODEL      model to use (default: codex's configured default)
-  -s SANDBOX    read-only | workspace-write | danger-full-access (default: read-only)
+  -m MODEL      model to use, e.g. gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna
+                (default: codex's configured default; run `codex` interactively
+                and use /model to see what your account offers)
+  -e EFFORT     reasoning effort: minimal | low | medium | high | xhigh
+                (default: codex's configured default). Higher effort thinks
+                longer and costs more; use high/xhigh for hard review or
+                research tasks, minimal/low for quick mechanical ones.
+                Not every model supports every level; check with /model.
+  -s SANDBOX    read-only | workspace-write | danger-full-access
+                (default: read-only). Governs what Codex may touch locally.
   -C DIR        working root for the agent (default: $PWD)
   -t SECONDS    wall-clock timeout (default: 900)
   -w            enable live web search (Codex's native web_search tool)
@@ -21,6 +29,11 @@ Options:
                 final message
   -l FILE       transcript log path (default: a codex-run-*.log under $TMPDIR).
                 Written live, so a backgrounded run can be tailed for progress.
+
+Examples:
+  codex-run.sh "Summarize what src/auth/ does."
+  codex-run.sh -m gpt-5.6-sol -e xhigh -C /path/to/repo "Review the diff on this branch for correctness bugs."
+  codex-run.sh -w -t 1800 "Research current best practice for X; cite sources."
 EOF
 }
 
@@ -44,6 +57,7 @@ resolve_codex() {
 }
 
 model=""
+effort=""
 sandbox="read-only"
 workdir="$PWD"
 timeout_s=900
@@ -51,9 +65,10 @@ full=0
 search=0
 logfile=""
 
-while getopts ":m:s:C:t:l:wfh" opt; do
+while getopts ":m:e:s:C:t:l:wfh" opt; do
   case "$opt" in
     m) model="$OPTARG" ;;
+    e) effort="$OPTARG" ;;
     s) sandbox="$OPTARG" ;;
     C) workdir="$OPTARG" ;;
     t) timeout_s="$OPTARG" ;;
@@ -65,6 +80,22 @@ while getopts ":m:s:C:t:l:wfh" opt; do
   esac
 done
 shift $((OPTIND - 1))
+
+case "$effort" in
+  ""|minimal|low|medium|high|xhigh) ;;
+  *)
+    echo "error: invalid -e effort '$effort' (expected: minimal | low | medium | high | xhigh)" >&2
+    exit 2
+    ;;
+esac
+
+case "$sandbox" in
+  read-only|workspace-write|danger-full-access) ;;
+  *)
+    echo "error: invalid -s sandbox '$sandbox' (expected: read-only | workspace-write | danger-full-access)" >&2
+    exit 2
+    ;;
+esac
 
 prompt="${*:-}"
 if [ -z "$prompt" ]; then
@@ -86,6 +117,8 @@ codex_bin=$(resolve_codex) || {
 
 args=(exec --color never --skip-git-repo-check -C "$workdir" -s "$sandbox")
 [ -n "$model" ] && args+=(-m "$model")
+# `codex exec` has no dedicated effort flag; the config override is the knob.
+[ -n "$effort" ] && args+=(-c "model_reasoning_effort=\"$effort\"")
 # `codex exec` has no --search flag (that is TUI-only); the config override is
 # the equivalent. Server-side tool, so it works regardless of the -s sandbox,
 # which governs only the shell commands Codex runs locally.
