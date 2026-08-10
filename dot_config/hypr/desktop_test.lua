@@ -103,7 +103,10 @@ local function fake_runtime(spec)
                 move = command("move"),
                 resize = command("resize"),
             },
-            workspace = { toggle_special = command("toggle_special") },
+            workspace = {
+                move = command("workspace_move"),
+                toggle_special = command("toggle_special"),
+            },
         },
         exec_cmd = function(cmd, options)
             executions[#executions + 1] = { cmd = cmd, options = options }
@@ -114,6 +117,7 @@ local function fake_runtime(spec)
         get_active_workspace = function() return normal_workspace end,
         get_cursor_pos = function() return spec.cursor end,
         get_monitors = function() return spec.monitors or { active_monitor } end,
+        get_workspaces = function() return spec.workspaces or { normal_workspace } end,
         get_workspace = function(selector)
             for _, workspace in ipairs(spec.workspaces or { normal_workspace }) do
                 if workspace.id == selector or workspace.name == tostring(selector) then
@@ -327,8 +331,25 @@ do
 end
 
 do
+    local present = { { name = "eDP-1" } }
+    local attached = { id = 2, monitor = { name = "eDP-1" } }
+    local orphaned = { id = 1, monitor = { name = "DP-2" } }
+    local unknown = { id = 3, monitor = nil }
+    local special = { id = -99, monitor = { name = "DP-2" } }
+    local malformed = { id = "4", monitor = { name = "DP-2" } }
+    local huge = { id = 2147483648, monitor = { name = "DP-2" } }
+    local planned = display_mirrors.orphaned_workspaces({
+        attached, unknown, special, malformed, huge, orphaned,
+    }, present)
+    equal("orphan detection keeps only valid ordinary workspaces", #planned, 2)
+    equal("orphan migration order is deterministic", planned[1], orphaned)
+    equal("a workspace without an owner is recoverable", planned[2], unknown)
+end
+
+do
     local outputs = { { name = "eDP-1" } }
-    local hl, control = fake_runtime({ monitors = outputs })
+    local workspaces = { { id = 2, monitor = { name = "eDP-1" } } }
+    local hl, control = fake_runtime({ monitors = outputs, workspaces = workspaces })
     display_mirrors.new(hl)
 
     equal("registration has no eager side effects", #control.executions, 0)
@@ -344,11 +365,18 @@ do
     equal("built-in panel is the follower", control.monitors[3].output, "eDP-1")
     equal("built-in panel mirrors the external", control.monitors[3].mirror, "HDMI-A-3")
 
+    local orphaned = { id = 1, monitor = { name = "HDMI-A-3" } }
+    workspaces[#workspaces + 1] = orphaned
     outputs[2] = nil
     control.emit("monitor.removed", { name = "HDMI-A-3" })
     equal("unplug restores one standalone panel spec", #control.monitors, 4)
     equal("unplug restores the built-in panel", control.monitors[4].output, "eDP-1")
     equal("unplug removes the mirror source", control.monitors[4].mirror, nil)
+    equal("unplug migrates one orphaned workspace", #control.dispatches, 1)
+    equal("unplug migrates the orphaned workspace itself",
+        control.dispatches[1].args.workspace, orphaned)
+    equal("unplug migrates onto the built-in panel",
+        control.dispatches[1].args.monitor, "eDP-1")
 end
 
 --------------------------------------------------------------------------------

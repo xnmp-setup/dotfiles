@@ -12,6 +12,7 @@
 -- stateful module graph fresh before constructing new handlers; otherwise a
 -- chezmoi apply + `hyprctl reload` rereads this file but executes the old code.
 for _, module in ipairs({
+    "display_mirror",
     "expose",
     "untiled_mode",
     "wezterm_launcher",

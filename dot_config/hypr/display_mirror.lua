@@ -1,7 +1,12 @@
 local M = {}
 
 local function output_name(monitor)
-    local name = monitor and monitor.name
+    if type(monitor) == "string" then
+        return monitor:match("^[%w_.-]+$") and monitor or nil
+    end
+    if monitor == nil then return nil end
+    local ok, name = pcall(function() return monitor.name end)
+    if not ok then return nil end
     if type(name) ~= "string" or not name:match("^[%w_.-]+$") then return nil end
     return name
 end
@@ -69,6 +74,35 @@ function M.standalone_spec(monitors)
     }
 end
 
+--- Find ordinary workspaces whose owning output is no longer present.
+--- Pure so monitor transitions can be tested without a compositor.
+---@param workspaces table[]|nil
+---@param monitors table[]|nil
+---@return table[]
+function M.orphaned_workspaces(workspaces, monitors)
+    local present = {}
+    for _, monitor in ipairs(monitors or {}) do
+        local name = output_name(monitor)
+        if name then present[name] = true end
+    end
+
+    local orphaned = {}
+    for _, workspace in ipairs(workspaces or {}) do
+        local id = workspace and workspace.id
+        local monitor = workspace and output_name(workspace.monitor)
+        if type(id) == "number"
+            and id == math.floor(id)
+            and id >= 1
+            and id <= 2147483647
+            and not present[monitor]
+        then
+            orphaned[#orphaned + 1] = workspace
+        end
+    end
+    table.sort(orphaned, function(left, right) return left.id < right.id end)
+    return orphaned
+end
+
 ---@param hl table
 ---@param options? { enabled?: boolean }
 ---@return table
@@ -82,7 +116,14 @@ function M.new(hl, options)
 
         local specs = M.mirror_specs(M.plan(monitors))
         if not specs then
-            hl.monitor(M.standalone_spec(monitors))
+            local standalone = M.standalone_spec(monitors)
+            hl.monitor(standalone)
+            for _, workspace in ipairs(M.orphaned_workspaces(hl.get_workspaces(), monitors)) do
+                hl.dispatch(hl.dsp.workspace.move({
+                    workspace = workspace,
+                    monitor = standalone.output,
+                }))
+            end
             return
         end
         for _, spec in ipairs(specs) do hl.monitor(spec) end
