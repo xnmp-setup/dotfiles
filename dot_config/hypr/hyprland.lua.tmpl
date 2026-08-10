@@ -33,6 +33,11 @@ local group_actions   = require("group_actions").new(hl)
 local display_mirror  = require("display_mirror").new(hl, { enabled = is_laptop })
 local nightlight      = require("nightlight")
 local spotlights      = require("spotlight")
+local default_terminal = {
+    name = "ghostty",
+    classes = { ["com.mitchellh.ghostty"] = true },
+    launch = "ghostty +new-window",
+}
 local startup_pairing = require("startup_pairing").new(hl, {
     browser_class = "google-chrome",
     notes_class = "obsidian",
@@ -351,7 +356,7 @@ hl.on("hyprland.start", function()
             print("[session] restore failed, falling back to the startup set: "
                 .. tostring(claimed))
         end
-        hl.exec_cmd(wezterm_launcher.launch, { workspace = "1" })
+        hl.exec_cmd(default_terminal.launch, { workspace = "1" })
         hl.exec_cmd("google-chrome-stable", { workspace = "1" })
         -- Obsidian is launched by the startup pairing module, once Chrome's
         -- window is up, so the two land next to each other and can be tabbed.
@@ -403,9 +408,9 @@ local app_switcher = app_switchers.new(hl, window_actions, {
 terminal_groups.new(hl, {
     consume_managed_launch = app_switcher.consume_managed_launch,
     exclude_source = scratchpad.is_scratchpad,
-    -- At startup wezterm is the focused terminal when Chrome opens, so the
-    -- focus fallback would pull Chrome (and then Obsidian) into wezterm's
-    -- tile. The pairing sequence owns those windows; leave wezterm alone.
+    -- At startup the terminal is focused when Chrome opens, so the focus
+    -- fallback would pull Chrome (and then Obsidian) into the terminal's tile.
+    -- The pairing sequence owns those windows; leave the terminal alone.
     --
     -- A restore is the same problem, larger: every restored ghostty window is
     -- a child of the one single-instance ghostty process, so process ancestry
@@ -423,7 +428,7 @@ terminal_groups.new(hl, {
 local mainMod = "SUPER"
 
 -- Tools
-hl.bind(mainMod .. " + RETURN",   hl.dsp.exec_cmd(wezterm_launcher.launch))
+hl.bind(mainMod .. " + RETURN",   hl.dsp.exec_cmd(default_terminal.launch))
 hl.bind(mainMod .. " + SPACE",    hl.dsp.exec_cmd("vicinae toggle"))
 -- lock.sh, not hyprlock directly: it wraps the lock to expire the cached sudo
 -- ticket on the way out. Safe everywhere — where the sudo side of that rule
@@ -593,12 +598,7 @@ hl.bind("CTRL + SHIFT + Next",        hl.dsp.group.next())
 -- Unfold every tab strip on the workspace into panes; selecting a pane folds
 -- them back with that one showing.
 hl.bind("F1", expose.toggle)
-hl.bind("F3", app_switcher.toggle({
-    name = "wezterm",
-    classes = { ["org.wezfurlong.wezterm"] = true },
-    launch = wezterm_launcher.launch,
-    new_window = wezterm_launcher.new_window,
-}))
+hl.bind("F3", app_switcher.toggle(default_terminal))
 hl.bind("F4", app_switcher.toggle({
     name = "obsidian",
     classes = { obsidian = true },
