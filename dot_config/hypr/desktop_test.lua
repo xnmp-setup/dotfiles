@@ -990,6 +990,36 @@ do
     equal("launched window receives focus", control.active(), launched)
 end
 
+-- Chrome exposes a capitalized X11 WM_CLASS under XWayland, despite using the
+-- lower-case Wayland app ID. Both backends must satisfy the same F6 contract.
+do
+    local ws = { id = 1 }
+    local terminal = window("terminal", "com.mitchellh.ghostty", ws, 0)
+    local chrome = window("chrome", "Google-chrome", ws, 1)
+    group(terminal, chrome)
+    local hl, control = fake_runtime({
+        active = terminal,
+        windows = { terminal, chrome },
+        workspace = ws,
+    })
+    local toggle = app_switcher.new(hl, window_actions.new(hl)).toggle({
+        name = "chrome",
+        classes = { ["google-chrome"] = true },
+        launch = "google-chrome-stable",
+        new_window = "google-chrome-stable --new-window",
+    })
+
+    toggle()
+    equal("F6 focuses an existing XWayland Chrome window", control.active(), chrome)
+    equal("F6 does not launch when XWayland Chrome exists locally",
+        #control.executions, 0)
+
+    toggle()
+    equal("F6 toggles back from XWayland Chrome", control.active(), terminal)
+    equal("F6 toggle-back does not launch another Chrome window",
+        #control.executions, 0)
+end
+
 -- The reported sequence: from the terminal, obsidian's key and back, then
 -- chrome's key and back. Each "and back" has to land on the terminal.
 do

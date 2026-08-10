@@ -7,12 +7,29 @@ local window_model = require("window_model")
 
 local M = {}
 
+-- Wayland app IDs and X11 WM_CLASS values for the same application can differ
+-- only in case (Chrome is `google-chrome` natively and `Google-chrome` through
+-- XWayland). Treat application identities case-insensitively so switching does
+-- not depend on which backend an application used for a particular launch.
+function M.matches(classes, class)
+    if type(class) ~= "string" then return false end
+    if classes and classes[class] then return true end
+
+    local folded = class:lower()
+    for candidate, enabled in pairs(classes or {}) do
+        if enabled and type(candidate) == "string" and candidate:lower() == folded then
+            return true
+        end
+    end
+    return false
+end
+
 function M.select(windows, classes, workspace_id)
     local target
     local running = false
 
     for _, window in ipairs(windows or {}) do
-        if window.mapped and classes[window.class] then
+        if window.mapped and M.matches(classes, window.class) then
             running = true
             if window.workspace and window.workspace.id == workspace_id
                 and (not target
@@ -44,7 +61,7 @@ function M.new(hl, window_actions, options)
         if not window then return end
 
         for name, launch in pairs(pending) do
-            if launch.classes[window.class] then
+            if M.matches(launch.classes, window.class) then
                 pending[name] = nil
                 local id = window_model.id(window)
                 if id then
@@ -75,7 +92,7 @@ function M.new(hl, window_actions, options)
             if not (workspace and workspace.id) then return end
 
             local active = hl.get_active_window()
-            if active and app.classes[active.class] then
+            if active and M.matches(app.classes, active.class) then
                 -- Pressing an app's key while it already has focus puts its
                 -- group back to whatever tab it was showing before, so the key
                 -- reads as a toggle. Cycling to the next tab is the fallback
