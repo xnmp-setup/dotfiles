@@ -4,6 +4,34 @@ local window_model = require("window_model")
 
 local M = {}
 
+local function copy_box(window)
+    local at, size = window and window.at, window and window.size
+    if not (at and size) then return nil end
+    return { x = at.x, y = at.y, w = size.x, h = size.y }
+end
+
+local function grid_boxes(box, count, columns)
+    local boxes = {}
+    if not (box and count > 0 and columns > 0) then return boxes end
+
+    local rows = math.ceil(count / columns)
+    for index = 1, count do
+        local column = (index - 1) % columns
+        local row = math.floor((index - 1) / columns)
+        local left = math.floor(box.x + box.w * column / columns)
+        local right = math.floor(box.x + box.w * (column + 1) / columns)
+        local top = math.floor(box.y + box.h * row / rows)
+        local bottom = math.floor(box.y + box.h * (row + 1) / rows)
+        boxes[index] = {
+            x = left,
+            y = top,
+            w = right - left,
+            h = bottom - top,
+        }
+    end
+    return boxes
+end
+
 -- How many columns to use for `n` panes in a tile. Every count is tried and
 -- scored by cell squareness plus the unevenness of an incomplete last row.
 function M.grid_columns(w, h, n)
@@ -86,7 +114,12 @@ function M.new(hl, options)
                             rest[#rest + 1] = member
                         end
                     end
-                    groups[#groups + 1] = { anchor = anchor, rest = rest }
+                    groups[#groups + 1] = {
+                        anchor = anchor,
+                        rest = rest,
+                        floating = anchor.floating or false,
+                        box = copy_box(anchor),
+                    }
                 end
             end
         end
@@ -111,6 +144,25 @@ function M.new(hl, options)
         end
         for _, group in ipairs(groups) do
             hl.dispatch(hl.dsp.group.toggle({ window = group.anchor }))
+        end
+        -- A floating group is absent from nary's target list, so the layout
+        -- message above cannot place its newly freed members. Arrange that one
+        -- group directly inside its original box; folding restores the box.
+        for _, group in ipairs(groups) do
+            if group.floating and group.box then
+                local members = { group.anchor }
+                for _, window in ipairs(group.rest) do members[#members + 1] = window end
+                local boxes = grid_boxes(group.box, #members, group.cols)
+                for index, window in ipairs(members) do
+                    local box = boxes[index]
+                    hl.dispatch(hl.dsp.window.resize({
+                        x = box.w, y = box.h, window = window,
+                    }))
+                    hl.dispatch(hl.dsp.window.move({
+                        x = box.x, y = box.y, window = window,
+                    }))
+                end
+            end
         end
         busy = false
 
@@ -154,6 +206,15 @@ function M.new(hl, options)
                 hl.dispatch(hl.dsp.group.active({
                     index = raise,
                     window = group.anchor,
+                }))
+            end
+
+            if group.floating and group.box and group.anchor.mapped then
+                hl.dispatch(hl.dsp.window.resize({
+                    x = group.box.w, y = group.box.h, window = group.anchor,
+                }))
+                hl.dispatch(hl.dsp.window.move({
+                    x = group.box.x, y = group.box.y, window = group.anchor,
                 }))
             end
         end

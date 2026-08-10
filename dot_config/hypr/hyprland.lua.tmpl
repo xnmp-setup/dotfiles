@@ -9,9 +9,11 @@
 -- can be equal peers rather than dwindle's forced binary nesting.
 
 -- Hyprland keeps Lua's package.loaded table across config reloads. Force the
--- session module graph fresh before constructing the new handler; otherwise a
+-- stateful module graph fresh before constructing new handlers; otherwise a
 -- chezmoi apply + `hyprctl reload` rereads this file but executes the old code.
 for _, module in ipairs({
+    "expose",
+    "untiled_mode",
     "wezterm_launcher",
     "workspace_catalog",
     "session_model",
@@ -421,6 +423,8 @@ terminal_groups.new(hl, {
     end,
 })
 
+local untiled = require("untiled_mode").new(hl)
+
 ---------------------
 ---- KEYBINDINGS ----
 ---------------------
@@ -598,6 +602,14 @@ hl.bind("CTRL + SHIFT + Next",        hl.dsp.group.next())
 -- Unfold every tab strip on the workspace into panes; selecting a pane folds
 -- them back with that one showing.
 hl.bind("F1", expose.toggle)
+-- Opt the visible ordinary workspace out of automatic tiling. Plain F1 keeps
+-- its exposé meaning, including for floating tab groups in this mode.
+hl.bind(mainMod .. " + F1", function()
+    -- Never snapshot or restore nary's temporary exploded tree. Finish an
+    -- in-progress exposé first, then change the workspace's tiling mode.
+    if expose.is_active() then expose.toggle() end
+    return untiled.toggle()
+end)
 hl.bind("F3", app_switcher.toggle(default_terminal))
 hl.bind("F4", app_switcher.toggle({
     name = "obsidian",

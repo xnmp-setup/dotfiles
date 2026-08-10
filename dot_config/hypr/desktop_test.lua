@@ -13,6 +13,7 @@ local scratchpads    = require("scratchpad")
 local spotlights     = require("spotlight")
 local startup_pairing = require("startup_pairing")
 local terminal_groups = require("terminal_grouping")
+local untiled_modes   = require("untiled_mode")
 local window_actions = require("window_actions")
 local window_model   = require("window_model")
 local window_navigation = require("window_navigation")
@@ -198,8 +199,8 @@ local function fake_runtime(spec)
         binding = function(key) return bindings[key] end,
         configs = configs,
         dispatches = dispatches,
-        emit = function(event, argument)
-            for _, callback in ipairs(callbacks[event] or {}) do callback(argument) end
+        emit = function(event, ...)
+            for _, callback in ipairs(callbacks[event] or {}) do callback(...) end
         end,
         executions = executions,
         monitors = monitors,
@@ -743,6 +744,85 @@ do
 end
 
 --------------------------------------------------------------------------------
+-- Workspace-scoped untiled mode
+--------------------------------------------------------------------------------
+
+do
+    local ws = { id = 1 }
+    local tiled = window("tiled", "editor", ws, 0)
+    local second = window("second", "browser", ws, 1)
+    local dialog = window("dialog", "dialog", ws, 2)
+    dialog.floating = true
+    local windows = { tiled, second, dialog }
+    local hl, control = fake_runtime({
+        active = tiled,
+        windows = windows,
+        workspace = ws,
+    })
+    local untiled = untiled_modes.new(hl)
+
+    check("untiled mode enables on the active workspace", untiled.toggle())
+    check("untiled mode records workspace scope", untiled.is_active(ws))
+    equal("untiled mode snapshots nary before floating", control.dispatches[1].args, "hold")
+    check("untiled mode floats every tiled window", tiled.floating and second.floating)
+    check("untiled mode leaves an existing floating window alone", dialog.floating)
+
+    local opened = window("opened", "terminal", ws, 0)
+    windows[#windows + 1] = opened
+    control.emit("window.open", opened)
+    check("windows opened on an untiled workspace also float", opened.floating)
+
+    local other = { id = 2 }
+    opened.workspace = other
+    control.emit("window.move_to_workspace", opened, other)
+    check("a mode-owned window retiles when moved elsewhere", not opened.floating)
+
+    local special = { id = -99, name = "special:spotlight" }
+    second.workspace = special
+    control.emit("window.move_to_workspace", second, special)
+    check("parking on a special workspace preserves untiled ownership", second.floating)
+
+    -- This is the user-arranged floating box that must survive the tiled phase.
+    tiled.at = { x = 137, y = 241 }
+    tiled.size = { x = 913, y = 577 }
+    check("untiled mode disables on the same workspace", untiled.toggle())
+    check("untiled mode clears workspace scope", not untiled.is_active(ws))
+    check("disabling retiles mode-owned windows still on ordinary workspaces",
+        not tiled.floating)
+    check("disabling defers a parked window until it leaves the special workspace",
+        second.floating)
+    check("disabling preserves pre-existing floating windows", dialog.floating)
+    equal("disabling asks nary to restore the saved tree",
+        control.dispatches[#control.dispatches].args, "restore")
+
+    second.workspace = other
+    control.emit("window.move_to_workspace", second, other)
+    check("a deferred window retiles when it returns to an ordinary workspace",
+        not second.floating)
+
+    check("untiled mode can be enabled again", untiled.toggle())
+    local restored_size, restored_position
+    for index = #control.dispatches, 1, -1 do
+        local dispatch = control.dispatches[index]
+        if dispatch.args and dispatch.args.window == tiled then
+            if not restored_position and dispatch.kind == "move"
+                and dispatch.args.x and dispatch.args.y
+            then
+                restored_position = dispatch.args
+            elseif not restored_size and dispatch.kind == "resize" then
+                restored_size = dispatch.args
+            end
+        end
+    end
+    restored_size = restored_size or {}
+    restored_position = restored_position or {}
+    equal("untiled mode restores the moved x position", restored_position.x, 137)
+    equal("untiled mode restores the moved y position", restored_position.y, 241)
+    equal("untiled mode restores the resized width", restored_size.x, 913)
+    equal("untiled mode restores the resized height", restored_size.y, 577)
+end
+
+--------------------------------------------------------------------------------
 -- Exposé group state machine
 --------------------------------------------------------------------------------
 
@@ -792,6 +872,41 @@ do
     check("expose releases its click binding after folding",
         control.binding("mouse:272") == nil)
     check("expose reports inactive after folding", not expose.is_active())
+end
+
+do
+    local ws = { id = 1 }
+    local chrome = window("floating-chrome", "google-chrome", ws, 0)
+    local obsidian = window("floating-obsidian", "obsidian", ws, 1)
+    chrome.at = { x = 100, y = 200 }
+    chrome.size = { x = 1000, y = 600 }
+    chrome.floating = true
+    obsidian.at = chrome.at
+    obsidian.size = chrome.size
+    obsidian.floating = true
+    group(chrome, obsidian)
+    local hl, control = fake_runtime({
+        active = chrome,
+        windows = { chrome, obsidian },
+        workspace = ws,
+    })
+    local expose = exposes.new(hl)
+
+    check("expose unfolds a floating tab group", expose.toggle())
+    equal("floating expose keeps the first pane in the original column",
+        control.dispatches[4].args.x, 100)
+    equal("floating expose places the second pane beside it",
+        control.dispatches[6].args.x, 600)
+    equal("floating expose gives each pane half the group width",
+        control.dispatches[3].args.x, 500)
+
+    check("floating expose folds after a selection", expose.select_target(obsidian))
+    local restored_size = control.dispatches[#control.dispatches - 2].args
+    local restored_position = control.dispatches[#control.dispatches - 1].args
+    equal("folding restores the floating group's width", restored_size.x, 1000)
+    equal("folding restores the floating group's height", restored_size.y, 600)
+    equal("folding restores the floating group's x position", restored_position.x, 100)
+    equal("folding restores the floating group's y position", restored_position.y, 200)
 end
 
 --------------------------------------------------------------------------------
