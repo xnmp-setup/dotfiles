@@ -181,6 +181,8 @@ run_set_theme() {
     PATH="$test_root/bin:$PATH" \
     HYPRLAND_INSTANCE_SIGNATURE=test \
     SET_THEME_GOOGLE_CHROME_EXTENSION_DIR="$test_root/google-chrome/extensions" \
+    DARKREADER_FORK_RELEASE_URL="file://$test_root/missing-darkreader-release.zip" \
+    DARKREADER_FORK_RELEASE_SHA256="0000000000000000000000000000000000000000000000000000000000000000" \
     bash "$repo_root/scripts/set-theme.sh" "$@"
 }
 

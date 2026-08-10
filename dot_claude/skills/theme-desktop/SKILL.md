@@ -151,7 +151,7 @@ Reference: read any theme in `~/.local/share/chrome-themes/` for the exact forma
 
 #### Dark Reader (`~/.local/share/chrome-themes/{theme-name}/darkreader-{theme-name}.json`)
 
-A Dark Reader settings file that recolors the *content* of every web page (the Chrome theme above only styles the browser chrome). Write it alongside the Chrome theme extension. The file contains a single `"theme"` object — Dark Reader's import merges shallowly at the top level, so importing `{ "theme": {...} }` replaces the theme but **preserves** the user's per-site enable/disable lists, automation, and presets.
+A Dark Reader settings file that recolors the *content* of every web page (the Chrome theme above only styles the browser chrome). Write it alongside the Chrome theme extension. `set-theme.sh` sends this object through the patched fork's native bridge. The file contains a single `"theme"` object so only the theme is replaced and the user's per-site enable/disable lists, automation, and presets are preserved.
 
 Because the merge is shallow and missing keys are not back-filled, the `theme` object must be **complete**. Use Dark Reader's defaults for everything except the colors and mode:
 
@@ -251,7 +251,7 @@ Update each app's config to use the new theme:
 - **Vicinae**: Run `vicinae theme set {theme-name}` to switch the active theme (updates `~/.config/vicinae/settings.json` automatically). For dark themes, this sets `theme.dark.name`; for light themes, `theme.light.name`.
 - **Powerlevel10k**: Create `~/.config/p10k-themes/{theme-name}.zsh` and symlink it as `current.zsh`.
 - **Chrome**: Do NOT edit settings. `set-theme.sh` packs `~/.local/share/chrome-themes/{theme-name}/` into a signed `.crx` and registers it as a per-user external extension, which Chrome installs silently at its next launch. Just make sure the theme directory exists with a valid `manifest.json`; the packing is handled by the script.
-- **Dark Reader**: Cannot be applied from disk (settings live in the extension's storage). Tell the user to import manually: click the Dark Reader toolbar icon → ⚙ (Settings) → Manage Settings → Import Settings → select `~/.local/share/chrome-themes/{theme-name}/darkreader-{theme-name}.json`.
+- **Dark Reader**: `set-theme.sh` downloads the checksum-pinned `xnmp/darkreader` fork release and writes the selected preset to its native bridge. On a new machine, follow the one-time message printed by the script to load `~/.local/share/darkreader-theme-bridge/extension` from `chrome://extensions`; subsequent switches apply automatically.
 
 ### 6. Align Tauri Explorer colors
 
@@ -287,5 +287,5 @@ List the files created and configs updated. Note that:
 - Powerlevel10k: run `source ~/.p10k.zsh` or open a new terminal
 - Vicinae: theme applies on next launch or when the window is re-opened
 - Chrome: applies at the next browser launch (`set-theme.sh` offers to restart Chrome when run interactively); the first ever install on a machine may show a one-time consent bubble
-- Dark Reader: import `darkreader-{theme-name}.json` via the extension's Settings → Manage Settings → Import Settings; applies immediately to all pages
+- Dark Reader: applies immediately through the native bridge after the one-time patched-extension install
 - Claude Code: run `/theme` to sync with the new terminal theme (light or dark)

@@ -18,6 +18,8 @@ source "$set_theme_script_dir/lib/theme-wallpaper.sh"
 source "$set_theme_script_dir/lib/chrome-layout.sh"
 # shellcheck source=lib/chrome-theme.sh
 source "$set_theme_script_dir/lib/chrome-theme.sh"
+# shellcheck source=lib/darkreader-theme.sh
+source "$set_theme_script_dir/lib/darkreader-theme.sh"
 # shellcheck source=lib/theme-colors.sh
 source "$set_theme_script_dir/lib/theme-colors.sh"
 # shellcheck source=lib/theme-state.sh
@@ -626,10 +628,11 @@ EOF
 fi
 
 # --- Dark Reader (browser extension) ---
-# Dark Reader keeps its config in the browser's extension storage (a live
-# LevelDB), which can't be safely edited from a script. Instead we generate an
-# importable settings file and derive the palette from the theme's tauri CSS,
-# then the user imports it via the Dark Reader UI (one-time per theme change).
+# Dark Reader has no external settings API, and directly editing its live
+# LevelDB would corrupt the browser profile. A patched fork adds a
+# native-messaging listener that calls the same Extension.changeSettings() path
+# as Dark Reader's own UI. It retains the official manifest key/ID, while a
+# clean replacement avoids Chrome retaining the Web Store manifest cache.
 dr_css="$HOME/.config/tauri-explorer/themes/$slug.css"
 if [[ -f "$dr_css" ]] && command -v jq &>/dev/null; then
   bg=$(css_var "$dr_css" background-solid)
@@ -643,36 +646,84 @@ if [[ -f "$dr_css" ]] && command -v jq &>/dev/null; then
     dr_dir="$HOME/.local/share/darkreader-themes"
     mkdir -p "$dr_dir"
     dr_file="$dr_dir/$slug.json"
+    dr_preset="$chrome_theme_dir/darkreader-$slug.json"
 
-    # Full default theme object with our colour overrides, so importing this
-    # replaces only the theme (site lists etc. are preserved by the merge).
-    # fontFamily must be a non-empty string even with useFont off — Dark
-    # Reader's import validator rejects "" ("Unexpected value for fontFamily").
-    jq -n \
-      --argjson mode "$dr_mode" \
-      --arg bg "$bg" --arg fg "$fg" \
-      --arg sel "${accent:-auto}" \
-      '{
-        enabled: true,
-        theme: {
-          mode: $mode,
-          brightness: 100, contrast: 100, grayscale: 0, sepia: 0,
-          useFont: false, fontFamily: "Open Sans", textStroke: 0,
-          engine: "dynamicTheme", stylesheet: "",
-          darkSchemeBackgroundColor: (if $mode == 1 then $bg else "#181a1b" end),
-          darkSchemeTextColor:       (if $mode == 1 then $fg else "#e8e6e3" end),
-          lightSchemeBackgroundColor:(if $mode == 0 then $bg else "#dcdad7" end),
-          lightSchemeTextColor:      (if $mode == 0 then $fg else "#181a1b" end),
-          scrollbarColor: "auto",
-          selectionColor: $sel,
-          styleSystemControls: true
-        }
-      }' > "$dr_file"
+    if [[ -f "$dr_preset" ]]; then
+      # Prefer the hand-tuned preset shipped beside the Chrome theme. Add the
+      # global enabled flag expected by the old import flow and native bridge.
+      tmp=$(mktemp)
+      jq '. + {enabled: true}' "$dr_preset" >"$tmp" && mv "$tmp" "$dr_file"
+    else
+      # Full default theme object with our colour overrides. fontFamily must be
+      # non-empty even with useFont off; Dark Reader's validator rejects "".
+      jq -n \
+        --argjson mode "$dr_mode" \
+        --arg bg "$bg" --arg fg "$fg" \
+        --arg sel "${accent:-auto}" \
+        '{
+          enabled: true,
+          theme: {
+            mode: $mode,
+            brightness: 100, contrast: 100, grayscale: 0, sepia: 0,
+            useFont: false, fontFamily: "Open Sans", textStroke: 0,
+            engine: "dynamicTheme", stylesheet: "",
+            darkSchemeBackgroundColor: (if $mode == 1 then $bg else "#181a1b" end),
+            darkSchemeTextColor:       (if $mode == 1 then $fg else "#e8e6e3" end),
+            lightSchemeBackgroundColor:(if $mode == 0 then $bg else "#dcdad7" end),
+            lightSchemeTextColor:      (if $mode == 0 then $fg else "#181a1b" end),
+            scrollbarColor: "auto",
+            selectionColor: $sel,
+            styleSystemControls: true
+          }
+        }' > "$dr_file"
+    fi
 
-    echo "  ✓ Dark Reader → $slug (bg $bg, fg $fg)"
-    echo "    Import once: Dark Reader → Settings (gear) → Manage settings"
-    echo "    → Import Settings → $dr_file"
-    reload+=("Dark Reader: import the generated JSON (see above)")
+    if (( dr_mode == 1 )); then
+      dr_applied_bg=$(jq -r '.theme.darkSchemeBackgroundColor' "$dr_file")
+      dr_applied_fg=$(jq -r '.theme.darkSchemeTextColor' "$dr_file")
+    else
+      dr_applied_bg=$(jq -r '.theme.lightSchemeBackgroundColor' "$dr_file")
+      dr_applied_fg=$(jq -r '.theme.lightSchemeTextColor' "$dr_file")
+    fi
+
+    dr_bridge_state="${XDG_STATE_HOME:-$HOME/.local/state}/darkreader-theme-bridge"
+    mkdir -p "$dr_bridge_state"
+    tmp=$(mktemp "$dr_bridge_state/current.XXXXXX")
+    cp "$dr_file" "$tmp" && mv -f "$tmp" "$dr_bridge_state/current.json"
+
+    dr_bridge_dir="$HOME/.local/share/darkreader-theme-bridge"
+    dr_extension="$dr_bridge_dir/extension"
+    dr_host="$dr_bridge_dir/host.py"
+    dr_bridge_prepared=0
+    darkreader_bridge_error=""
+    if darkreader_bridge_install_from_fork "$dr_extension" \
+      && darkreader_bridge_register "$dr_extension" "$dr_host"; then
+      dr_bridge_prepared=1
+    fi
+
+    echo "  ✓ Dark Reader → $slug (bg $dr_applied_bg, fg $dr_applied_fg)"
+    [[ -z "${darkreader_bridge_warning:-}" ]] \
+      || echo "    warning: $darkreader_bridge_warning"
+    if (( dr_bridge_prepared && darkreader_bridge_loaded )); then
+      echo "    applied automatically through the native theme bridge"
+    elif (( dr_bridge_prepared )); then
+      echo "    INSTALL PATCHED EXTENSION ONCE:"
+      echo "      1. Export settings from the existing Dark Reader, if needed"
+      echo "      2. Open chrome://extensions and remove the existing Dark Reader"
+      echo "      3. Enable Developer mode, then click 'Load unpacked' and select:"
+      echo "      $darkreader_bridge_extension_dir"
+      echo "         (select 'extension', not its parent; it contains manifest.json)"
+      echo "      4. Import the settings you exported"
+      echo "    A clean removal prevents Chrome from retaining the Web Store manifest."
+      echo "    Fork release: $DARKREADER_FORK_RELEASE_URL"
+      reload+=("Dark Reader: complete the one-time Load unpacked setup")
+    else
+      [[ -z "${darkreader_bridge_error:-}" ]] \
+        || echo "    automatic bridge unavailable: $darkreader_bridge_error"
+      echo "    Fallback import: Dark Reader → Settings → Manage settings"
+      echo "    → Import Settings → $dr_file"
+      reload+=("Dark Reader: import the generated JSON (fallback)")
+    fi
     ((changed++))
   else
     skipped+=("Dark Reader (could not read colours from $dr_css)")
