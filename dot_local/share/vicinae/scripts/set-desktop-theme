@@ -16,6 +16,68 @@ notify() {
 }
 
 theme_cli="$HOME/.local/share/chezmoi/scripts/set-theme.sh"
+
+apply_theme() {
+  local slug="$1"
+  local title="$2"
+  local output error
+
+  if output=$(bash "$theme_cli" "$slug" --restart-chrome 2>&1); then
+    notify "Desktop theme set" "$title"
+    return 0
+  fi
+
+  error=$(printf '%s\n' "$output" | tail -n 3 | tr '\n' ' ' | cut -c 1-300)
+  notify "Desktop theme was not set" "${error:-Unknown error}" critical
+  printf '%s\n' "$output" >&2
+  return 1
+}
+
+if [[ "${1:-}" == "--apply" ]]; then
+  if (( $# != 3 )); then
+    echo "Usage: $0 --apply <theme-slug> <theme-title>" >&2
+    exit 2
+  fi
+  apply_theme "$2" "$3"
+  exit
+fi
+
+launch_theme_worker() {
+  local slug="$1"
+  local title="$2"
+  local unit="desktop-theme-${slug}-$$"
+  local name
+  local -a systemd_command=(
+    systemd-run --user --collect --no-block --quiet
+    --unit="$unit"
+    --description="Apply desktop theme: $title"
+  )
+
+  if command -v systemd-run >/dev/null 2>&1; then
+    for name in HYPRLAND_INSTANCE_SIGNATURE WAYLAND_DISPLAY DISPLAY \
+      XDG_RUNTIME_DIR XDG_STATE_HOME XDG_CONFIG_HOME XDG_DATA_HOME PATH; do
+      if [[ -v "$name" ]]; then
+        systemd_command+=(--setenv="$name=${!name}")
+      fi
+    done
+    if "${systemd_command[@]}" -- \
+      /usr/bin/env bash "$0" --apply "$slug" "$title" &>/dev/null; then
+      return 0
+    fi
+  fi
+
+  local log_dir="${XDG_STATE_HOME:-$HOME/.local/state}/desktop-theme"
+  local log_file="$log_dir/vicinae-worker.log"
+  mkdir -p "$log_dir"
+  if command -v setsid >/dev/null 2>&1; then
+    setsid -f /usr/bin/env bash "$0" --apply "$slug" "$title" \
+      </dev/null >>"$log_file" 2>&1
+  else
+    nohup /usr/bin/env bash "$0" --apply "$slug" "$title" \
+      </dev/null >>"$log_file" 2>&1 &
+  fi
+}
+
 themes=$(bash "$theme_cli" --list-desktop-themes)
 if [[ -z "$themes" ]]; then
   notify "No desktop themes" "No complete desktop themes are configured."
@@ -32,10 +94,9 @@ selection=$(printf '%s\n' "$themes" | vicinae dmenu \
 
 title=$selection
 slug=$(printf '%s\n' "$title" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
-if output=$(bash "$theme_cli" "$slug" --restart-chrome 2>&1); then
-  notify "Desktop theme set" "$title"
+if launch_theme_worker "$slug" "$title"; then
+  printf 'Applying %s\n' "$title"
 else
-  error=$(printf '%s\n' "$output" | tail -n 3 | tr '\n' ' ' | cut -c 1-300)
-  notify "Desktop theme was not set" "${error:-Unknown error}" critical
+  notify "Desktop theme was not started" "$title" critical
   exit 1
 fi

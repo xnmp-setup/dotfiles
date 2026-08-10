@@ -60,10 +60,15 @@ cat >"$test_root/bin/notify-send" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$TEST_NOTIFY_LOG"
 EOF
+cat >"$test_root/bin/systemd-run" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$TEST_SYSTEMD_RUN_LOG"
+EOF
 
 chmod +x "$test_root/home/.local/bin/hypr-workspace" \
   "$test_root/home/.local/share/chezmoi/scripts/set-theme.sh" \
-  "$test_root/bin/vicinae" "$test_root/bin/notify-send"
+  "$test_root/bin/vicinae" "$test_root/bin/notify-send" \
+  "$test_root/bin/systemd-run"
 
 run_script() {
   HOME="$test_root/home" \
@@ -72,9 +77,11 @@ run_script() {
     TEST_DMENU_LOG="$test_root/dmenu.log" \
     TEST_DMENU_INPUT_LOG="$test_root/dmenu-input.log" \
     TEST_NOTIFY_LOG="$test_root/notify.log" \
+    TEST_SYSTEMD_RUN_LOG="$test_root/systemd-run.log" \
     TEST_THEME_LOG="$test_root/theme.log" \
     TEST_EMPTY="${TEST_EMPTY:-0}" \
-    bash "$1"
+    HYPRLAND_INSTANCE_SIGNATURE=test-hyprland \
+    bash "$@"
 }
 
 : >"$test_root/workspace.log"
@@ -82,6 +89,7 @@ run_script() {
 : >"$test_root/dmenu-input.log"
 : >"$test_root/notify.log"
 : >"$test_root/theme.log"
+: >"$test_root/systemd-run.log"
 
 run_script "$repo_root/dot_local/share/vicinae/scripts/restore-workspace"
 grep -Fxq $'restore\t2' "$test_root/workspace.log" ||
@@ -110,9 +118,25 @@ grep -Fq -- 'No recent workspaces' "$test_root/notify.log" ||
 : >"$test_root/dmenu-input.log"
 : >"$test_root/notify.log"
 theme_script="$repo_root/dot_local/share/vicinae/scripts/set-desktop-theme"
-run_script "$theme_script"
+theme_output=$(run_script "$theme_script")
+[[ "$theme_output" == "Applying Ayu Mirage" ]] \
+  || fail "the theme picker did not report its asynchronous handoff"
+[[ ! -s "$test_root/theme.log" ]] \
+  || fail "the Vicinae command applied the theme synchronously"
+grep -Fq -- '--user --collect --no-block --quiet' "$test_root/systemd-run.log" \
+  || fail "the theme picker did not use a non-blocking transient user service"
+grep -Fq -- '--setenv=HYPRLAND_INSTANCE_SIGNATURE=test-hyprland' \
+  "$test_root/systemd-run.log" \
+  || fail "the theme worker did not preserve the Hyprland instance"
+grep -Fq -- "/usr/bin/env bash $theme_script --apply ayu-mirage Ayu Mirage" \
+  "$test_root/systemd-run.log" \
+  || fail "the transient service did not receive the selected theme"
+
+run_script "$theme_script" --apply ayu-mirage "Ayu Mirage"
 grep -Fxq 'ayu-mirage --restart-chrome' "$test_root/theme.log" ||
-  fail "the theme picker did not apply the selected theme and refresh Chrome"
+  fail "the background worker did not apply the selected theme and refresh Chrome"
+grep -Fq -- 'Desktop theme set Ayu Mirage' "$test_root/notify.log" \
+  || fail "the background worker did not report completion"
 grep -Fq -- 'Set Desktop Theme' "$test_root/dmenu.log" ||
   fail "the theme command did not open a searchable picker"
 grep -Fq -- 'Desktop themes ({count})' "$test_root/dmenu.log" ||
