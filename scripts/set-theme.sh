@@ -402,7 +402,7 @@ else
   skipped+=("Tauri Explorer (no config at $config)")
 fi
 
-# --- Chrome ---
+# --- Chrome (deferred until the final application phase) ---
 # Chrome keeps exactly one theme installed at a time and offers no way to
 # reload an unpacked theme from disk, so "switching" the theme really means
 # installing a different extension. The only silent, scriptable install path
@@ -427,6 +427,7 @@ chrome_theme_dir="$HOME/chrome-themes-$slug"
 # Also check alternate location
 [[ ! -d "$chrome_theme_dir" ]] && chrome_theme_dir="$HOME/.local/share/chrome-themes/$slug"
 
+apply_chrome_theme() {
 # First Chromium-family binary on PATH. It is both the packer (--pack-extension
 # is a short-lived mode that works alongside a running browser) and, if the
 # restart prompt is accepted, the browser we relaunch.
@@ -626,6 +627,7 @@ EOF
     fi
   fi
 fi
+}
 
 # --- Dark Reader (browser extension) ---
 # Dark Reader has no external settings API, and directly editing its live
@@ -1075,6 +1077,11 @@ elif [[ -d "$theme_dir" ]]; then
 else
   skipped+=("Powerlevel10k (no theme dir at $theme_dir)")
 fi
+
+# Chrome is intentionally last: its controlled restart can wait for the browser
+# to exit and restore its windows, so every other application and the persisted
+# desktop state must be complete before that long-running boundary begins.
+apply_chrome_theme
 
 # --- Summary ---
 echo ""

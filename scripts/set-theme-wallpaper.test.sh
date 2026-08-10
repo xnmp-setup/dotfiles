@@ -210,6 +210,11 @@ current_chrome_id=$(chrome_theme_extension_id "$chrome_state/key.pem")
   || fail "the obsolete Chrome descriptor was not removed"
 assert_contains "$test_root/default.out" \
   "Chrome had blocked the previous external theme; reset its install identity"
+state_output_line=$(grep -nF '✓ Local theme state' "$test_root/default.out" | cut -d: -f1)
+chrome_output_line=$(grep -nF '✓ Chrome' "$test_root/default.out" | cut -d: -f1)
+[[ -n "$state_output_line" && -n "$chrome_output_line" \
+  && "$state_output_line" -lt "$chrome_output_line" ]] \
+  || fail "Chrome did not run after the persisted desktop theme update"
 assert_contains "$test_root/chrome-restart.log" '-TERM -x chrome'
 assert_contains "$test_root/chrome-restart.log" \
   "-f $test_root/bin/google-chrome-stable"
