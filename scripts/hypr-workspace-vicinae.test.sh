@@ -64,11 +64,16 @@ cat >"$test_root/bin/systemd-run" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$TEST_SYSTEMD_RUN_LOG"
 EOF
+cat >"$test_root/bin/flock" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$TEST_THEME_LOCK_LOG"
+[[ "${TEST_THEME_LOCKED:-0}" == 0 ]]
+EOF
 
 chmod +x "$test_root/home/.local/bin/hypr-workspace" \
   "$test_root/home/.local/share/chezmoi/scripts/set-theme.sh" \
   "$test_root/bin/vicinae" "$test_root/bin/notify-send" \
-  "$test_root/bin/systemd-run"
+  "$test_root/bin/systemd-run" "$test_root/bin/flock"
 
 run_script() {
   HOME="$test_root/home" \
@@ -78,6 +83,8 @@ run_script() {
     TEST_DMENU_INPUT_LOG="$test_root/dmenu-input.log" \
     TEST_NOTIFY_LOG="$test_root/notify.log" \
     TEST_SYSTEMD_RUN_LOG="$test_root/systemd-run.log" \
+    TEST_THEME_LOCK_LOG="$test_root/theme-lock.log" \
+    TEST_THEME_LOCKED="${TEST_THEME_LOCKED:-0}" \
     TEST_THEME_LOG="$test_root/theme.log" \
     TEST_EMPTY="${TEST_EMPTY:-0}" \
     HYPRLAND_INSTANCE_SIGNATURE=test-hyprland \
@@ -90,6 +97,7 @@ run_script() {
 : >"$test_root/notify.log"
 : >"$test_root/theme.log"
 : >"$test_root/systemd-run.log"
+: >"$test_root/theme-lock.log"
 
 run_script "$repo_root/dot_local/share/vicinae/scripts/restore-workspace"
 grep -Fxq $'restore\t2' "$test_root/workspace.log" ||
@@ -137,6 +145,8 @@ grep -Fxq 'ayu-mirage --restart-chrome' "$test_root/theme.log" ||
   fail "the background worker did not apply the selected theme and refresh Chrome"
 grep -Fq -- 'Desktop theme set Ayu Mirage' "$test_root/notify.log" \
   || fail "the background worker did not report completion"
+[[ -s "$test_root/theme-lock.log" ]] \
+  || fail "the background worker did not acquire the theme application lock"
 grep -Fq -- 'Set Desktop Theme' "$test_root/dmenu.log" ||
   fail "the theme command did not open a searchable picker"
 grep -Fq -- 'Desktop themes ({count})' "$test_root/dmenu.log" ||
@@ -155,6 +165,16 @@ grep -Fxq '# @vicinae.mode silent' "$theme_script" ||
 if grep -Fq '# @vicinae.argument' "$theme_script"; then
   fail "the theme command still asks for a free-form argument"
 fi
+
+: >"$test_root/theme.log"
+: >"$test_root/notify.log"
+if TEST_THEME_LOCKED=1 run_script "$theme_script" --apply cosmic-dusk "Cosmic Dusk"; then
+  fail "a second theme worker ignored the active application lock"
+fi
+[[ ! -s "$test_root/theme.log" ]] \
+  || fail "a contending theme worker reached the theme command"
+grep -Fq -- 'Desktop theme already changing' "$test_root/notify.log" \
+  || fail "lock contention was not explained to the user"
 
 : >"$test_root/theme.log"
 TEST_DMENU_CANCEL=1 run_script "$theme_script"

@@ -21,6 +21,18 @@ apply_theme() {
   local slug="$1"
   local title="$2"
   local output error
+  local state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/desktop-theme"
+  local theme_lock_fd
+
+  mkdir -p "$state_dir"
+  if command -v flock >/dev/null 2>&1; then
+    exec {theme_lock_fd}>"$state_dir/apply.lock"
+    if ! flock -n "$theme_lock_fd"; then
+      notify "Desktop theme already changing" \
+        "Wait for the current Chrome restart to finish before choosing another theme."
+      return 75
+    fi
+  fi
 
   if output=$(bash "$theme_cli" "$slug" --restart-chrome 2>&1); then
     notify "Desktop theme set" "$title"

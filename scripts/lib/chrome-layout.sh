@@ -178,6 +178,37 @@ chrome_layout_move_to_workspace() {
     "hl.dsp.window.move({ workspace = $workspace_lua, follow = false, window = $window_lua })"
 }
 
+chrome_layout_detach_from_mixed_group() {
+  local address="$1"
+  local chrome_addresses="$2"
+  local clients window_lua
+
+  clients=$(hyprctl clients -j 2>/dev/null) || return 1
+  if jq -e --arg address "$address" --argjson chrome "$chrome_addresses" '
+    [.[] | select(.address == $address)] | first
+    | select(. != null)
+    | (.grouped // []) as $members
+    | select(($members | length) > 1)
+    | select(any($members[]; . as $member | $chrome | index($member) == null))
+  ' <<<"$clients" &>/dev/null; then
+    # Chrome may have been adopted by terminal_grouping.lua while its restored
+    # windows were opening. Extract only Chrome before placing it; moving a
+    # native group member directly would drag the Ghostty anchor with it.
+    window_lua=$(chrome_layout_lua_string "address:$address")
+    chrome_layout_dispatch \
+      "hl.dsp.window.move({ out_of_group = true, window = $window_lua })" || return 1
+  fi
+}
+
+chrome_layout_move_chrome_to_workspace() {
+  local address="$1"
+  local workspace="$2"
+  local chrome_addresses="$3"
+
+  chrome_layout_detach_from_mixed_group "$address" "$chrome_addresses" || return 1
+  chrome_layout_move_to_workspace "$address" "$workspace"
+}
+
 chrome_layout_group_direction() {
   local from="$1"
   local to="$2"
@@ -199,11 +230,28 @@ chrome_layout_group_direction() {
   ' <<<"$clients"
 }
 
+chrome_layout_move_members_to_workspace() {
+  local members="$1"
+  local workspace="$2"
+  local chrome_addresses="$3"
+  local member
+  local failures=0
+
+  while IFS= read -r member; do
+    chrome_layout_move_chrome_to_workspace \
+      "$member" "$workspace" "$chrome_addresses" || ((failures += 1))
+  done < <(jq -r '.[]' <<<"$members")
+
+  ((failures == 0))
+}
+
 chrome_layout_restore_group() {
   local group="$1"
   local group_number="$2"
+  local chrome_addresses="$3"
   local workspace visible_address temp_workspace
-  local clients available existing_groups member anchor direction window_lua direction_lua
+  local clients available chrome_members surviving_members existing_groups
+  local member anchor direction window_lua direction_lua
   local group_index anchor_lua
 
   workspace=$(jq -r '.workspace' <<<"$group")
@@ -215,15 +263,45 @@ chrome_layout_restore_group() {
     | select([.[] | .address] | index($member))
     | $member
   ]' <<<"$clients")
+  chrome_members=$(jq -c --argjson chrome "$chrome_addresses" \
+    '[.[] | select(. as $address | $chrome | index($address))]' <<<"$available")
+  surviving_members=$(jq -c --argjson chrome "$chrome_addresses" \
+    '[.[] | select(. as $address | $chrome | index($address) == null)]' <<<"$available")
 
-  if (($(jq 'length' <<<"$available") < 2)); then
-    member=$(jq -r 'first // empty' <<<"$available")
-    [[ -z "$member" ]] || chrome_layout_move_to_workspace "$member" "$workspace"
+  # A mixed group is outside the ownership boundary of a Chrome restart.
+  # Restore only its Chrome members to the saved workspace; the surviving
+  # applications are never targeted or moved. Recreating the exact mixed group
+  # is less important than never stranding unrelated windows on our temporary
+  # workspace when reconstruction fails.
+  if (($(jq 'length' <<<"$surviving_members") > 0)); then
+    chrome_layout_move_members_to_workspace \
+      "$chrome_members" "$workspace" "$chrome_addresses"
     return
   fi
 
-  # A group can contain non-Chrome windows that survived the restart. Dissolve
-  # each surviving group once, then rebuild the original member set together.
+  available="$chrome_members"
+
+  if (($(jq 'length' <<<"$available") < 2)); then
+    member=$(jq -r 'first // empty' <<<"$available")
+    [[ -z "$member" ]] || chrome_layout_move_chrome_to_workspace \
+      "$member" "$workspace" "$chrome_addresses"
+    return
+  fi
+
+  # A compositor-side window.open handler can group a new Chrome surface with
+  # an unrelated live window before this restore sees it. Remove each Chrome
+  # member from such a mixed group before inspecting Chrome-only groups below.
+  while IFS= read -r member; do
+    if ! chrome_layout_detach_from_mixed_group "$member" "$chrome_addresses"; then
+      chrome_layout_move_members_to_workspace \
+        "$available" "$workspace" "$chrome_addresses" || true
+      return 1
+    fi
+  done < <(jq -r '.[]' <<<"$available")
+  clients=$(hyprctl clients -j 2>/dev/null) || return 1
+
+  # From this point every address is a restored Chrome window. Dissolve each
+  # existing Chrome-only group once, then rebuild the original member set.
   existing_groups=$(jq -c --argjson members "$available" '[
     .[]
     | select(.address as $address | $members | index($address))
@@ -232,26 +310,47 @@ chrome_layout_restore_group() {
   ] | unique_by(.key)' <<<"$clients")
   while IFS= read -r member; do
     window_lua=$(chrome_layout_lua_string "address:$member")
-    chrome_layout_dispatch "hl.dsp.group.toggle({ window = $window_lua })" || return 1
+    if ! chrome_layout_dispatch "hl.dsp.group.toggle({ window = $window_lua })"; then
+      chrome_layout_move_members_to_workspace \
+        "$available" "$workspace" "$chrome_addresses" || true
+      return 1
+    fi
   done < <(jq -r '.[].address' <<<"$existing_groups")
 
   while IFS= read -r member; do
-    chrome_layout_move_to_workspace "$member" "$temp_workspace" || return 1
+    if ! chrome_layout_move_chrome_to_workspace \
+      "$member" "$temp_workspace" "$chrome_addresses"; then
+      chrome_layout_move_members_to_workspace \
+        "$available" "$workspace" "$chrome_addresses" || true
+      return 1
+    fi
   done < <(jq -r '.[]' <<<"$available")
 
   anchor=$(jq -r '.[0]' <<<"$available")
   while IFS= read -r member; do
-    direction=$(chrome_layout_group_direction "$member" "$anchor") || return 1
-    [[ -n "$direction" ]] || return 1
+    if ! direction=$(chrome_layout_group_direction "$member" "$anchor") \
+      || [[ -z "$direction" ]]; then
+      chrome_layout_move_members_to_workspace \
+        "$available" "$workspace" "$chrome_addresses" || true
+      return 1
+    fi
     window_lua=$(chrome_layout_lua_string "address:$member")
     direction_lua=$(chrome_layout_lua_string "$direction")
-    chrome_layout_dispatch \
-      "hl.dsp.window.move({ into_or_create_group = $direction_lua, window = $window_lua })" ||
+    if ! chrome_layout_dispatch \
+      "hl.dsp.window.move({ into_or_create_group = $direction_lua, window = $window_lua })"; then
+      chrome_layout_move_members_to_workspace \
+        "$available" "$workspace" "$chrome_addresses" || true
       return 1
+    fi
   done < <(jq -r '.[1:][]' <<<"$available")
 
   # Moving one member of a native group moves the complete group.
-  chrome_layout_move_to_workspace "$anchor" "$workspace" || return 1
+  if ! chrome_layout_move_chrome_to_workspace \
+    "$anchor" "$workspace" "$chrome_addresses"; then
+    chrome_layout_move_members_to_workspace \
+      "$available" "$workspace" "$chrome_addresses" || true
+    return 1
+  fi
 
   clients=$(hyprctl clients -j 2>/dev/null) || return 1
   group_index=$(jq -r --arg anchor "$anchor" --arg visible "$visible_address" '
@@ -301,12 +400,14 @@ chrome_layout_resolve_snapshot() {
 chrome_layout_restore() {
   local snapshot="$1"
   local timeout_seconds="${2:-20}"
-  local assignment plan grouped_addresses window group group_number active_address active_lua
+  local assignment plan chrome_addresses grouped_addresses window group group_number
+  local active_address active_lua
   local address workspace
   local restore_failures=0
 
   assignment=$(chrome_layout_wait_for_windows "$snapshot" "$timeout_seconds") || return 1
   plan=$(chrome_layout_resolve_snapshot "$snapshot" "$(jq '.pairs' <<<"$assignment")")
+  chrome_addresses=$(jq -c '[.windows[].address]' <<<"$plan")
   grouped_addresses=$(jq -c '[.groups[].members[]] | unique' <<<"$plan")
 
   while IFS= read -r window; do
@@ -314,14 +415,16 @@ chrome_layout_restore() {
     if ! jq -e --arg address "$address" 'index($address) != null' \
       <<<"$grouped_addresses" &>/dev/null; then
       workspace=$(jq -r '.workspace' <<<"$window")
-      chrome_layout_move_to_workspace "$address" "$workspace" || ((restore_failures += 1))
+      chrome_layout_move_chrome_to_workspace \
+        "$address" "$workspace" "$chrome_addresses" || ((restore_failures += 1))
     fi
   done < <(jq -c '.windows[]' <<<"$plan")
 
   group_number=0
   while IFS= read -r group; do
     ((group_number += 1))
-    chrome_layout_restore_group "$group" "$group_number" || ((restore_failures += 1))
+    chrome_layout_restore_group "$group" "$group_number" "$chrome_addresses" \
+      || ((restore_failures += 1))
   done < <(jq -c '.groups[]' <<<"$plan")
 
   active_address=$(jq -r '.active_address // empty' <<<"$plan")
