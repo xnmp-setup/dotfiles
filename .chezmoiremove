@@ -19,3 +19,9 @@
 .local/share/vicinae/scripts/restore-desktop-session
 .local/share/vicinae/scripts/delete-desktop-session
 .config/hypr/session_catalog.lua
+
+# WezTerm searches ~/.config/wezterm/wezterm.lua before ~/.wezterm.lua. Keep
+# the entrypoint and its required modules together in the supported module
+# directory; the legacy root entrypoint made Windows load a split layout and
+# caused theme persistence to edit the wrong wezterm_appearance.lua.
+.wezterm.lua
