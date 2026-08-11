@@ -9,16 +9,16 @@ local builtins = {
   ['Spartan'] = { background = '#000000', foreground = '#ffffff' },
 }
 
-package.preload.wezterm = function()
-  return {
-    action = {},
-    config_file = '/home/u/.config/wezterm/wezterm.lua',
-    target_triple = 'x86_64-unknown-linux-gnu',
-    color = { get_builtin_schemes = function() return builtins end },
-    gui = { enumerate_gpus = function() return {} end },
-    font_with_fallback = function(fonts) return fonts end,
-  }
-end
+local wezterm_stub = {
+  action = {},
+  config_file = '/home/u/.config/wezterm/wezterm.lua',
+  home_dir = '/home/u',
+  target_triple = 'x86_64-unknown-linux-gnu',
+  color = { get_builtin_schemes = function() return builtins end },
+  gui = { enumerate_gpus = function() return {} end },
+  font_with_fallback = function(fonts) return fonts end,
+}
+package.preload.wezterm = function() return wezterm_stub end
 
 local appearance = require 'wezterm_appearance'
 
@@ -102,6 +102,17 @@ eq('cursor blink ease in is constant', applied.cursor_blink_ease_in, 'Constant')
 eq('cursor blink ease out is constant', applied.cursor_blink_ease_out, 'Constant')
 eq('interactive frame cap is unchanged', applied.max_fps, 120)
 eq('font rasterization is stable across display DPI', applied.freetype_load_flags, 'NO_HINTING')
+eq('non-Windows does not add a Windows font directory', applied.font_dirs, nil)
+
+-- Windows user-installed fonts are not consistently visible through the system
+-- locator. The explicit directory keeps Inter as the title face; its missing
+-- icon glyphs still fall through to the monospaced fonts in window_frame.font.
+wezterm_stub.target_triple = 'x86_64-pc-windows-msvc'
+wezterm_stub.home_dir = 'C:\\Users\\u'
+local windows_applied = {}
+appearance.apply(windows_applied)
+eq('Windows scans per-user fonts', windows_applied.font_dirs[1],
+  'C:\\Users\\u/AppData/Local/Microsoft/Windows/Fonts')
 
 io.write(string.format('\n%d passed, %d failed\n', passed, failed))
 os.exit(failed == 0 and 0 or 1)

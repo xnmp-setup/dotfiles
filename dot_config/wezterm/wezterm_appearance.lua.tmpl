@@ -199,6 +199,14 @@ function M.apply(config)
   config.tab_max_width = 32
   config.status_update_interval = M.status_update_interval_ms
   local scheme = M.resolve_scheme(config, config.color_scheme)
+  -- Per-user Windows fonts can exist on disk without DirectWrite exposing every
+  -- family to WezTerm. Scan the directory explicitly so Inter resolves instead
+  -- of falling through to the first registered monospace fallback.
+  if wezterm.target_triple:find('windows') then
+    config.font_dirs = {
+      wezterm.home_dir .. '/AppData/Local/Microsoft/Windows/Fonts',
+    }
+  end
   -- Inter for the label text; fall back to Hack Nerd Font so the per-app tab
   -- icons (editor/git/docker/… — see wezterm_tabbar.lua) have glyphs to render. Inter has
   -- no Private Use Area glyphs, so without the fallback they'd show as tofu.
