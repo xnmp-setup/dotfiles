@@ -220,8 +220,7 @@ function M.setup(deps)
     -- Prefer the WEZTERM_PROG user var over foreground_process_name so WSL panes
     -- resolve to the real command, not the wslhost.exe proxy. A recognized agent
     -- lifecycle variable supplies the narrowly gated fallback for older WSL panes.
-    local proc, recovered_wsl_agent =
-      resolve_foreground(pane_info.user_vars, pane_info.foreground_process_name)
+    local proc = resolve_foreground(pane_info.user_vars, pane_info.foreground_process_name)
 
     -- Window focus controls emphasis such as the underline and marker animation.
     -- It must not control the title palette: WezTerm keeps the selected button's
@@ -261,12 +260,16 @@ function M.setup(deps)
     local is_claude = agent_owns_title and agent == 'claude'
     local is_codex = agent_owns_title and agent == 'codex'
 
-    -- Existing WSL panes may predate the shell hook that publishes
-    -- WEZTERM_PROG. The agent lifecycle hook still supplies agent_kind, which
-    -- lets resolve_foreground identify the agent without mistaking arbitrary
-    -- wslhost.exe panes for it. The Windows proxy title carries no useful
+    -- Windows exposes every WSL foreground process as wslhost.exe. Once either
+    -- WEZTERM_PROG or the agent lifecycle variable has authoritatively resolved
+    -- this pane to Claude/Codex, the matching proxy title carries no useful
     -- identity, so use the cwd until the agent publishes a real title.
-    if recovered_wsl_agent and title:lower():match('^wslhost%.exe$') then
+    local raw_proc = pane_info.foreground_process_name or ''
+    local raw_name = (raw_proc:match('[^/\\]+$') or raw_proc):lower()
+    if agent_owns_title
+      and raw_name == 'wslhost.exe'
+      and title:lower() == 'wslhost.exe'
+    then
       title = cwd_basename(pane_info.current_working_dir)
     end
 

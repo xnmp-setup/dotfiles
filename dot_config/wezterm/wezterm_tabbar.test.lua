@@ -176,6 +176,18 @@ eq(
 )
 
 eq(
+  'codex/WSL proxy with shell identity uses marker and cwd',
+  render {
+    tab_id = 33,
+    title = 'wslhost.exe',
+    process = 'C:\\Windows\\System32\\wslhost.exe',
+    cwd = 'file://host/work/my-project/',
+    user_vars = { WEZTERM_PROG = 'codex' },
+  },
+  '  ⬢︎ my-project '
+)
+
+eq(
   'claude/WSL proxy with lifecycle identity uses marker and cwd',
   render {
     tab_id = 32,

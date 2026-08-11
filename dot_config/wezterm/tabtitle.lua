@@ -47,21 +47,20 @@ end
 -- exception is an explicitly identified Claude/Codex pane behind wslhost.exe:
 -- old WSL shells may predate the hook, but their lifecycle user variable still
 -- gives an authoritative foreground agent. Returns the command's first word;
--- callers basename it and strip any trailing .exe. The second result reports
--- whether that narrow WSL recovery path was used.
+-- callers basename it and strip any trailing .exe.
 function M.resolve_foreground(user_vars, foreground_process_name)
   user_vars = user_vars or {}
   local prog = user_vars.WEZTERM_PROG
   if prog and prog ~= '' then
-    return prog:match('^%S+') or prog, false
+    return prog:match('^%S+') or prog
   end
   local foreground = foreground_process_name or ''
   local basename = (foreground:match('[^/\\]+$') or foreground):lower()
   local agent = user_vars.agent_kind
   if basename == 'wslhost.exe' and (agent == 'claude' or agent == 'codex') then
-    return agent, true
+    return agent
   end
-  return foreground, false
+  return foreground
 end
 
 -- Body of a non-agent ("plain") tab title. `proc_name` is the resolved
