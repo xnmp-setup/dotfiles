@@ -22,7 +22,6 @@ function M.apply(config, deps)
   local activate_utility_chord = deps.utilities.activate_chord
   local close_pane = deps.close.close_pane
   local close_tab = deps.close.close_tab
-  local confirmation_active = deps.close.confirmation_active
   local copy_previous_command = deps.output.copy_previous_command
   local reopen_tab = deps.recent_tabs.reopen_tab
 
@@ -40,19 +39,6 @@ function M.apply(config, deps)
     -- panes too.
     { key = 'w', mods = 'CTRL', action = close_pane() },
     { key = 'w', mods = 'SUPER', action = close_tab() },
-    -- Enter: the close-confirmation overlay natively accepts only y/n; while
-    -- it is up, translate Enter to y so Enter confirms too. Every other Enter
-    -- is forwarded as a real Enter keypress. Windows uses the raw carriage-return
-    -- byte so the synthetic key cannot re-enter this binding.
-    { key = 'Enter', mods = 'NONE', action = wezterm.action_callback(function(window, pane)
-      if confirmation_active(window, pane) then
-        window:perform_action(act.SendKey { key = 'y' }, pane)
-      elseif is_windows then
-        window:perform_action(act.SendString '\r', pane)
-      else
-        window:perform_action(act.SendKey { key = 'Enter' }, pane)
-      end
-    end) },
     { key = 't', mods = 'CTRL', action = spawn_tab_next('CurrentPaneDomain') },
     -- Browser-style LIFO restore: layout/cwds always, recognized coding agents
     -- via their explicit resume commands. See wezterm_recent_tabs.lua.

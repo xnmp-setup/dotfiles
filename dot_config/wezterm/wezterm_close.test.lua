@@ -56,9 +56,6 @@ local function pane(info, fallback_name, user_vars)
   }
 end
 
--- The overlay pane runs no process, which is how confirmation_active spots it.
-local overlay_pane = { get_foreground_process_name = function() return nil end }
-
 eq('basename/unix', close_module.process_basename('/usr/bin/bun'), 'bun')
 eq('basename/windows', close_module.process_basename('C:\\Tools\\pwsh.exe'), 'pwsh.exe')
 eq('basename/nil', close_module.process_basename(nil), nil)
@@ -109,10 +106,9 @@ active_panes = { idle_shell, pane(proc('/usr/bin/bash')) }
 close.close_pane()(window, idle_shell)
 eq('pane/idle shell closes immediately', last().action.kind, 'CloseCurrentPane')
 eq('pane/idle shell skips confirmation', last().action.value.confirm, false)
-eq('pane/idle shell leaves enter alone', close.confirmation_active(window, overlay_pane), false)
 eq('pane/close is not remembered as tab', remembered_tabs, 0)
 
--- Stateful pane: centered Confirmation overlay; Enter maps to y while it is up.
+-- Stateful pane: centered native Confirmation overlay.
 local claude = pane(proc('/home/x/.local/share/claude/versions/2.1.222'),
   '/home/x/.local/share/claude/versions/2.1.222')
 active_panes = { claude, idle_shell }
@@ -121,23 +117,17 @@ local confirmation = last().action
 eq('pane/stateful uses confirmation overlay', confirmation.kind, 'Confirmation')
 contains('pane/message names scope', confirmation.value.message, 'Close this pane?')
 contains('pane/message names process', confirmation.value.message, 'claude')
-eq('pane/enter maps to y on the overlay', close.confirmation_active(window, overlay_pane), true)
-eq('pane/enter stays normal in a process pane', close.confirmation_active(window, claude), false)
-active_tab_id = 8
-eq('pane/enter stays normal in another tab', close.confirmation_active(window, overlay_pane), false)
-active_tab_id = 7
+contains('pane/message gives native accept key', confirmation.value.message, 'Y closes')
 
--- Accepting closes the pane and releases the Enter mapping.
+-- Accepting closes the pane.
 confirmation.value.action(window, claude)
 eq('pane/accept closes pane', last().action.kind, 'CloseCurrentPane')
-eq('pane/accept releases enter', close.confirmation_active(window, overlay_pane), false)
 
--- Cancelling (n/Esc/mouse) releases the Enter mapping without closing.
+-- Cancelling (n/Esc/mouse) does not close.
 close.close_pane()(window, claude)
 local before_cancel = #performed
 last().action.value.cancel(window)
 eq('pane/cancel closes nothing', #performed, before_cancel)
-eq('pane/cancel releases enter', close.confirmation_active(window, overlay_pane), false)
 
 -- Tab close sees hidden stateful panes.
 local hidden_terminal = pane(nested)

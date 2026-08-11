@@ -40,7 +40,6 @@ require('wezterm_keybindings').apply(config, {
   close = {
     close_pane = action_factory('close-pane'),
     close_tab = action_factory('close-tab'),
-    confirmation_active = function() return false end,
   },
   output = { copy_previous_command = marker('copy-previous-command') },
   recent_tabs = {
@@ -91,10 +90,7 @@ local window = {
   end,
 }
 
-local enter = find_binding('Enter', 'NONE')
-enter.action(window, {})
-eq('windows/enter uses raw bytes', performed[#performed].kind, 'SendString')
-eq('windows/enter sends carriage return', performed[#performed].value, '\r')
+eq('windows/enter remains native for selectors and overlays', find_binding('Enter', 'NONE'), nil)
 
 local ctrl_c = find_binding('c', 'CTRL')
 ctrl_c.action(window, {})

@@ -1,11 +1,4 @@
 -- Process-aware pane and tab closing with a centered confirmation overlay.
---
--- The prompt is WezTerm's built-in Confirmation overlay (centered message +
--- [Y]es/[N]o buttons). Its input handling is hardcoded to y/n/Esc/mouse
--- (wezterm-gui/src/overlay/confirm.rs), so Enter-to-confirm is implemented in
--- the Enter keybinding instead: while a confirmation from this module is
--- pending and the active pane is the overlay, Enter is translated to y (see
--- confirmation_active + wezterm_keybindings.lua).
 local wezterm = require 'wezterm'
 local act = wezterm.action
 
@@ -146,7 +139,7 @@ local function confirmation_message(scope, process)
     'ResetAttributes',
     { Text = '\n\n' },
     { Foreground = { Color = '#6b7394' } },
-    { Text = 'Enter closes · Esc cancels' },
+    { Text = 'Y closes · N/Esc cancels' },
     'ResetAttributes',
   }
 end
@@ -154,24 +147,6 @@ end
 local function close_action(scope)
   if scope == 'tab' then return act.CloseCurrentTab { confirm = false } end
   return act.CloseCurrentPane { confirm = false }
-end
-
--- window_id -> tab_id that is showing our confirmation overlay. Used by the
--- Enter keybinding to decide when Enter should mean y. Entries are cleared by
--- the overlay's action/cancel callbacks, which fire on every resolution
--- (y/n/Esc/mouse).
-local pending = {}
-
--- True iff the overlay from this module is up in front of the active pane:
--- the pending tab must be active AND the pane must be the overlay itself,
--- recognizable by having no foreground process (termwiz overlay panes run
--- nothing). The process check keeps Enter normal when focus moved to a
--- sibling pane while the overlay is still showing elsewhere in the tab.
-local function confirmation_active(window, pane)
-  local tab = window:active_tab()
-  if not tab or pending[window:window_id()] ~= tab:tab_id() then return false end
-  local ok, name = pcall(function() return pane:get_foreground_process_name() end)
-  return not ok or name == nil or name == ''
 end
 
 local function perform_close(window, pane, scope, before_close_tab, closes_tab, log)
@@ -205,16 +180,13 @@ local function confirm_or_close(window, pane, scope, panes, before_close_tab, cl
   end
 
   log('close.confirmation_shown', { process = process, scope = scope })
-  pending[window:window_id()] = window:active_tab():tab_id()
   window:perform_action(act.Confirmation {
     message = confirmation_message(scope, process),
     action = wezterm.action_callback(function(confirm_window, confirm_pane)
-      pending[confirm_window:window_id()] = nil
       log('close.confirmation_accepted', { scope = scope })
       perform_close(confirm_window, confirm_pane, scope, before_close_tab, closes_tab, log)
     end),
     cancel = wezterm.action_callback(function(confirm_window)
-      pending[confirm_window:window_id()] = nil
       log('close.confirmation_cancelled', { scope = scope })
     end),
   }, pane)
@@ -225,7 +197,6 @@ function M.setup(opts)
   local before_close_tab = opts.before_close_tab
   local log = opts.log or function() end
   return {
-    confirmation_active = confirmation_active,
     close_pane = function()
       return wezterm.action_callback(function(window, pane)
         local tab = window:active_tab()
