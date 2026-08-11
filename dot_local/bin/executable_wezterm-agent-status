@@ -328,7 +328,7 @@ fi
 # hook to the first real pty; under WSL that pty is bridged to the WezTerm pane,
 # the same path the shell's own OSC-7 output takes. The walk is bounded by pid
 # reaching 1 (init), so it can't loop forever even if a ppid lookup fails.
-if [ -z "$tty_dev" ]; then
+if [ -z "$tty_dev" ] && [ -n "${WSL_DISTRO_NAME:-}" ]; then
   pid=$PPID
   while [ -n "$pid" ] && [ "$pid" -gt 1 ]; do
     t=$(ps -o tty= -p "$pid" 2>/dev/null | tr -d ' ')
