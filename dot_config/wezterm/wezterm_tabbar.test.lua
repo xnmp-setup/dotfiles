@@ -163,6 +163,30 @@ eq(
   '  ⬢︎ chezmoi '
 )
 
+eq(
+  'codex/WSL proxy with lifecycle identity uses marker and cwd',
+  render {
+    tab_id = 31,
+    title = 'wslhost.exe',
+    process = 'C:\\Windows\\System32\\wslhost.exe',
+    cwd = 'file://host/work/my-project/',
+    user_vars = { agent_kind = 'codex' },
+  },
+  '  ⬢︎ my-project '
+)
+
+eq(
+  'claude/WSL proxy with lifecycle identity uses marker and cwd',
+  render {
+    tab_id = 32,
+    title = 'wslhost.exe',
+    process = 'C:\\Windows\\System32\\wslhost.exe',
+    cwd = 'file://host/work/my-project/',
+    user_vars = { agent_kind = 'claude' },
+  },
+  '  ❋︎ my-project '
+)
+
 local thread_id = '019fd540-6ed7-72a1-8ead-1234567890ab'
 eq(
   'codex/default thread id uses cwd',

@@ -94,6 +94,10 @@ eq('resolve/empty var falls back', resolve({ WEZTERM_PROG = '' }, '/x/pwsh.exe')
 eq('resolve/var wins over proxy', resolve({ WEZTERM_PROG = 'zsh' }, 'C:\\wslhost.exe'), 'zsh')
 eq('resolve/var first word', resolve({ WEZTERM_PROG = 'git status' }, 'C:\\wslhost.exe'), 'git')
 eq('resolve/var claude cmdline', resolve({ WEZTERM_PROG = 'claude --resume' }, 'wslhost.exe'), 'claude')
+eq('resolve/agent kind recovers from WSL proxy',
+  resolve({ agent_kind = 'codex' }, 'C:\\Windows\\System32\\wslhost.exe'), 'codex')
+eq('resolve/WSL proxy without agent remains unchanged',
+  resolve({}, 'C:\\Windows\\System32\\wslhost.exe'), 'C:\\Windows\\System32\\wslhost.exe')
 
 -- ---------- plain_tab_title ----------
 local plain = require('tabtitle').plain_tab_title

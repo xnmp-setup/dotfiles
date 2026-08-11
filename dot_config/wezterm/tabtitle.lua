@@ -43,17 +43,25 @@ end
 -- foreground_process_name only ever sees the wslhost.exe proxy, never the real
 -- process, so prefer the WEZTERM_PROG user var the zsh hooks publish from inside
 -- WSL (precmd sets it to "zsh" at the prompt, preexec to the running command
--- line). Fall back to the OS process name for panes without the hook — every
--- macOS/Linux pane, and the Windows-local pwsh domain — where the var is unset
--- and this returns `foreground_process_name` verbatim (identical to the old
--- inline behavior). Returns the command's first word; callers basename it and
--- strip any trailing .exe.
+-- line). Fall back to the OS process name for panes without the hook. The sole
+-- exception is an explicitly identified Claude/Codex pane behind wslhost.exe:
+-- old WSL shells may predate the hook, but their lifecycle user variable still
+-- gives an authoritative foreground agent. Returns the command's first word;
+-- callers basename it and strip any trailing .exe. The second result reports
+-- whether that narrow WSL recovery path was used.
 function M.resolve_foreground(user_vars, foreground_process_name)
-  local prog = (user_vars or {}).WEZTERM_PROG
+  user_vars = user_vars or {}
+  local prog = user_vars.WEZTERM_PROG
   if prog and prog ~= '' then
-    return prog:match('^%S+') or prog
+    return prog:match('^%S+') or prog, false
   end
-  return foreground_process_name or ''
+  local foreground = foreground_process_name or ''
+  local basename = (foreground:match('[^/\\]+$') or foreground):lower()
+  local agent = user_vars.agent_kind
+  if basename == 'wslhost.exe' and (agent == 'claude' or agent == 'codex') then
+    return agent, true
+  end
+  return foreground, false
 end
 
 -- Body of a non-agent ("plain") tab title. `proc_name` is the resolved
