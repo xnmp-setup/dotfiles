@@ -12,6 +12,7 @@
 -- stateful module graph fresh before constructing new handlers; otherwise a
 -- chezmoi apply + `hyprctl reload` rereads this file but executes the old code.
 for _, module in ipairs({
+    "app_switcher",
     "display_mirror",
     "expose",
     "untiled_mode",
@@ -19,6 +20,8 @@ for _, module in ipairs({
     "workspace_catalog",
     "session_model",
     "session_restore",
+    "window_actions",
+    "window_model",
 }) do
     package.loaded[module] = nil
 end
@@ -617,17 +620,20 @@ hl.bind("F4", app_switcher.toggle({
     classes = { obsidian = true },
     launch = "obsidian",
     new_window = "obsidian eval 'code=app.workspace.openPopoutLeaf()'",
+    cycle_windows = true,
 }))
 hl.bind("F6", app_switcher.toggle({
     name = "chrome",
     classes = { ["google-chrome"] = true },
     launch = "google-chrome-stable",
     new_window = "google-chrome-stable --new-window",
+    cycle_windows = true,
 }))
 hl.bind("F7", app_switcher.toggle({
     name = "tauri-explorer",
     classes = { ["tauri-explorer"] = true },
     launch = "tauri-explorer",
+    cycle_windows = true,
 }))
 -- Zed's binary is `zeditor` on both nixpkgs and Arch (the name `zed` is taken
 -- by the ZFS event daemon) but `zed` in upstream's own installer and on macOS.

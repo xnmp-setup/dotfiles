@@ -426,6 +426,8 @@ do
 
     equal("previous group plan returns to the last focused member",
         window_model.previous_group_plan(chrome, windows).index, 1)
+    equal("previous group plan identifies the exact return target",
+        window_model.previous_group_plan(chrome, windows).target, terminal)
     equal("next group plan would instead advance past it",
         window_model.next_group_plan(chrome).index, 3)
     equal("previous group plan anchors on the shown tab",
@@ -436,6 +438,8 @@ do
     tabs.current, tabs.current_index = terminal, 1
     equal("previous group plan follows the updated focus history",
         window_model.previous_group_plan(terminal, windows).index, 2)
+    equal("next group plan identifies the exact target",
+        window_model.next_group_plan(terminal).target, chrome)
 
     equal("ungrouped windows have no previous-group plan",
         window_model.previous_group_plan(window("plain", "plain", ws, 0), windows), nil)
@@ -1110,12 +1114,55 @@ do
         name = "chrome",
         classes = { ["google-chrome"] = true },
         launch = "chrome",
+        cycle_windows = true,
     })
 
     toggle()
     equal("focused ungrouped apps remain focused", control.active(), chrome)
     equal("focused ungrouped apps do not dispatch", #control.dispatches, 0)
     equal("focused ungrouped apps do not launch", #control.executions, 0)
+end
+
+-- F4/F6/F7 keep the window that preceded the focused app as the return target,
+-- but visit every other window of that app on the current workspace first.
+do
+    local ws, other_ws = { id = 1 }, { id = 2 }
+    local w0 = window("terminal", "terminal", ws, 1)
+    local chrome1 = window("chrome-1", "google-chrome", ws, 0)
+    local chrome2 = window("chrome-2", "google-chrome", ws, 2)
+    local chrome3 = window("chrome-3", "google-chrome", ws, 3)
+    local remote = window("remote", "google-chrome", other_ws, 4)
+    local tabs = group(w0, chrome1, chrome2, chrome3)
+    tabs.current, tabs.current_index = chrome1, 2
+
+    local hl, control = fake_runtime({
+        active = chrome1,
+        windows = { remote, chrome3, w0, chrome1, chrome2 },
+        workspace = ws,
+    })
+    local toggle = app_switcher.new(hl, window_actions.new(hl)).toggle({
+        name = "chrome",
+        classes = { ["google-chrome"] = true },
+        launch = "chrome",
+        cycle_windows = true,
+    })
+
+    toggle()
+    equal("focused app visits its next local window before w0",
+        control.active(), chrome2)
+    chrome2.focus_history_id, chrome1.focus_history_id = 0, 1
+    w0.focus_history_id, chrome3.focus_history_id = 2, 3
+
+    toggle()
+    equal("focused app visits every local app window", control.active(), chrome3)
+    chrome3.focus_history_id, chrome2.focus_history_id = 0, 1
+    chrome1.focus_history_id, w0.focus_history_id = 2, 3
+
+    toggle()
+    equal("focused app returns to w0 only after the local app windows",
+        control.active(), w0)
+    equal("focused app cycle ignores windows on other workspaces",
+        control.active() == remote, false)
 end
 
 do

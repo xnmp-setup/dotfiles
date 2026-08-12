@@ -97,6 +97,7 @@ function M.previous_group_plan(window, windows)
     if not best_index then return nil end
     return {
         index = best_index,
+        target = members[best_index],
         window = group.current or window,
     }
 end
@@ -109,8 +110,10 @@ function M.next_group_plan(window)
     local current = M.group_index(window) or group.current_index
     if not (current and #members > 1) then return nil end
 
+    local index = current % #members + 1
     return {
-        index = current % #members + 1,
+        index = index,
+        target = members[index],
         window = group.current or window,
     }
 end
