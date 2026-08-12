@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+
+set -uo pipefail
+
+source_dir={{ .chezmoi.sourceDir | toJson }}
+# shellcheck source=scripts/lib/theme-colors.sh
+source "$source_dir/scripts/lib/theme-colors.sh"
+# shellcheck source=scripts/lib/theme-state.sh
+source "$source_dir/scripts/lib/theme-state.sh"
+# shellcheck source=scripts/lib/youtube-music-theme.sh
+source "$source_dir/scripts/lib/youtube-music-theme.sh"
+
+state_file=$(desktop_theme_state_file)
+theme_slug=$(desktop_theme_read_state_value "$state_file" slug || true)
+theme_mode=$(desktop_theme_read_state_value "$state_file" mode || true)
+theme_slug=${theme_slug:-nord}
+theme_mode=${theme_mode:-dark}
+palette="$HOME/.config/tauri-explorer/themes/$theme_slug.css"
+target="$HOME/.config/YouTube Music Desktop App/theme.css"
+
+if ! youtube_music_generate_theme "$palette" "$theme_slug" "$theme_mode" "$target"; then
+  echo "youtube-music theme: $youtube_music_theme_error" >&2
+fi

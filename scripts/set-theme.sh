@@ -24,6 +24,8 @@ source "$set_theme_script_dir/lib/darkreader-theme.sh"
 source "$set_theme_script_dir/lib/theme-colors.sh"
 # shellcheck source=lib/theme-state.sh
 source "$set_theme_script_dir/lib/theme-state.sh"
+# shellcheck source=lib/youtube-music-theme.sh
+source "$set_theme_script_dir/lib/youtube-music-theme.sh"
 
 usage() {
   cat <<'EOF'
@@ -400,6 +402,26 @@ elif [[ -f "$config" ]]; then
   skipped+=("Tauri Explorer (jq not installed)")
 else
   skipped+=("Tauri Explorer (no config at $config)")
+fi
+
+# --- YouTube Music Desktop App ---
+# The app's supported customization seam is a custom CSS path. Generate that
+# file from the same palette as the rest of the desktop; no Electron patch or
+# vendored web-app stylesheet is required.
+ytmusic_config_dir="$HOME/.config/YouTube Music Desktop App"
+ytmusic_palette="$HOME/.config/tauri-explorer/themes/$slug.css"
+ytmusic_css="$ytmusic_config_dir/theme.css"
+if [[ -d "$ytmusic_config_dir" ]] || command -v youtube-music-desktop-app &>/dev/null; then
+  if youtube_music_generate_theme \
+    "$ytmusic_palette" "$slug" "$theme_mode" "$ytmusic_css"; then
+    echo "  ✓ YouTube Music → $slug"
+    reload+=("YouTube Music: relaunch")
+    ((changed++))
+  else
+    skipped+=("YouTube Music ($youtube_music_theme_error)")
+  fi
+else
+  skipped+=("YouTube Music (not installed)")
 fi
 
 # --- Chrome (deferred until the final application phase) ---

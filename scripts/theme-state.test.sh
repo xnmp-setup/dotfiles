@@ -75,6 +75,12 @@ rg -Fq '"name": "yosemite-glow"' \
   < <(render_target ".config/vicinae/settings.json")
 rg -Fq '"name": "cosmic-dusk"' \
   < <(render_target ".config/vicinae/settings.json")
+rg -Fq '"hideToTrayOnClose": true' \
+  < <(render_target ".config/YouTube Music Desktop App/config.json")
+rg -Fq '"customCSSEnabled": true' \
+  < <(render_target ".config/YouTube Music Desktop App/config.json")
+rg -Fq "\"customCSSPath\": \"$HOME/.config/YouTube Music Desktop App/theme.css\"" \
+  < <(render_target ".config/YouTube Music Desktop App/config.json")
 
 managed_targets=(
   ".config/ghostty/config"
@@ -84,6 +90,7 @@ managed_targets=(
   ".config/Code/User/settings.json"
   ".config/zed/settings.json"
   ".config/vicinae/settings.json"
+  ".config/YouTube Music Desktop App/config.json"
 )
 absolute_targets=()
 for relative_target in "${managed_targets[@]}"; do
