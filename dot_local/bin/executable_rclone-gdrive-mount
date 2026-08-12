@@ -1,0 +1,67 @@
+#!/bin/sh
+
+set -eu
+
+fail_config() {
+  printf 'rclone-gdrive-mount: %s\n' "$1" >&2
+  exit 78
+}
+
+[ -n "${HOME:-}" ] || fail_config 'HOME is not set'
+
+mount_dir="${HOME}/GDrive"
+config_file="${HOME}/.config/rclone/rclone.conf"
+
+# NixOS keeps system packages and the privileged FUSE helper outside /usr/bin.
+# User-profile paths support rclone installed with nix profile as well.
+if [ -d /run/current-system/sw/bin ]; then
+  platform=NixOS
+  PATH="/run/wrappers/bin:/run/current-system/sw/bin:${HOME}/.nix-profile/bin:/nix/var/nix/profiles/default/bin:/usr/bin:/bin"
+else
+  platform=Arch
+  PATH="/usr/local/bin:/usr/bin:/bin:${PATH:-}"
+fi
+export PATH
+
+rclone_bin=$(command -v rclone) || fail_config "rclone was not found on ${platform} PATH"
+mkdir_bin=$(command -v mkdir) || fail_config "mkdir was not found on ${platform} PATH"
+
+if command -v fusermount3 >/dev/null 2>&1; then
+  :
+elif command -v fusermount >/dev/null 2>&1; then
+  :
+else
+  fail_config "no FUSE unmount helper was found on ${platform} PATH"
+fi
+
+[ -c /dev/fuse ] || fail_config '/dev/fuse is unavailable'
+[ -r "$config_file" ] || fail_config "config is not readable: $config_file"
+
+remotes=$("$rclone_bin" listremotes --config="$config_file") || \
+  fail_config "could not read remotes from $config_file"
+
+remote_found=0
+while IFS= read -r remote; do
+  if [ "$remote" = 'gdrive:' ]; then
+    remote_found=1
+    break
+  fi
+done <<EOF
+$remotes
+EOF
+[ "$remote_found" -eq 1 ] || fail_config "remote gdrive: is not defined in $config_file"
+
+"$mkdir_bin" -p "$mount_dir"
+
+if command -v mountpoint >/dev/null 2>&1 && mountpoint -q "$mount_dir"; then
+  fail_config "mount point is already in use: $mount_dir"
+fi
+
+exec "$rclone_bin" mount gdrive: "$mount_dir" \
+  --config="$config_file" \
+  --vfs-cache-mode=full \
+  --vfs-cache-max-size=10G \
+  --vfs-cache-max-age=168h \
+  --dir-cache-time=48h \
+  --poll-interval=15s \
+  --vfs-read-ahead=128M

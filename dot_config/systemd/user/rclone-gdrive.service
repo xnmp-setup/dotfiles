@@ -2,15 +2,16 @@
 Description=Google Drive mount (rclone)
 Wants=network-online.target
 After=network-online.target
+StartLimitIntervalSec=5min
+StartLimitBurst=5
 
 [Service]
 Type=simple
-# NixOS provides the privileged FUSE helper through /run/wrappers/bin.
-Environment=PATH=/run/wrappers/bin:/run/current-system/sw/bin
-ExecStartPre=/run/current-system/sw/bin/mkdir -p %h/GDrive
-ExecStart=/run/current-system/sw/bin/rclone mount gdrive: %h/GDrive --config=%h/.config/rclone/rclone.conf --vfs-cache-mode=full --vfs-cache-max-size=10G --vfs-cache-max-age=168h --dir-cache-time=48h --poll-interval=15s --vfs-read-ahead=128M
+ExecStart=%h/.local/bin/rclone-gdrive-mount
+SuccessExitStatus=143
 Restart=on-failure
-RestartSec=5s
+RestartPreventExitStatus=78
+RestartSec=30s
 TimeoutStopSec=30s
 
 [Install]
