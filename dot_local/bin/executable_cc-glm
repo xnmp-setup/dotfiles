@@ -1,0 +1,25 @@
+#!/bin/sh
+
+set -eu
+
+config_dir="${HOME}/.cc-glm"
+env_file="${config_dir}/.env"
+
+[ ! -r "$env_file" ] || . "$env_file"
+
+if [ -z "${ZAI_API_KEY:-}" ]; then
+  printf 'cc-glm: ZAI_API_KEY unset — add it to %s\n' "$env_file" >&2
+  exit 1
+fi
+
+command -v claude >/dev/null 2>&1 || {
+  printf 'cc-glm: claude is not installed\n' >&2
+  exit 1
+}
+
+export CLAUDE_CONFIG_DIR="$config_dir"
+export ANTHROPIC_AUTH_TOKEN="$ZAI_API_KEY"
+export ANTHROPIC_BASE_URL="https://api.z.ai/api/anthropic"
+unset ANTHROPIC_API_KEY
+
+exec claude --permission-mode auto "$@"

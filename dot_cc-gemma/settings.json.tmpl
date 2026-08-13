@@ -1,0 +1,140 @@
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:11435",
+    "ANTHROPIC_DEFAULT_FABLE_MODEL": "gemma4:e4b-it-qat",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "gemma4:e4b-it-qat",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "gemma4:e4b-it-qat",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gemma4:e4b-it-qat",
+    "API_TIMEOUT_MS": "3000000",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
+  },
+  "model": "gemma4:e4b-it-qat",
+  "effortLevel": "low",
+  "respectGitignore": false,
+  "cleanupPeriodDays": 365,
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.cc-gemma/hooks/git/block_force_push_delete.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.cc-gemma/hooks/wezterm_status.sh working"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "rtk hook claude"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.cc-gemma/hooks/wezterm_status.sh working"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.cc-gemma/hooks/wezterm_status.sh working"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.cc-gemma/hooks/wezterm_status.sh attention"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.cc-gemma/hooks/wezterm_status.sh notification"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.cc-gemma/hooks/wezterm_status.sh done"
+          },
+          {
+            "type": "command",
+            "command": "python3 ~/.cc-gemma/scripts/render.py --hook"
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "~/.cc-gemma/statusline.sh",
+    "refreshInterval": 30
+  },
+  "enabledPlugins": {
+    "rust-analyzer-lsp@claude-plugins-official": true,
+    "ralph-loop@claude-plugins-official": false,
+    "typescript-lsp@claude-plugins-official": true,
+    "pyright-lsp@claude-plugins-official": true,
+    "svelte-lsp@local": true,
+    "oh-my-claudecode@omc": false,
+    "i-have-adhd@i-have-adhd": true
+  },
+  "extraKnownMarketplaces": {
+    "local": {
+      "source": {
+        "source": "directory",
+        "path": "{{ .chezmoi.homeDir }}/.cc-gemma/plugins/local"
+      }
+    },
+    "omc": {
+      "source": {
+        "source": "git",
+        "url": "https://github.com/Yeachan-Heo/oh-my-claudecode.git"
+      }
+    },
+    "i-have-adhd": {
+      "source": {
+        "source": "github",
+        "repo": "ayghri/i-have-adhd",
+        "path": "{{ .chezmoi.homeDir }}/Repos/keifu/i-have-adhd"
+      }
+    }
+  },
+  "skipDangerousModePermissionPrompt": true,
+  "skipWorkflowUsageWarning": true,
+  "theme": "dark"
+}

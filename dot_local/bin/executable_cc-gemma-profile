@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+
+"""Validate a cc-gemma profile and print its runtime fields as TSV."""
+
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
+
+MAX_CONTEXT_LENGTH = 1_048_576
+MAX_RAM_MIB = 1_048_576
+
+
+def bounded_positive_integer(value: Any, maximum: int) -> bool:
+    return (
+        isinstance(value, int)
+        and not isinstance(value, bool)
+        and 0 < value <= maximum
+    )
+
+
+def load_profile(path: Path) -> tuple[str, int, int]:
+    with path.open(encoding="utf-8") as profile_file:
+        profile = json.load(profile_file)
+
+    if not isinstance(profile, dict):
+        raise ValueError("profile must be a JSON object")
+
+    model = profile.get("model")
+    context_length = profile.get("contextLength")
+    min_available_ram_mib = profile.get("minAvailableRamMiB")
+
+    if not isinstance(model, str) or not model.strip():
+        raise ValueError("model must be a non-empty string")
+    if any(character in model for character in "\t\r\n"):
+        raise ValueError("model must not contain tabs or newlines")
+    if not bounded_positive_integer(context_length, MAX_CONTEXT_LENGTH):
+        raise ValueError(
+            f"contextLength must be an integer from 1 to {MAX_CONTEXT_LENGTH}"
+        )
+    if not bounded_positive_integer(min_available_ram_mib, MAX_RAM_MIB):
+        raise ValueError(
+            f"minAvailableRamMiB must be an integer from 1 to {MAX_RAM_MIB}"
+        )
+
+    return model, context_length, min_available_ram_mib
+
+
+def main() -> int:
+    if len(sys.argv) != 2:
+        print("usage: cc-gemma-profile PROFILE_JSON", file=sys.stderr)
+        return 2
+
+    try:
+        model, context_length, min_available_ram_mib = load_profile(Path(sys.argv[1]))
+    except (OSError, json.JSONDecodeError, ValueError) as error:
+        print(f"cc-gemma-profile: {error}", file=sys.stderr)
+        return 1
+
+    print(f"{model}\t{context_length}\t{min_available_ram_mib}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

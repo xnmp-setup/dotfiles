@@ -926,23 +926,25 @@ if [[ "$TERM_PROGRAM" == "WezTerm" ]]; then
   __wezterm_precmd
 fi
 
-# --- Claude Code against Z.ai GLM Coding Plan -------------------------------
-# Isolated config root: separate session history, no Anthropic credential
-# fallback. `claude` stays on Anthropic; `cc-glm` talks only to Z.ai.
-cc-glm() {
-  local d="$HOME/.cc-glm"
-  [[ -r "$d/.env" ]] && source "$d/.env"
-  if [[ -z "$ZAI_API_KEY" ]]; then
-    print -u2 "cc-glm: ZAI_API_KEY unset — add it to $d/.env"
-    return 1
-  fi
-  CLAUDE_CONFIG_DIR="$d" \
-  ANTHROPIC_AUTH_TOKEN="$ZAI_API_KEY" \
-  ANTHROPIC_API_KEY= \
-  claude --permission-mode auto "$@"
-}
+# Claude Code provider launchers are managed executables in ~/.local/bin.
 alias ccr-glm="cc-glm --resume"
+alias ccr-ds="cc-ds --resume"
+
+# --- Claude Code against local Ollama Qwen ----------------------------------
+# Isolated config root: separate session history; `claude` stays on Anthropic.
+cc-qwen() {
+  local d="$HOME/.cc-qwen"
+  CLAUDE_CONFIG_DIR="$d" \
+  ANTHROPIC_AUTH_TOKEN=ollama \
+  ANTHROPIC_API_KEY= \
+  ANTHROPIC_BASE_URL=http://127.0.0.1:11434 \
+  claude --permission-mode auto --model qwen3.5:9b "$@"
+}
+alias ccr-qwen="cc-qwen --resume"
 # ---------------------------------------------------------------------------
+
+# Quantized Gemma 4 uses a managed launcher with enforced GPU safety checks.
+alias ccr-gemma="cc-gemma --resume"
 
 nix-rebuild() {
   local start_dir="$PWD"

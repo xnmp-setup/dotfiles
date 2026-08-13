@@ -1,0 +1,5 @@
+{
+  "model": "gemma4:e4b-it-qat",
+  "contextLength": 131072,
+  "minAvailableRamMiB": 32768
+}

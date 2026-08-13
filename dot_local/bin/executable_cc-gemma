@@ -1,0 +1,285 @@
+#!/bin/sh
+
+set -eu
+
+profile_path="${XDG_CONFIG_HOME:-${HOME}/.config}/cc-gemma/profile.json"
+profile_reader="${HOME}/.local/bin/cc-gemma-profile"
+profile_values=$(
+  "$profile_reader" "$profile_path"
+) || {
+  printf 'cc-gemma: invalid profile: %s\n' "$profile_path" >&2
+  exit 1
+}
+IFS="$(printf '\t')" read -r model context_length min_available_ram_mib <<EOF
+$profile_values
+EOF
+
+config_dir="${HOME}/.cc-gemma"
+ollama_host='http://127.0.0.1:11435'
+ollama_service='cc-gemma-ollama.service'
+max_power_w=100
+max_draw_w=110
+max_temp_c=68
+max_start_cpu_temp_c=70
+max_cpu_temp_c=80
+max_start_load_tenths=40
+max_load_tenths=80
+min_free_vram_mib=6000
+service_started=0
+claude_pid=''
+session_isolated=0
+
+fail() {
+  if [ "$service_started" -eq 1 ]; then
+    systemctl --user stop "$ollama_service" >/dev/null 2>&1 || true
+  fi
+  printf 'cc-gemma: %s\n' "$1" >&2
+  exit 1
+}
+
+terminate_session() {
+  target_pid=$1
+  [ -n "$target_pid" ] || return 0
+  if [ "$session_isolated" -eq 1 ]; then
+    kill -TERM -- "-${target_pid}" >/dev/null 2>&1 || true
+  else
+    pkill -TERM -P "$target_pid" >/dev/null 2>&1 || true
+    kill -TERM "$target_pid" >/dev/null 2>&1 || true
+  fi
+}
+
+cleanup() {
+  if [ -n "$claude_pid" ]; then
+    terminate_session "$claude_pid"
+  fi
+  OLLAMA_HOST="$ollama_host" ollama stop "$model" >/dev/null 2>&1 || true
+  if [ "$service_started" -eq 1 ]; then
+    systemctl --user stop "$ollama_service" >/dev/null 2>&1 || true
+  fi
+}
+
+handle_signal() {
+  trap - EXIT HUP INT TERM
+  cleanup
+  exit 130
+}
+
+trap cleanup EXIT
+trap handle_signal HUP INT TERM
+
+read_cpu_temp_c() {
+  for hwmon in /sys/class/hwmon/hwmon*; do
+    [ -r "${hwmon}/name" ] || continue
+    [ "$(cat "${hwmon}/name")" = k10temp ] || continue
+    [ -r "${hwmon}/temp1_input" ] || continue
+    awk 'NR == 1 { print int($1 / 1000) }' "${hwmon}/temp1_input"
+    return 0
+  done
+  return 1
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    --model|--model=*|--effort|--effort=*|--permission-mode|--permission-mode=*|\
+    --settings|--settings=*|--fallback-model|--fallback-model=*|\
+    --bare|--dangerously-skip-permissions|--allow-dangerously-skip-permissions)
+      fail "option is locked by the safe profile: $arg"
+      ;;
+  esac
+done
+
+command -v ollama >/dev/null 2>&1 || fail 'ollama is not installed'
+command -v claude >/dev/null 2>&1 || fail 'claude is not installed'
+command -v nvidia-smi >/dev/null 2>&1 || fail 'nvidia-smi is not available'
+command -v systemctl >/dev/null 2>&1 || fail 'systemctl is not available'
+command -v setsid >/dev/null 2>&1 || fail 'setsid is not available'
+command -v pkill >/dev/null 2>&1 || fail 'pkill is not available'
+command -v pgrep >/dev/null 2>&1 || fail 'pgrep is not available'
+command -v flock >/dev/null 2>&1 || fail 'flock is not available'
+
+runtime_dir=${XDG_RUNTIME_DIR:-/tmp}
+exec 9>"${runtime_dir}/cc-gemma.lock"
+flock -n 9 || fail 'another cc-gemma session is already running'
+
+existing_claude_pid=$(pgrep -f \
+  "^claude --model ${model} --effort low --permission-mode manual( |$)" | \
+  awk 'NR == 1 { print; exit }' || true)
+[ -z "$existing_claude_pid" ] || \
+  fail "another cc-gemma Claude process is already running (PID ${existing_claude_pid})"
+
+power_limit=$(nvidia-smi --query-gpu=power.limit --format=csv,noheader,nounits | awk 'NR == 1 { print int($1) }')
+case "$power_limit" in
+  ''|*[!0-9]*) fail 'could not read the GPU power limit' ;;
+esac
+
+if [ "$power_limit" -gt "$max_power_w" ]; then
+  printf 'cc-gemma: lowering GPU power limit from %s W to %s W (sudo required)\n' \
+    "$power_limit" "$max_power_w" >&2
+  sudo nvidia-smi --power-limit="$max_power_w" >/dev/null || \
+    fail "could not apply the ${max_power_w} W GPU power limit"
+fi
+
+power_limit=$(nvidia-smi --query-gpu=power.limit --format=csv,noheader,nounits | awk 'NR == 1 { print int($1) }')
+[ "$power_limit" -le "$max_power_w" ] || \
+  fail "GPU power limit is ${power_limit} W; refusing to run above ${max_power_w} W"
+
+gpu_stats=$(nvidia-smi \
+  --query-gpu=temperature.gpu,memory.free \
+  --format=csv,noheader,nounits | awk -F, 'NR == 1 { gsub(/ /, "", $1); gsub(/ /, "", $2); print $1, $2 }')
+gpu_temp=${gpu_stats%% *}
+free_vram=${gpu_stats##* }
+
+case "$gpu_temp:$free_vram" in
+  *[!0-9:]*|:*) fail 'could not read GPU temperature or free VRAM' ;;
+esac
+[ "$gpu_temp" -lt "$max_temp_c" ] || \
+  fail "GPU is already ${gpu_temp} C; refusing to start at or above ${max_temp_c} C"
+
+[ "$free_vram" -ge "$min_free_vram_mib" ] || \
+  fail "only ${free_vram} MiB VRAM is free; the hybrid profile requires ${min_free_vram_mib} MiB"
+
+available_ram_mib=$(awk '/^MemAvailable:/ { print int($2 / 1024) }' /proc/meminfo)
+case "$available_ram_mib" in
+  ''|*[!0-9]*) fail 'could not read available system RAM' ;;
+esac
+[ "$available_ram_mib" -ge "$min_available_ram_mib" ] || \
+  fail "only ${available_ram_mib} MiB system RAM is available; ${context_length}-token context requires ${min_available_ram_mib} MiB"
+
+start_load_tenths=$(awk 'NR == 1 { print int(($1 * 10) + 0.5) }' /proc/loadavg)
+case "$start_load_tenths" in
+  ''|*[!0-9]*) fail 'could not read the system load' ;;
+esac
+[ "$start_load_tenths" -le "$max_start_load_tenths" ] || \
+  fail "system load is too high to start safely ($(awk 'NR == 1 { print $1 }' /proc/loadavg)); wait for other work to finish"
+
+start_cpu_temp=$(read_cpu_temp_c || true)
+if [ -n "$start_cpu_temp" ]; then
+  case "$start_cpu_temp" in
+    *[!0-9]*) fail 'could not read the CPU temperature' ;;
+  esac
+  [ "$start_cpu_temp" -lt "$max_start_cpu_temp_c" ] || \
+    fail "CPU is already ${start_cpu_temp} C; refusing to start at or above ${max_start_cpu_temp_c} C"
+fi
+
+system_loaded=$(OLLAMA_HOST=http://127.0.0.1:11434 ollama ps 2>/dev/null | \
+  awk 'NR > 1 && NF { print $1 }' || true)
+[ -z "$system_loaded" ] || \
+  fail "the system Ollama service already has a model loaded ($system_loaded)"
+
+systemctl --user start "$ollama_service" || fail 'could not start the isolated Ollama service'
+service_started=1
+
+attempt=0
+until OLLAMA_HOST="$ollama_host" ollama list >/dev/null 2>&1; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 50 ] || fail 'the isolated Ollama service did not become ready'
+  sleep 0.1
+done
+
+OLLAMA_HOST="$ollama_host" ollama list | awk 'NR > 1 { print $1 }' | grep -Fxq "$model" || \
+  fail "model is not visible to the isolated service: $model"
+
+loaded_models=$(OLLAMA_HOST="$ollama_host" ollama ps | awk 'NR > 1 && NF { print $1 }')
+if [ -n "$loaded_models" ] && [ "$loaded_models" != "$model" ]; then
+  fail "another model is loaded in the isolated service ($loaded_models)"
+fi
+
+monitor_gpu() {
+  target_pid=$1
+  while kill -0 "$target_pid" 2>/dev/null; do
+    sleep 3
+    safety_stats=$(nvidia-smi --query-gpu=power.draw,temperature.gpu \
+      --format=csv,noheader,nounits 2>/dev/null | \
+      awk -F, 'NR == 1 { print int($1 + 0.5), int($2) }') || safety_stats=''
+    power_draw=${safety_stats%% *}
+    temperature=${safety_stats##* }
+    case "$power_draw:$temperature" in
+      *[!0-9:]*|:*) continue ;;
+    esac
+    if [ "$temperature" -ge "$max_temp_c" ]; then
+      printf '\ncc-gemma: GPU reached %s C; stopping Gemma at the %s C safety threshold\n' \
+        "$temperature" "$max_temp_c" >&2
+      terminate_session "$target_pid"
+      OLLAMA_HOST="$ollama_host" ollama stop "$model" >/dev/null 2>&1 || true
+      systemctl --user stop "$ollama_service" >/dev/null 2>&1 || true
+      exit 0
+    fi
+    if [ "$power_draw" -gt "$max_draw_w" ]; then
+      printf '\ncc-gemma: GPU drew %s W; stopping Gemma above the %s W emergency threshold\n' \
+        "$power_draw" "$max_draw_w" >&2
+      terminate_session "$target_pid"
+      OLLAMA_HOST="$ollama_host" ollama stop "$model" >/dev/null 2>&1 || true
+      systemctl --user stop "$ollama_service" >/dev/null 2>&1 || true
+      exit 0
+    fi
+    cpu_temp=$(read_cpu_temp_c || true)
+    case "$cpu_temp" in
+      '') ;;
+      *[!0-9]*) ;;
+      *)
+        if [ "$cpu_temp" -ge "$max_cpu_temp_c" ]; then
+          printf '\ncc-gemma: CPU reached %s C; stopping Gemma at the %s C safety threshold\n' \
+            "$cpu_temp" "$max_cpu_temp_c" >&2
+          terminate_session "$target_pid"
+          OLLAMA_HOST="$ollama_host" ollama stop "$model" >/dev/null 2>&1 || true
+          systemctl --user stop "$ollama_service" >/dev/null 2>&1 || true
+          exit 0
+        fi
+        ;;
+    esac
+    load_tenths=$(awk 'NR == 1 { print int(($1 * 10) + 0.5) }' /proc/loadavg)
+    case "$load_tenths" in
+      ''|*[!0-9]*) ;;
+      *)
+        if [ "$load_tenths" -gt "$max_load_tenths" ]; then
+          printf '\ncc-gemma: system load exceeded 8 cores; stopping to limit total-system power\n' >&2
+          terminate_session "$target_pid"
+          OLLAMA_HOST="$ollama_host" ollama stop "$model" >/dev/null 2>&1 || true
+          systemctl --user stop "$ollama_service" >/dev/null 2>&1 || true
+          exit 0
+        fi
+        ;;
+    esac
+  done
+  terminate_session "$target_pid"
+  OLLAMA_HOST="$ollama_host" ollama stop "$model" >/dev/null 2>&1 || true
+  systemctl --user stop "$ollama_service" >/dev/null 2>&1 || true
+}
+
+export CLAUDE_CONFIG_DIR="$config_dir"
+export ANTHROPIC_AUTH_TOKEN=ollama
+export ANTHROPIC_API_KEY=''
+export ANTHROPIC_BASE_URL="$ollama_host"
+export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+export CLAUDE_CODE_MAX_CONTEXT_TOKENS="$context_length"
+unset CLAUDE_AUTOCOMPACT_PCT_OVERRIDE
+
+if [ -t 0 ]; then
+  session_isolated=0
+  claude \
+    --model "$model" \
+    --effort low \
+    --permission-mode manual \
+    "$@" </dev/tty &
+else
+  session_isolated=1
+  setsid claude \
+    --model "$model" \
+    --effort low \
+    --permission-mode manual \
+    "$@" &
+fi
+claude_pid=$!
+
+monitor_gpu "$claude_pid" &
+monitor_pid=$!
+
+set +e
+wait "$claude_pid"
+exit_code=$?
+set -e
+terminate_session "$claude_pid"
+kill -TERM "$monitor_pid" >/dev/null 2>&1 || true
+wait "$monitor_pid" >/dev/null 2>&1 || true
+claude_pid=''
+exit "$exit_code"

@@ -1,0 +1,27 @@
+[Unit]
+Description=Power-limited Ollama endpoint for cc-gemma
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/cc-gemma-ollama-serve
+Restart=no
+KillMode=mixed
+TimeoutStopSec=15
+
+CPUQuota=200%
+CPUWeight=10
+MemoryHigh=18G
+MemoryMax=24G
+MemorySwapMax=2G
+OOMPolicy=stop
+TasksMax=256
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.cc-gemma
+ProtectControlGroups=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+RestrictAddressFamilies=AF_UNIX AF_INET
