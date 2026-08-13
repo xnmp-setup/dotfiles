@@ -241,19 +241,52 @@ if [[ "$requested_slug" != "$slug" ]]; then
 fi
 
 # --- Ghostty ---
+reload_ghostty_config() {
+  local service="app-com.mitchellh.ghostty.service"
+
+  # Ghostty's systemd unit tracks the main process and maps reload to SIGUSR2.
+  if command -v systemctl &>/dev/null \
+    && systemctl reload --user "$service" &>/dev/null; then
+    return 0
+  fi
+
+  # A directly launched GTK build is not tracked by the unit. SIGUSR2 is
+  # Ghostty's native config-reload signal on Linux and FreeBSD.
+  if ! command -v pgrep &>/dev/null || ! pgrep -x ghostty &>/dev/null; then
+    return 2
+  fi
+  case "$(uname -s)" in
+    Linux|FreeBSD)
+      command -v pkill &>/dev/null && pkill -USR2 -x ghostty &>/dev/null
+      return
+      ;;
+  esac
+
+  return 1
+}
+
 config="$HOME/.config/ghostty/config"
 if [[ -f "$config" ]]; then
   if grep -q "^theme = " "$config"; then
     sed -i "s/^theme = .*/theme = $title/" "$config"
     echo "  ✓ Ghostty → $title"
-    reload+=("Ghostty: Ctrl+Shift+,")
-    ((changed++))
   else
     echo "theme = $title" >> "$config"
     echo "  ✓ Ghostty → $title (appended)"
-    reload+=("Ghostty: Ctrl+Shift+,")
-    ((changed++))
   fi
+
+  if reload_ghostty_config; then
+    echo "    reloaded running Ghostty"
+    reload+=("Ghostty: reloaded automatically")
+  else
+    ghostty_reload_status=$?
+    if (( ghostty_reload_status == 2 )); then
+      reload+=("Ghostty: applies at next launch")
+    else
+      reload+=("Ghostty: automatic reload failed; use the reload_config keybind")
+    fi
+  fi
+  ((changed++))
 else
   skipped+=("Ghostty (no config at $config)")
 fi

@@ -73,6 +73,7 @@ for associated_slug in "${!theme_wallpapers[@]}"; do
 done
 
 mkdir -p "$test_root/.config/hypr" \
+  "$test_root/.config/ghostty" \
   "$test_root/.config/google-chrome/Default" \
   "$test_root/.local/share/chrome-themes" \
   "$test_root/Pictures/Wallpaper" \
@@ -80,6 +81,7 @@ mkdir -p "$test_root/.config/hypr" \
   "$test_root/bin"
 touch "$test_root/Pictures/Wallpaper/planet_with_sunrise.png"
 touch "$test_root/Pictures/Wallpaper/custom.photo.jpg"
+printf 'theme = Old Theme\n' >"$test_root/.config/ghostty/config"
 cp -r "$repo_root/dot_local/share/chrome-themes/cosmic-dusk" \
   "$test_root/.local/share/chrome-themes/cosmic-dusk"
 
@@ -145,6 +147,11 @@ cat > "$test_root/bin/setsid" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$TEST_CHROME_RESTART_LOG"
 EOF
+cat > "$test_root/bin/systemctl" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$TEST_SYSTEMCTL_LOG"
+[[ "$*" == "reload --user app-com.mitchellh.ghostty.service" ]]
+EOF
 cat > "$test_root/bin/hyprctl" <<'EOF'
 #!/usr/bin/env bash
 if [[ "$*" == "monitors -j" ]]; then
@@ -163,7 +170,7 @@ printf '%s\n' "$*" >> "$TEST_HYPRCTL_LOG"
 EOF
 chmod +x "$test_root/bin/vicinae" "$test_root/bin/google-chrome-stable" \
   "$test_root/bin/pgrep" "$test_root/bin/pkill" "$test_root/bin/setsid" \
-  "$test_root/bin/hyprctl"
+  "$test_root/bin/systemctl" "$test_root/bin/hyprctl"
 
 chrome_state="$test_root/.local/state/chrome-theme"
 mkdir -p "$chrome_state"
@@ -177,6 +184,7 @@ run_set_theme() {
   TEST_HYPRCTL_LOG="$test_root/hyprctl.log" \
     TEST_CHROME_RESTART_LOG="$test_root/chrome-restart.log" \
     TEST_CHROME_STOPPED="$test_root/chrome-stopped" \
+    TEST_SYSTEMCTL_LOG="$test_root/systemctl.log" \
     HOME="$test_root" \
     PATH="$test_root/bin:$PATH" \
     HYPRLAND_INSTANCE_SIGNATURE=test \
@@ -201,6 +209,10 @@ theme_state="$test_root/.local/state/desktop-theme/current.json"
 assert_contains "$theme_state" '"slug": "cosmic-dusk"'
 assert_contains "$theme_state" '"title": "Cosmic Dusk"'
 assert_contains "$theme_state" '"mode": "dark"'
+assert_contains "$test_root/.config/ghostty/config" 'theme = Cosmic Dusk'
+assert_contains "$test_root/systemctl.log" \
+  'reload --user app-com.mitchellh.ghostty.service'
+assert_contains "$test_root/default.out" 'Ghostty: reloaded automatically'
 current_chrome_id=$(chrome_theme_extension_id "$chrome_state/key.pem")
 [[ "$current_chrome_id" != "$blocked_chrome_id" ]] \
   || fail "Chrome kept using an externally blocklisted theme identity"
