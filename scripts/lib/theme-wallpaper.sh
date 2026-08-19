@@ -12,7 +12,7 @@ declare -A theme_wallpapers=(
   [nord]="wp10368836-mac-os-yosemite-wallpapers.jpg"
   [ayu-mirage]="stephen-leonardi-eSNjFDbw_i4-unsplash.jpg"
   [horizon-dark]="saleh-gJ60sKuuYlE-unsplash.jpg"
-  [catppuccin-mocha]="photo-1482784160316-6eb046863ece.avif"
+  [catppuccin-mocha]="photo-1482784160316-6eb046863ece.jpg"
 )
 
 # Expand a unique prefix only against themes with wallpaper associations. This
