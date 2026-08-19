@@ -1,11 +1,11 @@
 /**
- * Gruvbox Dark (Medium) Theme - Classic retro-warm dark palette
+ * Gruvbox Dark (Hard) Theme - Classic retro-warm dark palette
  *
  * Muted dark backgrounds, warm cream text, vivid orange primary accent.
  * All background values are opaque hex (no alpha) per operational rules.
  *
  * Key palette:
- *   bg: #282828   panel: #3C3836   surface: #504945   border: #665C54
+ *   bg: #1D2021   panel: #282828   surface: #32302F   border: #665C54
  *   accent: #FE8019   spectrum: red #FB4934, yellow #FABD2F, aqua #8EC07C, blue #83A598, purple #D3869B
  */
 
@@ -14,7 +14,7 @@
 
   /* Theme metadata */
   --theme-name: "Gruvbox";
-  --theme-description: "Classic retro-warm dark palette with vivid orange accents";
+  --theme-description: "Hard-contrast retro-warm dark palette with vivid orange accents";
   --theme-order: 15;
 
   /* Accent colors - gruvbox orange */
@@ -25,17 +25,17 @@
   /* Text colors */
   --text-primary: #EBDBB2;
   --text-secondary: #EBDBB2;
-  --text-tertiary: #928374;
+  --text-tertiary: #A89984;
   --text-on-accent: #282828;
 
-  /* Background colors - dim/main/selection, opaque hex */
-  --background-solid: #282828;
-  --background-mica: #282828;
-  --background-acrylic: #302C2A;
-  --background-card: #3C3836;
-  --background-card-secondary: #504945;
-  --miller-bg: #322E2C;
-  --content-bg: #282828;
+  /* Background colors - Gruvbox hard base with canonical elevated steps */
+  --background-solid: #1D2021;
+  --background-mica: #1D2021;
+  --background-acrylic: #282828;
+  --background-card: #282828;
+  --background-card-secondary: #32302F;
+  --miller-bg: #282828;
+  --content-bg: #1D2021;
 
   /* Surface/border colors - gruvbox border */
   --surface-stroke: rgba(102, 92, 84, 0.5);
@@ -66,7 +66,7 @@
 
   /* Focus indicators */
   --focus-stroke-outer: #FE8019;
-  --focus-stroke-inner: #282828;
+  --focus-stroke-inner: #1D2021;
 
   /* System status colors */
   --system-critical: #FB4934;
