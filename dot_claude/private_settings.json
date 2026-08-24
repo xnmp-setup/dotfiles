@@ -97,8 +97,7 @@
     "svelte-lsp@local": true,
     "oh-my-claudecode@omc": false,
     "i-have-adhd@i-have-adhd": true,
-    "clangd-lsp@claude-plugins-official": true,
-    "pua@pua-skills": true
+    "clangd-lsp@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
     "local": {
@@ -118,12 +117,6 @@
         "source": "github",
         "repo": "ayghri/i-have-adhd",
         "path": "/home/chong/Repos/keifu/i-have-adhd"
-      }
-    },
-    "pua-skills": {
-      "source": {
-        "source": "github",
-        "repo": "tanweai/pua"
       }
     }
   },
