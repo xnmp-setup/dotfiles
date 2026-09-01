@@ -15,7 +15,6 @@ title="$2"
 theme_cli="$HOME/.local/share/chezmoi/scripts/set-theme.sh"
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/desktop-theme"
 error_log="$state_dir/last-error.log"
-theme_lock_fd=""
 
 notify() {
   command -v notify-send >/dev/null 2>&1 || return 0
@@ -24,15 +23,18 @@ notify() {
 
 mkdir -p "$state_dir"
 if command -v flock >/dev/null 2>&1; then
-  exec {theme_lock_fd}>"$state_dir/apply.lock"
-  if ! flock -n "$theme_lock_fd"; then
+  # Reserve a known descriptor so it can be closed explicitly for set-theme.
+  # The worker keeps descriptor 9 open, but Chrome and other descendants must
+  # not inherit it and accidentally hold the lock after the worker exits.
+  exec 9>"$state_dir/apply.lock"
+  if ! flock -n 9; then
     notify "Desktop theme already changing" \
       "Wait for the current Chrome restart to finish before choosing another theme."
     exit 75
   fi
 fi
 
-if output=$(bash "$theme_cli" "$slug" --restart-chrome 2>&1); then
+if output=$(bash "$theme_cli" "$slug" --restart-chrome 9>&- 2>&1); then
   notify "Desktop theme set" "$title"
   exit 0
 fi
