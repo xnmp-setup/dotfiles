@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "Hackerman",
+  "version": "1.0.0",
+  "description": "Omarchy's black-and-neon-green Hackerman theme",
+  "theme": {
+    "colors": {
+      "frame": [21, 24, 40],
+      "frame_inactive": [11, 12, 22],
+      "frame_incognito": [8, 9, 16],
+      "frame_incognito_inactive": [6, 6, 12],
+      "toolbar": [11, 12, 22, 0.97],
+      "background_tab": [21, 24, 40, 0.95],
+      "tab_text": [221, 247, 255],
+      "tab_background_text": [106, 110, 149],
+      "bookmark_text": [221, 247, 255],
+      "ntp_background": [11, 12, 22],
+      "ntp_text": [221, 247, 255],
+      "ntp_link": [130, 251, 156],
+      "ntp_header": [31, 37, 58],
+      "omnibox_background": [21, 24, 40],
+      "omnibox_text": [221, 247, 255],
+      "toolbar_button_icon": [130, 251, 156],
+      "button_background": [130, 251, 156]
+    },
+    "tints": {
+      "buttons": [-1, -1, -1],
+      "frame_incognito": [-1, 0.2, 0.15],
+      "frame_incognito_inactive": [-1, 0.15, 0.1]
+    },
+    "properties": {
+      "ntp_background_alignment": "center",
+      "ntp_background_repeat": "no-repeat"
+    }
+  }
+}

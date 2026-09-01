@@ -1,0 +1,118 @@
+{
+  "manifest_version": 3,
+  "name": "Artzen",
+  "version": "1.0.0",
+  "description": "Calm charcoal surfaces with muted terracotta accents",
+  "theme": {
+    "colors": {
+      "frame": [
+        43,
+        39,
+        40
+      ],
+      "frame_inactive": [
+        24,
+        28,
+        31
+      ],
+      "frame_incognito": [
+        18,
+        21,
+        23
+      ],
+      "frame_incognito_inactive": [
+        13,
+        15,
+        17
+      ],
+      "toolbar": [
+        24,
+        28,
+        31,
+        0.97
+      ],
+      "background_tab": [
+        18,
+        21,
+        23,
+        0.95
+      ],
+      "tab_text": [
+        253,
+        249,
+        248
+      ],
+      "tab_background_text": [
+        177,
+        141,
+        133
+      ],
+      "bookmark_text": [
+        253,
+        249,
+        248
+      ],
+      "ntp_background": [
+        24,
+        28,
+        31
+      ],
+      "ntp_text": [
+        253,
+        249,
+        248
+      ],
+      "ntp_link": [
+        218,
+        122,
+        111
+      ],
+      "ntp_header": [
+        59,
+        43,
+        44
+      ],
+      "omnibox_background": [
+        18,
+        21,
+        23
+      ],
+      "omnibox_text": [
+        253,
+        249,
+        248
+      ],
+      "toolbar_button_icon": [
+        237,
+        188,
+        179
+      ],
+      "button_background": [
+        218,
+        122,
+        111
+      ]
+    },
+    "tints": {
+      "buttons": [
+        -1,
+        -1,
+        -1
+      ],
+      "frame_incognito": [
+        -1,
+        0.2,
+        0.15
+      ],
+      "frame_incognito_inactive": [
+        -1,
+        0.15,
+        0.1
+      ]
+    },
+    "properties": {
+      "ntp_background_alignment": "center",
+      "ntp_background_repeat": "no-repeat"
+    }
+  }
+}

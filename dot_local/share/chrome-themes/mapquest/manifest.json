@@ -1,0 +1,118 @@
+{
+  "manifest_version": 3,
+  "name": "MapQuest",
+  "version": "1.0.0",
+  "description": "Tea-stained paper maps with archival ink and faded routes",
+  "theme": {
+    "colors": {
+      "frame": [
+        244,
+        223,
+        181
+      ],
+      "frame_inactive": [
+        236,
+        211,
+        161
+      ],
+      "frame_incognito": [
+        216,
+        189,
+        135
+      ],
+      "frame_incognito_inactive": [
+        196,
+        166,
+        108
+      ],
+      "toolbar": [
+        236,
+        211,
+        161,
+        0.98
+      ],
+      "background_tab": [
+        216,
+        189,
+        135,
+        0.96
+      ],
+      "tab_text": [
+        60,
+        71,
+        71
+      ],
+      "tab_background_text": [
+        111,
+        101,
+        79
+      ],
+      "bookmark_text": [
+        60,
+        71,
+        71
+      ],
+      "ntp_background": [
+        236,
+        211,
+        161
+      ],
+      "ntp_text": [
+        60,
+        71,
+        71
+      ],
+      "ntp_link": [
+        70,
+        83,
+        83
+      ],
+      "ntp_header": [
+        183,
+        159,
+        112
+      ],
+      "omnibox_background": [
+        216,
+        189,
+        135
+      ],
+      "omnibox_text": [
+        60,
+        71,
+        71
+      ],
+      "toolbar_button_icon": [
+        28,
+        33,
+        33
+      ],
+      "button_background": [
+        70,
+        83,
+        83
+      ]
+    },
+    "tints": {
+      "buttons": [
+        -1,
+        -1,
+        -1
+      ],
+      "frame_incognito": [
+        -1,
+        0.05,
+        0.75
+      ],
+      "frame_incognito_inactive": [
+        -1,
+        0.05,
+        0.7
+      ]
+    },
+    "properties": {
+      "ntp_background_alignment": "center",
+      "ntp_background_repeat": "no-repeat"
+    }
+  }
+}

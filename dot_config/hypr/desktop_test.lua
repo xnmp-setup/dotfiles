@@ -9,6 +9,7 @@ local exposes        = require("expose")
 local group_actions  = require("group_actions")
 local host_capabilities = require("host_capabilities")
 local nightlights     = require("nightlight")
+local page_key_routing = require("page_key_routing")
 local scratchpads    = require("scratchpad")
 local spotlights     = require("spotlight")
 local startup_pairing = require("startup_pairing")
@@ -31,6 +32,26 @@ end
 local function equal(label, got, want)
     check(("%s (got %s, want %s)"):format(label, tostring(got), tostring(want)), got == want)
 end
+
+local page_marker = "prompt-owned"
+local vicinae_page = page_key_routing.plan(
+    { class = "vicinae" }, "", page_marker, "Next", "Down")
+equal("Vicinae PageDown moves exactly eight rows", #vicinae_page, 8)
+for index, action in ipairs(vicinae_page) do
+    equal("Vicinae PageDown row " .. index .. " is a Down shortcut", action.key, "Down")
+    equal("Vicinae PageDown row " .. index .. " has no modifiers", action.mods, "")
+end
+
+local ghostty_page = page_key_routing.plan(
+    { class = "com.mitchellh.ghostty" }, "shell " .. page_marker,
+    page_marker, "Prior", "Up")
+equal("Ghostty prompt PageUp keeps one routed action", #ghostty_page, 1)
+equal("Ghostty prompt PageUp keeps its native key", ghostty_page[1].key, "Prior")
+equal("Ghostty prompt PageUp keeps its modifier", ghostty_page[1].mods, "CTRL_ALT")
+
+local ordinary_page = page_key_routing.plan(
+    { class = "google-chrome" }, "Browser", page_marker, "Next", "Down")
+equal("ordinary clients receive the original page key", ordinary_page[1].kind, "pass")
 
 local function window(id, class, workspace, history)
     return {

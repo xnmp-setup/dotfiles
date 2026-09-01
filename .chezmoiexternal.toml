@@ -6,3 +6,60 @@
     type = "git-repo"
     url = "https://github.com/xnmp-setup/quickshell-statusbar.git"
     refreshPeriod = "168h"
+
+# Theme wallpapers pinned to the exact upstream palette/reference revisions.
+# Checksums make upstream asset drift explicit.
+["Pictures/Wallpaper/omarchy-kanagawa.jpg"]
+    type = "file"
+    url = "https://raw.githubusercontent.com/omacom/omarchy/b686ed892d9c3020c3336203f6d34cc75b544e2b/themes/kanagawa/backgrounds/1-kanagawa.jpg"
+    checksum.sha256 = "9b817d717688539f0db87603b661992839c3cbb5d4918a02a4efc05c9f88b27d"
+
+["Pictures/Wallpaper/omarchy-tokyo-night.webp"]
+    type = "file"
+    url = "https://raw.githubusercontent.com/omacom/omarchy/b686ed892d9c3020c3336203f6d34cc75b544e2b/themes/tokyo-night/backgrounds/0-winding-road.webp"
+    checksum.sha256 = "b149c3e1c8ce383812e7bc3170c2cf8b160ca583d72d59173cd42efdb79ced2b"
+
+["Pictures/Wallpaper/omarchy-hackerman.jpg"]
+    type = "file"
+    url = "https://raw.githubusercontent.com/omacom/omarchy/b686ed892d9c3020c3336203f6d34cc75b544e2b/themes/hackerman/backgrounds/1-synth-scape.jpg"
+    checksum.sha256 = "c7d2594935f204e0df1b43dfe7a12389ea1c1d3fd8e57a92a9f08497f27a377e"
+
+["Pictures/Wallpaper/omarchy-ethereal.webp"]
+    type = "file"
+    url = "https://raw.githubusercontent.com/omacom/omarchy/b686ed892d9c3020c3336203f6d34cc75b544e2b/themes/ethereal/backgrounds/1-cosmic.webp"
+    checksum.sha256 = "e3241507d4ba5cc25ae4bdf746401e4b65ce7a06cead4d83c49461587addab63"
+
+["Pictures/Wallpaper/marek-piwnicki-rwcONvax9qE-unsplash.jpg"]
+    type = "file"
+    url = "https://images.unsplash.com/photo-1768928969838-c29382c18f4e?ixlib=rb-4.1.0&q=85&fm=jpg&crop=entropy&cs=srgb&dl=marek-piwnicki-rwcONvax9qE-unsplash.jpg"
+    checksum.sha256 = "86e0d1dd962680e246db435b2b57258686cf8074f55b68fa07a1e4ed5dad302c"
+
+["Pictures/Wallpaper/stephen-leonardi-eSNjFDbw_i4-unsplash.jpg"]
+    type = "file"
+    url = "https://images.unsplash.com/photo-1551214012-84f95e060dee?ixlib=rb-4.1.0&q=85&fm=jpg&crop=entropy&cs=srgb&dl=leo_visions-eSNjFDbw_i4-unsplash.jpg"
+    checksum.sha256 = "26871a9351b2c1ae7350316f5f1650f95bc6e9bdc44b306100c6a2b8924afc51"
+
+["Pictures/Wallpaper/omarchy-osaka-jade.webp"]
+    type = "file"
+    url = "https://raw.githubusercontent.com/basecamp/omarchy/b686ed892d9c3020c3336203f6d34cc75b544e2b/themes/osaka-jade/backgrounds/1-glowing-city.webp"
+    checksum.sha256 = "d234c4a7c8c65da307c5fcc66396f7ed0a5cff4344100e02772c4cc4ce8a5946"
+
+["Pictures/Wallpaper/omarchy-artzen.png"]
+    type = "file"
+    url = "https://raw.githubusercontent.com/tahfizhabib/omarchy-artzen-theme/d4255350a0ca7acd3f681b5da49e46bd15f41b9a/backgrounds/wallhaven-x8jj9o.png"
+    checksum.sha256 = "ae587bddfec1defce33cd4a9f6ad835438db3daf667d0507b95c90b5e34e48ef"
+
+["Pictures/Wallpaper/omarchy-mapquest.jpg"]
+    type = "file"
+    url = "https://raw.githubusercontent.com/ItsABigIgloo/omarchy-mapquest-theme/262598215854442321e89ead1b2be61e2697e181/backgrounds/mapquest.jpg"
+    checksum.sha256 = "0ebbbeb7a50ca52ee4855ab24c5c940a5d6795c40047d0c5ec35ffbf1ac319b0"
+
+["Pictures/Wallpaper/omarchy-sakura.jpg"]
+    type = "file"
+    url = "https://raw.githubusercontent.com/bjarneo/omarchy-sakura-theme/dfeae9b8d245af05e16cf8bf3b89b743c94573d3/backgrounds/1.jpg"
+    checksum.sha256 = "098ac2f8751233e7d0525bed7c4036e05a19f4ebc244d063ea07f5827a128013"
+
+["Pictures/Wallpaper/omarchy-sunset.jpg"]
+    type = "file"
+    url = "https://raw.githubusercontent.com/rondilley/omarchy-sunset-theme/48d01770e062f0cd6fff7bb9b7dc48f8b1d65731/backgrounds/53906226451_d00b6afa3b_o.jpg"
+    checksum.sha256 = "f21f7bf54ae63a3f91f552e964aa956d3790ce7f5ead30b88f4548f165700217"

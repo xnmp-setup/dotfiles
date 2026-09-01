@@ -1,0 +1,29 @@
+[meta]
+version = 1
+name = "Hackerman"
+description = "Omarchy's black-and-neon-green Hackerman palette"
+variant = "dark"
+
+[colors.core]
+background = "#0B0C16"
+foreground = "#DDF7FF"
+secondary_background = "#151828"
+border = "#2D3450"
+accent = "#82FB9C"
+
+[colors.accents]
+blue = "#829DD4"
+green = "#4FE88F"
+magenta = "#86A7DF"
+orange = "#50F7A3"
+purple = "#86A7DF"
+red = "#50F872"
+yellow = "#50F7D4"
+cyan = "#7CF8F7"
+
+[colors.list.item.selection]
+background = { name = "#1F253A", opacity = 0.85 }
+secondary_background = "#151828"
+
+[colors.list.item.hover]
+background = { name = "#2D3450", opacity = 0.55 }

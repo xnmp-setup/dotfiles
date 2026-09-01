@@ -1,0 +1,29 @@
+[meta]
+version = 1
+name = "Kanagawa"
+description = "Omarchy's warm ink-and-paper Kanagawa palette"
+variant = "dark"
+
+[colors.core]
+background = "#1F1F28"
+foreground = "#DCD7BA"
+secondary_background = "#16161D"
+border = "#2A2A37"
+accent = "#7E9CD8"
+
+[colors.accents]
+blue = "#7E9CD8"
+green = "#76946A"
+magenta = "#957FB8"
+orange = "#C17158"
+purple = "#957FB8"
+red = "#C34043"
+yellow = "#C0A36E"
+cyan = "#6A9589"
+
+[colors.list.item.selection]
+background = { name = "#2A2A37", opacity = 0.45 }
+secondary_background = "#363646"
+
+[colors.list.item.hover]
+background = { name = "#2A2A37", opacity = 0.3 }

@@ -1,0 +1,29 @@
+[meta]
+version = 1
+name = "MapQuest"
+description = "Tea-stained paper maps with archival ink and faded routes"
+variant = "light"
+
+[colors.core]
+background = "#ECD3A1"
+foreground = "#3C4747"
+secondary_background = "#D8BD87"
+border = "#826E48"
+accent = "#465353"
+
+[colors.accents]
+blue = "#465353"
+green = "#3A443D"
+magenta = "#764E27"
+orange = "#966133"
+purple = "#764E27"
+red = "#4F351E"
+yellow = "#826E48"
+cyan = "#7B826D"
+
+[colors.list.item.selection]
+background = { name = "#B79F70", opacity = 0.8 }
+secondary_background = "#F4DFB5"
+
+[colors.list.item.hover]
+background = { name = "#465353", opacity = 0.16 }

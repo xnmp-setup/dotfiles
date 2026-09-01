@@ -1,0 +1,118 @@
+{
+  "manifest_version": 3,
+  "name": "Sunset",
+  "version": "1.0.0",
+  "description": "Santa Monica gold and sand against a near-black evening",
+  "theme": {
+    "colors": {
+      "frame": [
+        33,
+        26,
+        20
+      ],
+      "frame_inactive": [
+        7,
+        6,
+        5
+      ],
+      "frame_incognito": [
+        4,
+        3,
+        3
+      ],
+      "frame_incognito_inactive": [
+        0,
+        0,
+        0
+      ],
+      "toolbar": [
+        7,
+        6,
+        5,
+        0.97
+      ],
+      "background_tab": [
+        4,
+        3,
+        3,
+        0.95
+      ],
+      "tab_text": [
+        255,
+        255,
+        255
+      ],
+      "tab_background_text": [
+        150,
+        149,
+        150
+      ],
+      "bookmark_text": [
+        255,
+        255,
+        255
+      ],
+      "ntp_background": [
+        7,
+        6,
+        5
+      ],
+      "ntp_text": [
+        255,
+        255,
+        255
+      ],
+      "ntp_link": [
+        221,
+        166,
+        96
+      ],
+      "ntp_header": [
+        48,
+        37,
+        25
+      ],
+      "omnibox_background": [
+        4,
+        3,
+        3
+      ],
+      "omnibox_text": [
+        255,
+        255,
+        255
+      ],
+      "toolbar_button_icon": [
+        215,
+        214,
+        215
+      ],
+      "button_background": [
+        221,
+        166,
+        96
+      ]
+    },
+    "tints": {
+      "buttons": [
+        -1,
+        -1,
+        -1
+      ],
+      "frame_incognito": [
+        -1,
+        0.2,
+        0.15
+      ],
+      "frame_incognito_inactive": [
+        -1,
+        0.15,
+        0.1
+      ]
+    },
+    "properties": {
+      "ntp_background_alignment": "center",
+      "ntp_background_repeat": "no-repeat"
+    }
+  }
+}

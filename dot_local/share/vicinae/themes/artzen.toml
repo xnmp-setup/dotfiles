@@ -1,0 +1,29 @@
+[meta]
+version = 1
+name = "Artzen"
+description = "Calm charcoal surfaces with muted terracotta accents"
+variant = "dark"
+
+[colors.core]
+background = "#181C1F"
+foreground = "#FDF9F8"
+secondary_background = "#121517"
+border = "#B18D85"
+accent = "#DA7A6F"
+
+[colors.accents]
+blue = "#B97670"
+green = "#9F6769"
+magenta = "#9A8C8A"
+orange = "#CA887F"
+purple = "#9A8C8A"
+red = "#9B584D"
+yellow = "#BB6D6C"
+cyan = "#DA7A6F"
+
+[colors.list.item.selection]
+background = { name = "#3B2B2C", opacity = 0.8 }
+secondary_background = "#2B2728"
+
+[colors.list.item.hover]
+background = { name = "#DA7A6F", opacity = 0.16 }

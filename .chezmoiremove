@@ -18,6 +18,7 @@
 .local/share/vicinae/scripts/save-desktop-session
 .local/share/vicinae/scripts/restore-desktop-session
 .local/share/vicinae/scripts/delete-desktop-session
+.local/share/vicinae/scripts/set-desktop-theme
 .config/hypr/session_catalog.lua
 
 # WezTerm searches ~/.config/wezterm/wezterm.lua before ~/.wezterm.lua. Keep

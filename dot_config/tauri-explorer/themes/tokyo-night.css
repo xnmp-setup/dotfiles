@@ -5,8 +5,8 @@
  * All background values are opaque hex (no alpha) per operational rules.
  *
  * Key palette:
- *   bg: #1a1b26   panel: #24283b   surface: #1f2335   border: #414868
- *   accent: #7aa2f7   spectrum: red #f7768e, orange #ff9e64, yellow #e0af68, green #9ece6a, cyan #7dcfff, purple #bb9af7
+ *   bg: #1a1b26   panel: #24283b   selection: #292e42   border: #414868
+ *   accent: #7aa2f7   spectrum: red #f7768e, orange #eb927b, yellow #e0af68, green #9ece6a, cyan #449dab, purple #ad8ee6
  */
 
 [data-theme="tokyo-night"] {
@@ -23,19 +23,19 @@
   --accent-dark: #6183d8;
 
   /* Text colors */
-  --text-primary: #c0caf5;
-  --text-secondary: #a9b1d6;
+  --text-primary: #a9b1d6;
+  --text-secondary: #b4bee6;
   --text-tertiary: #565f89;
   --text-on-accent: #1a1b26;
 
   /* Background colors - dim/main/selection, opaque hex */
-  --background-solid: #16161e;
-  --background-mica: #16161e;
+  --background-solid: #1a1b26;
+  --background-mica: #1a1b26;
   --background-acrylic: #1a1b26;
   --background-card: #1a1b26;
   --background-card-secondary: #24283b;
-  --miller-bg: #1f2335;
-  --content-bg: #16161e;
+  --miller-bg: #24283b;
+  --content-bg: #1a1b26;
 
   /* Surface/border colors - blue-purple border */
   --surface-stroke: rgba(65, 72, 104, 0.5);
@@ -66,7 +66,7 @@
 
   /* Focus indicators */
   --focus-stroke-outer: #7aa2f7;
-  --focus-stroke-inner: #16161e;
+  --focus-stroke-inner: #1a1b26;
 
   /* System status colors */
   --system-critical: #f7768e;

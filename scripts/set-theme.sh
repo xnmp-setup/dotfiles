@@ -51,14 +51,23 @@ EOF
 }
 
 title_case() {
+  if [[ -n "${theme_titles[$1]:-}" ]]; then
+    printf '%s\n' "${theme_titles[$1]}"
+    return
+  fi
   echo "$1" | tr '-' ' ' | sed 's/\b\(.\)/\u\1/g'
 }
 
 list_desktop_themes() {
-  local theme
+  local theme title wallpaper_path missing_assets
 
   while IFS= read -r theme; do
-    printf '%s\n' "$(title_case "$theme")"
+    title=$(title_case "$theme")
+    wallpaper_path=""
+    wallpaper_path=$(resolve_wallpaper "${theme_wallpapers[$theme]}" 2>/dev/null) || true
+    missing_assets=$(desktop_theme_missing_assets \
+      "$theme" "$title" "$wallpaper_path")
+    [[ -n "$missing_assets" ]] || printf '%s\n' "$title"
   done < <(printf '%s\n' "${!theme_wallpapers[@]}" | sort)
 }
 
@@ -193,6 +202,18 @@ if (( wallpaper_override_set )) || [[ -n "$wallpaper_request" ]]; then
   fi
 fi
 
+title=$(title_case "$slug")
+missing_theme_assets=$(desktop_theme_missing_assets \
+  "$slug" "$title" "$wallpaper_path")
+if [[ -n "$missing_theme_assets" ]]; then
+  echo "Theme '$title' is not installed completely; no settings were changed." >&2
+  echo "Apply the missing chezmoi targets, then retry:" >&2
+  while IFS= read -r missing_theme_asset; do
+    printf '  - %s\n' "$missing_theme_asset" >&2
+  done <<<"$missing_theme_assets"
+  exit 2
+fi
+
 # css_var, norm_hex, mix, rgb_triplet and pick_readable come from
 # lib/theme-colors.sh.
 
@@ -209,7 +230,6 @@ theme_is_light() {
   [[ "$slug" =~ light ]]
 }
 
-title=$(title_case "$slug")
 theme_mode="dark"
 theme_is_light && theme_mode="light"
 
@@ -408,6 +428,11 @@ if [[ -f "$config" ]]; then
   if grep -q '"cssTheme"' "$config"; then
     sed -i "s|\"cssTheme\": \"[^\"]*\"|\"cssTheme\": \"$title\"|" "$config"
     sed -i "s|\"theme\": \"[^\"]*\"|\"theme\": \"$obs_mode\"|" "$config"
+    obs_palette="$HOME/.config/tauri-explorer/themes/$slug.css"
+    obs_accent=$(css_var "$obs_palette" accent)
+    if [[ -n "$obs_accent" ]] && grep -q '"accentColor"' "$config"; then
+      sed -i "s|\"accentColor\": \"[^\"]*\"|\"accentColor\": \"$obs_accent\"|" "$config"
+    fi
     echo "  ✓ Obsidian → $title ($obs_mode)"
     reload+=("Obsidian: restart or toggle in Appearance")
     ((changed++))

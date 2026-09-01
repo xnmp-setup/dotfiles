@@ -1,0 +1,118 @@
+{
+  "manifest_version": 3,
+  "name": "Sakura",
+  "version": "1.0.0",
+  "description": "Elegant cherry-blossom warmth on deep burgundy-black",
+  "theme": {
+    "colors": {
+      "frame": [
+        35,
+        14,
+        24
+      ],
+      "frame_inactive": [
+        13,
+        5,
+        9
+      ],
+      "frame_incognito": [
+        6,
+        2,
+        4
+      ],
+      "frame_incognito_inactive": [
+        0,
+        0,
+        0
+      ],
+      "toolbar": [
+        13,
+        5,
+        9,
+        0.97
+      ],
+      "background_tab": [
+        6,
+        2,
+        4,
+        0.95
+      ],
+      "tab_text": [
+        240,
+        234,
+        237
+      ],
+      "tab_background_text": [
+        198,
+        175,
+        186
+      ],
+      "bookmark_text": [
+        240,
+        234,
+        237
+      ],
+      "ntp_background": [
+        13,
+        5,
+        9
+      ],
+      "ntp_text": [
+        240,
+        234,
+        237
+      ],
+      "ntp_link": [
+        217,
+        165,
+        108
+      ],
+      "ntp_header": [
+        35,
+        14,
+        24
+      ],
+      "omnibox_background": [
+        6,
+        2,
+        4
+      ],
+      "omnibox_text": [
+        240,
+        234,
+        237
+      ],
+      "toolbar_button_icon": [
+        248,
+        246,
+        247
+      ],
+      "button_background": [
+        217,
+        165,
+        108
+      ]
+    },
+    "tints": {
+      "buttons": [
+        -1,
+        -1,
+        -1
+      ],
+      "frame_incognito": [
+        -1,
+        0.2,
+        0.15
+      ],
+      "frame_incognito_inactive": [
+        -1,
+        0.15,
+        0.1
+      ]
+    },
+    "properties": {
+      "ntp_background_alignment": "center",
+      "ntp_background_repeat": "no-repeat"
+    }
+  }
+}

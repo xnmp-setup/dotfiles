@@ -1,0 +1,32 @@
+# Rapture - Deep navy with pastel neon accents
+# Based on the Rapture color palette from Ghostty/iTerm2, matching Tauri Explorer theme
+
+[meta]
+version = 1
+name = "Rapture"
+description = "Deep navy with pastel neon accents"
+variant = "dark"
+
+[colors.core]
+background = "#111e2a"
+foreground = "#c0c9e5"
+secondary_background = "#081420"
+border = "#304b66"
+accent = "#64e0ff"
+
+[colors.accents]
+blue = "#6c9bf5"
+green = "#7afde1"
+magenta = "#ff4fa1"
+orange = "#fc644d"
+purple = "#b48afe"
+red = "#fc644d"
+yellow = "#fff09b"
+cyan = "#64e0ff"
+
+[colors.list.item.selection]
+background = { name = "#304b66", opacity = 0.45 }
+secondary_background = "#1e3348"
+
+[colors.list.item.hover]
+background = { name = "#304b66", opacity = 0.3 }

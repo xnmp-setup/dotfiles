@@ -1,0 +1,118 @@
+{
+  "manifest_version": 3,
+  "name": "Infernium Dark",
+  "version": "1.0.0",
+  "description": "Molten orange highlights over biomechanical charcoal",
+  "theme": {
+    "colors": {
+      "frame": [
+        41,
+        37,
+        34
+      ],
+      "frame_inactive": [
+        28,
+        28,
+        28
+      ],
+      "frame_incognito": [
+        21,
+        21,
+        21
+      ],
+      "frame_incognito_inactive": [
+        14,
+        14,
+        14
+      ],
+      "toolbar": [
+        28,
+        28,
+        28,
+        0.97
+      ],
+      "background_tab": [
+        21,
+        21,
+        21,
+        0.95
+      ],
+      "tab_text": [
+        224,
+        224,
+        224
+      ],
+      "tab_background_text": [
+        118,
+        116,
+        118
+      ],
+      "bookmark_text": [
+        224,
+        224,
+        224
+      ],
+      "ntp_background": [
+        28,
+        28,
+        28
+      ],
+      "ntp_text": [
+        224,
+        224,
+        224
+      ],
+      "ntp_link": [
+        227,
+        136,
+        74
+      ],
+      "ntp_header": [
+        214,
+        105,
+        56
+      ],
+      "omnibox_background": [
+        21,
+        21,
+        21
+      ],
+      "omnibox_text": [
+        224,
+        224,
+        224
+      ],
+      "toolbar_button_icon": [
+        202,
+        209,
+        224
+      ],
+      "button_background": [
+        227,
+        136,
+        74
+      ]
+    },
+    "tints": {
+      "buttons": [
+        -1,
+        -1,
+        -1
+      ],
+      "frame_incognito": [
+        -1,
+        0.2,
+        0.15
+      ],
+      "frame_incognito_inactive": [
+        -1,
+        0.15,
+        0.1
+      ]
+    },
+    "properties": {
+      "ntp_background_alignment": "center",
+      "ntp_background_repeat": "no-repeat"
+    }
+  }
+}

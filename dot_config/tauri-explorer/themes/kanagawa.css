@@ -1,0 +1,63 @@
+/** Omarchy Kanagawa — warm ink, rice-paper text, and muted wave blues. */
+[data-theme="kanagawa"] {
+  color-scheme: dark;
+  --theme-name: "Kanagawa";
+  --theme-description: "Warm ink-and-paper palette with muted Japanese blues";
+  --theme-order: 20;
+  /* Tauri uses accent for actions and focus, so use Kanagawa's Crystal Blue
+     instead of the terminal's foreground-as-accent convention. */
+  --accent: #7e9cd8;
+  --accent-light: #7fb4ca;
+  --accent-dark: #658594;
+  --text-primary: #dcd7ba;
+  --text-secondary: #c8c093;
+  --text-tertiary: #727169;
+  --text-on-accent: #1f1f28;
+  --background-solid: #1f1f28;
+  --background-mica: rgba(31, 31, 40, 0.96);
+  --background-acrylic: rgba(42, 42, 55, 0.92);
+  --background-card: rgba(34, 50, 73, 0.58);
+  --background-card-secondary: rgba(23, 23, 30, 0.62);
+  --miller-bg: rgba(17, 17, 22, 0.72);
+  --content-bg: radial-gradient(ellipse at 50% 0%, rgba(126, 156, 216, 0.04) 0%, transparent 60%);
+  --theme-background-image: radial-gradient(ellipse at 50% 0%, rgba(126, 156, 216, 0.055) 0%, transparent 55%), #1f1f28;
+  --surface-stroke: rgba(126, 156, 216, 0.14);
+  --surface-stroke-flyout: rgba(126, 156, 216, 0.19);
+  --divider: rgba(126, 156, 216, 0.08);
+  --control-fill: rgba(126, 156, 216, 0.065);
+  --control-fill-secondary: rgba(126, 156, 216, 0.105);
+  --control-fill-tertiary: rgba(220, 215, 186, 0.05);
+  --control-fill-disabled: rgba(220, 215, 186, 0.03);
+  --subtle-fill: transparent;
+  --subtle-fill-secondary: rgba(126, 156, 216, 0.08);
+  --subtle-fill-tertiary: rgba(126, 156, 216, 0.045);
+  --control-stroke: rgba(126, 156, 216, 0.15);
+  --control-stroke-secondary: rgba(126, 156, 216, 0.1);
+  --address-bar-bg: rgba(220, 215, 186, 0.09);
+  --address-bar-stroke: rgba(126, 156, 216, 0.17);
+  --address-bar-highlight: rgba(220, 215, 186, 0.04);
+  --address-bar-bg-hover: rgba(220, 215, 186, 0.13);
+  --address-bar-stroke-hover: rgba(126, 156, 216, 0.25);
+  --breadcrumb-bg: rgba(126, 156, 216, 0.05);
+  --breadcrumb-hover-bg: rgba(126, 156, 216, 0.1);
+  --breadcrumb-active-bg: rgba(126, 156, 216, 0.16);
+  --breadcrumb-radius: 12px;
+  --breadcrumb-gap: 3px;
+  --focus-stroke-outer: #7e9cd8;
+  --focus-stroke-inner: #1f1f28;
+  --system-critical: #c34043;
+  --system-success: #76946a;
+  --system-caution: #c0a36e;
+  --shadow-flyout: 0 8px 24px rgba(17, 17, 22, 0.52), 0 2px 8px rgba(17, 17, 22, 0.3), 0 0 12px rgba(126, 156, 216, 0.04);
+  --shadow-dialog: 0 32px 64px rgba(17, 17, 22, 0.62), 0 4px 24px rgba(17, 17, 22, 0.36);
+  --shadow-tooltip: 0 4px 12px rgba(17, 17, 22, 0.55);
+  --shadow-card: 0 1px 4px rgba(17, 17, 22, 0.22), 0 0 1px rgba(17, 17, 22, 0.16), 0 0 8px rgba(126, 156, 216, 0.03);
+  --shadow-subtle: 0 1px 2px rgba(17, 17, 22, 0.25);
+  --mica-overlay: linear-gradient(170deg, rgba(126, 156, 216, 0.04), transparent 45%, rgba(192, 163, 110, 0.03));
+  --sidebar-opacity: 0.94;
+  --toolbar-opacity: 0.94;
+  --content-opacity: 0.92;
+  --titlebar-opacity: 0.94;
+  --statusbar-opacity: 0.94;
+  --icon-folder: #7e9cd8;
+}

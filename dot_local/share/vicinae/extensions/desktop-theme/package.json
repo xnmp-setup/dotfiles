@@ -1,0 +1,33 @@
+{
+  "$schema": "https://raw.githubusercontent.com/vicinaehq/vicinae/v0.19.3/extra/schemas/extension.json",
+  "name": "desktop-theme",
+  "title": "Desktop Theme",
+  "description": "Apply coordinated desktop themes and wallpapers",
+  "categories": ["System", "Productivity"],
+  "license": "MIT",
+  "author": "chong",
+  "icon": "extension-icon.svg",
+  "commands": [
+    {
+      "name": "set-desktop-theme",
+      "title": "Set Desktop Theme",
+      "description": "Apply a coordinated theme to desktop apps and the wallpaper",
+      "mode": "view"
+    }
+  ],
+  "preferences": [],
+  "scripts": {
+    "build": "vici build --output ../../dot_local/share/vicinae/extensions/desktop-theme",
+    "test": "node --test src/theme-domain.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@vicinae/api": "0.19.3",
+    "react": "19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.9.2",
+    "@types/react": "19.0.10",
+    "typescript": "^5.9.2"
+  }
+}

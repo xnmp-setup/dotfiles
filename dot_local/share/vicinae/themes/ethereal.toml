@@ -1,0 +1,29 @@
+[meta]
+version = 1
+name = "Ethereal"
+description = "Omarchy's deep-space indigo and peach palette"
+variant = "dark"
+
+[colors.core]
+background = "#060B1E"
+foreground = "#FFCEAD"
+secondary_background = "#131A3A"
+border = "#6D7DB6"
+accent = "#7D82D9"
+
+[colors.accents]
+blue = "#7D82D9"
+green = "#92A593"
+magenta = "#C89DC1"
+orange = "#EB8B54"
+purple = "#C89DC1"
+red = "#ED5B5A"
+yellow = "#E9BB4F"
+cyan = "#A3BFD1"
+
+[colors.list.item.selection]
+background = { name = "#252E56", opacity = 0.85 }
+secondary_background = "#131A3A"
+
+[colors.list.item.hover]
+background = { name = "#6D7DB6", opacity = 0.35 }

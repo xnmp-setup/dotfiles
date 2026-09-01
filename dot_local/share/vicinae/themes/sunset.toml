@@ -1,0 +1,29 @@
+[meta]
+version = 1
+name = "Sunset"
+description = "Santa Monica gold and sand against a near-black evening"
+variant = "dark"
+
+[colors.core]
+background = "#070605"
+foreground = "#FFFFFF"
+secondary_background = "#040303"
+border = "#969596"
+accent = "#DDA660"
+
+[colors.accents]
+blue = "#D0B59B"
+green = "#F7CE6E"
+magenta = "#EBD2A4"
+orange = "#EFD5B4"
+purple = "#EBD2A4"
+red = "#DDA660"
+yellow = "#B2A295"
+cyan = "#FCE7B0"
+
+[colors.list.item.selection]
+background = { name = "#302519", opacity = 0.8 }
+secondary_background = "#211A14"
+
+[colors.list.item.hover]
+background = { name = "#DDA660", opacity = 0.16 }

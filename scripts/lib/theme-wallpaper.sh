@@ -13,7 +13,158 @@ declare -A theme_wallpapers=(
   [ayu-mirage]="stephen-leonardi-eSNjFDbw_i4-unsplash.jpg"
   [horizon-dark]="saleh-gJ60sKuuYlE-unsplash.jpg"
   [catppuccin-mocha]="photo-1482784160316-6eb046863ece.jpg"
+  [kanagawa]="omarchy-kanagawa.jpg"
+  [tokyo-night]="omarchy-tokyo-night.webp"
+  [hackerman]="omarchy-hackerman.jpg"
+  [ethereal]="omarchy-ethereal.webp"
+  [flexoki-light]="marek-piwnicki-rwcONvax9qE-unsplash.jpg"
+  [osaka-jade]="omarchy-osaka-jade.webp"
+  [artzen]="omarchy-artzen.png"
+  [infernium-dark]="stephen-leonardi-eSNjFDbw_i4-unsplash.jpg"
+  [mapquest]="omarchy-mapquest.jpg"
+  [sakura]="omarchy-sakura.jpg"
+  [sunset]="omarchy-sunset.jpg"
 )
+
+# Display-name exceptions that cannot be recovered from simple title casing.
+declare -A theme_titles=(
+  [mapquest]="MapQuest"
+)
+
+# These themes are distributed entirely by this chezmoi source. Unlike themes
+# supplied by an application's builtin catalogue, selecting one before its
+# target files have been applied would leave several applications pointing at
+# names they cannot resolve.
+declare -A locally_managed_desktop_themes=(
+  [kanagawa]=1
+  [tokyo-night]=1
+  [hackerman]=1
+  [ethereal]=1
+  [flexoki-light]=1
+  [osaka-jade]=1
+  [artzen]=1
+  [infernium-dark]=1
+  [mapquest]=1
+  [sakura]=1
+  [sunset]=1
+)
+
+desktop_theme_uses_local_assets() {
+  [[ -n "${locally_managed_desktop_themes[$1]:-}" ]]
+}
+
+desktop_theme_missing_assets() {
+  local slug="$1"
+  local title="$2"
+  local wallpaper_path="$3"
+  local path package_path browser_profile_root
+  local browser_profile_present=0
+
+  if [[ -z "$wallpaper_path" || ! -f "$wallpaper_path" ]]; then
+    printf 'Wallpaper: %s\n' \
+      "$HOME/Pictures/Wallpaper/${theme_wallpapers[$slug]}"
+  fi
+
+  desktop_theme_uses_local_assets "$slug" || return 0
+
+  if [[ -f "$HOME/.config/ghostty/config" ]]; then
+    for path in \
+      "$HOME/.config/ghostty/themes/$title" \
+      "$HOME/.config/ghostty/themes/$slug-tabs.css"; do
+      [[ -f "$path" ]] || printf 'Ghostty: %s\n' "$path"
+    done
+  fi
+
+  # This stylesheet is also the shared palette source for Hyprland, Obsidian,
+  # Dark Reader, the greeter, and YouTube Music, so it is required even when
+  # Tauri Explorer itself is not installed.
+  path="$HOME/.config/tauri-explorer/themes/$slug.css"
+  [[ -f "$path" ]] || printf 'Tauri Explorer/shared palette: %s\n' "$path"
+
+  if [[ -f "$HOME/.config/lite-xl/init.lua" ]]; then
+    path="$HOME/.config/lite-xl/colors/$slug.lua"
+    [[ -f "$path" ]] || printf 'Lite XL: %s\n' "$path"
+  fi
+
+  if [[ -f "$HOME/.config/micro/settings.json" ]]; then
+    path="$HOME/.config/micro/colorschemes/$slug.micro"
+    [[ -f "$path" ]] || printf 'Micro: %s\n' "$path"
+  fi
+
+  if [[ -d "$HOME/.config/p10k-themes" ]]; then
+    path="$HOME/.config/p10k-themes/$slug.zsh"
+    [[ -f "$path" ]] || printf 'Powerlevel10k: %s\n' "$path"
+  fi
+
+  if [[ -f "$HOME/.config/wezterm/wezterm.lua" \
+      || -f "$HOME/.config/wezterm/wezterm_appearance.lua" ]]; then
+    path="$HOME/.config/wezterm/wezterm_appearance.lua"
+    if [[ ! -f "$path" ]] || ! grep -Fq "['$title']" "$path"; then
+      printf "WezTerm: %s (missing scheme '%s')\n" "$path" "$title"
+    fi
+  fi
+
+  if [[ -f "$HOME/.config/zed/settings.json" ]]; then
+    path="$HOME/.config/zed/themes/tokyo-night.json"
+    [[ "$slug" == tokyo-night ]] \
+      || path="$HOME/.config/zed/themes/omarchy-extra.json"
+    if [[ ! -f "$path" ]] || ! grep -Fq "\"name\": \"$title\"" "$path"; then
+      printf 'Zed: %s\n' "$path"
+    fi
+  fi
+
+  if [[ -f "$HOME/.config/Code/User/settings.json" ]]; then
+    path="$HOME/.vscode/extensions/local.omarchy-desktop-themes-0.0.1/themes/$slug-color-theme.json"
+    [[ -f "$path" ]] || printf 'VS Code: %s\n' "$path"
+    package_path="$HOME/.vscode/extensions/local.omarchy-desktop-themes-0.0.1/package.json"
+    if [[ ! -f "$package_path" ]] \
+      || ! grep -Fq "\"label\": \"$title\"" "$package_path" \
+      || ! grep -Fq "\"path\": \"./themes/$slug-color-theme.json\"" "$package_path"; then
+      printf 'VS Code: %s (missing theme contribution)\n' "$package_path"
+    fi
+  fi
+
+  if [[ -f "$HOME/Vaults/Technical Vault/.obsidian/appearance.json" ]]; then
+    path="$HOME/Vaults/Technical Vault/.obsidian/themes/$title/theme.css"
+    [[ -f "$path" ]] || printf 'Obsidian: %s\n' "$path"
+    path="$HOME/Vaults/Technical Vault/.obsidian/themes/$title/manifest.json"
+    if [[ ! -f "$path" ]] || ! grep -Fq "\"name\": \"$title\"" "$path"; then
+      printf 'Obsidian: %s (missing theme manifest)\n' "$path"
+    fi
+  fi
+
+  if [[ -f "$HOME/.config/vicinae/settings.json" ]] \
+    || command -v vicinae &>/dev/null; then
+    path="$HOME/.local/share/vicinae/themes/$slug.toml"
+    [[ -f "$path" ]] || printf 'Vicinae: %s\n' "$path"
+  fi
+
+  # chrome-theme.sh owns profile discovery for every supported platform. Reuse
+  # it here so preflight and installation cannot drift as browsers are added.
+  if declare -F chrome_theme_profile_roots >/dev/null; then
+    while IFS= read -r browser_profile_root; do
+      if [[ -d "$browser_profile_root" ]]; then
+        browser_profile_present=1
+        break
+      fi
+    done < <(chrome_theme_profile_roots)
+  fi
+
+  if (( browser_profile_present )) \
+    || command -v google-chrome-stable &>/dev/null \
+    || command -v google-chrome &>/dev/null \
+    || command -v chromium &>/dev/null \
+    || command -v chromium-browser &>/dev/null \
+    || command -v vivaldi &>/dev/null \
+    || command -v microsoft-edge &>/dev/null \
+    || command -v brave &>/dev/null; then
+    for path in \
+      "$HOME/.local/share/chrome-themes/$slug/manifest.json" \
+      "$HOME/.local/share/chrome-themes/$slug/darkreader-$slug.json"; do
+      [[ -f "$path" ]] || printf 'Chrome: %s\n' "$path"
+    done
+  fi
+}
 
 # Expand a unique prefix only against themes with wallpaper associations. This
 # keeps an unrelated app-specific theme (for example Obsidian's "cosmic") from

@@ -1,0 +1,29 @@
+[meta]
+version = 1
+name = "Osaka Jade"
+description = "Bamboo-inspired deep jade with warm parchment text"
+variant = "dark"
+
+[colors.core]
+background = "#111C18"
+foreground = "#C1C497"
+secondary_background = "#0C1512"
+border = "#53685B"
+accent = "#509475"
+
+[colors.accents]
+blue = "#509475"
+green = "#549E6A"
+magenta = "#D2689C"
+orange = "#A2734B"
+purple = "#D2689C"
+red = "#FF5345"
+yellow = "#459451"
+cyan = "#2DD5B7"
+
+[colors.list.item.selection]
+background = { name = "#32473B", opacity = 0.8 }
+secondary_background = "#23372B"
+
+[colors.list.item.hover]
+background = { name = "#509475", opacity = 0.16 }

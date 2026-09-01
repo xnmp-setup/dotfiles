@@ -1,0 +1,75 @@
+{
+  "name": "omarchy-desktop-themes",
+  "displayName": "Omarchy Desktop Themes",
+  "description": "Local VS Code themes synchronized by set-theme.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": ["Themes"],
+  "contributes": {
+    "themes": [
+      {
+        "label": "Kanagawa",
+        "uiTheme": "vs-dark",
+        "path": "./themes/kanagawa-color-theme.json"
+      },
+      {
+        "label": "Tokyo Night",
+        "uiTheme": "vs-dark",
+        "path": "./themes/tokyo-night-color-theme.json"
+      },
+      {
+        "label": "Hackerman",
+        "uiTheme": "vs-dark",
+        "path": "./themes/hackerman-color-theme.json"
+      },
+      {
+        "label": "Ethereal",
+        "uiTheme": "vs-dark",
+        "path": "./themes/ethereal-color-theme.json"
+      },
+      {
+        "label": "Flexoki Light",
+        "uiTheme": "vs",
+        "path": "./themes/flexoki-light-color-theme.json"
+      },
+      {
+        "label": "Osaka Jade",
+        "uiTheme": "vs-dark",
+        "path": "./themes/osaka-jade-color-theme.json"
+      },
+      {
+        "label": "Artzen",
+        "uiTheme": "vs-dark",
+        "path": "./themes/artzen-color-theme.json"
+      },
+      {
+        "label": "Infernium Dark",
+        "uiTheme": "vs-dark",
+        "path": "./themes/infernium-dark-color-theme.json"
+      },
+      {
+        "label": "MapQuest",
+        "uiTheme": "vs",
+        "path": "./themes/mapquest-color-theme.json"
+      },
+      {
+        "label": "Sakura",
+        "uiTheme": "vs-dark",
+        "path": "./themes/sakura-color-theme.json"
+      },
+      {
+        "label": "Sunset",
+        "uiTheme": "vs-dark",
+        "path": "./themes/sunset-color-theme.json"
+      }
+    ]
+  },
+  "__metadata": {
+    "installedTimestamp": 0,
+    "targetPlatform": "undefined",
+    "size": 0
+  }
+}

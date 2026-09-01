@@ -14,8 +14,7 @@ fail() {
   exit 1
 }
 
-mkdir -p "$test_root/bin" "$test_root/home/.local/bin" \
-  "$test_root/home/.local/share/chezmoi/scripts"
+mkdir -p "$test_root/bin" "$test_root/home/.local/bin"
 
 cat >"$test_root/home/.local/bin/hypr-workspace" <<'EOF'
 #!/usr/bin/env bash
@@ -46,34 +45,13 @@ else
 fi
 EOF
 
-cat >"$test_root/home/.local/share/chezmoi/scripts/set-theme.sh" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-if [[ "$1" == "--list-desktop-themes" ]]; then
-  printf 'Ayu Mirage\nCosmic Dusk\n'
-  exit 0
-fi
-printf '%s\n' "$*" >>"$TEST_THEME_LOG"
-EOF
-
 cat >"$test_root/bin/notify-send" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$TEST_NOTIFY_LOG"
 EOF
-cat >"$test_root/bin/systemd-run" <<'EOF'
-#!/usr/bin/env bash
-printf '%s\n' "$*" >>"$TEST_SYSTEMD_RUN_LOG"
-EOF
-cat >"$test_root/bin/flock" <<'EOF'
-#!/usr/bin/env bash
-printf '%s\n' "$*" >>"$TEST_THEME_LOCK_LOG"
-[[ "${TEST_THEME_LOCKED:-0}" == 0 ]]
-EOF
 
 chmod +x "$test_root/home/.local/bin/hypr-workspace" \
-  "$test_root/home/.local/share/chezmoi/scripts/set-theme.sh" \
-  "$test_root/bin/vicinae" "$test_root/bin/notify-send" \
-  "$test_root/bin/systemd-run" "$test_root/bin/flock"
+  "$test_root/bin/vicinae" "$test_root/bin/notify-send"
 
 run_script() {
   HOME="$test_root/home" \
@@ -82,12 +60,7 @@ run_script() {
     TEST_DMENU_LOG="$test_root/dmenu.log" \
     TEST_DMENU_INPUT_LOG="$test_root/dmenu-input.log" \
     TEST_NOTIFY_LOG="$test_root/notify.log" \
-    TEST_SYSTEMD_RUN_LOG="$test_root/systemd-run.log" \
-    TEST_THEME_LOCK_LOG="$test_root/theme-lock.log" \
-    TEST_THEME_LOCKED="${TEST_THEME_LOCKED:-0}" \
-    TEST_THEME_LOG="$test_root/theme.log" \
     TEST_EMPTY="${TEST_EMPTY:-0}" \
-    HYPRLAND_INSTANCE_SIGNATURE=test-hyprland \
     bash "$@"
 }
 
@@ -95,9 +68,6 @@ run_script() {
 : >"$test_root/dmenu.log"
 : >"$test_root/dmenu-input.log"
 : >"$test_root/notify.log"
-: >"$test_root/theme.log"
-: >"$test_root/systemd-run.log"
-: >"$test_root/theme-lock.log"
 
 run_script "$repo_root/dot_local/share/vicinae/scripts/restore-workspace"
 grep -Fxq $'restore\t2' "$test_root/workspace.log" ||
@@ -121,64 +91,5 @@ grep -Fq -- 'Workspace forgotten' "$test_root/notify.log" ||
 TEST_EMPTY=1 run_script "$repo_root/dot_local/share/vicinae/scripts/restore-workspace"
 grep -Fq -- 'No recent workspaces' "$test_root/notify.log" ||
   fail "the empty state was not explained"
-
-: >"$test_root/dmenu.log"
-: >"$test_root/dmenu-input.log"
-: >"$test_root/notify.log"
-theme_script="$repo_root/dot_local/share/vicinae/scripts/set-desktop-theme"
-theme_output=$(run_script "$theme_script")
-[[ "$theme_output" == "Applying Ayu Mirage" ]] \
-  || fail "the theme picker did not report its asynchronous handoff"
-[[ ! -s "$test_root/theme.log" ]] \
-  || fail "the Vicinae command applied the theme synchronously"
-grep -Fq -- '--user --collect --no-block --quiet' "$test_root/systemd-run.log" \
-  || fail "the theme picker did not use a non-blocking transient user service"
-grep -Fq -- '--setenv=HYPRLAND_INSTANCE_SIGNATURE=test-hyprland' \
-  "$test_root/systemd-run.log" \
-  || fail "the theme worker did not preserve the Hyprland instance"
-grep -Fq -- "/usr/bin/env bash $theme_script --apply ayu-mirage Ayu Mirage" \
-  "$test_root/systemd-run.log" \
-  || fail "the transient service did not receive the selected theme"
-
-run_script "$theme_script" --apply ayu-mirage "Ayu Mirage"
-grep -Fxq 'ayu-mirage --restart-chrome' "$test_root/theme.log" ||
-  fail "the background worker did not apply the selected theme and refresh Chrome"
-grep -Fq -- 'Desktop theme set Ayu Mirage' "$test_root/notify.log" \
-  || fail "the background worker did not report completion"
-[[ -s "$test_root/theme-lock.log" ]] \
-  || fail "the background worker did not acquire the theme application lock"
-grep -Fq -- 'Set Desktop Theme' "$test_root/dmenu.log" ||
-  fail "the theme command did not open a searchable picker"
-grep -Fq -- 'Desktop themes ({count})' "$test_root/dmenu.log" ||
-  fail "the theme picker did not show its option count"
-grep -Fq -- '--width 800' "$test_root/dmenu.log" ||
-  fail "the theme picker did not reserve enough width for complete names"
-[[ $(grep -Fxc 'Ayu Mirage' "$test_root/dmenu-input.log") -eq 1 ]] ||
-  fail "the theme picker did not show each display name exactly once"
-if grep -q $'\t' "$test_root/dmenu-input.log"; then
-  fail "the theme picker exposed duplicate slug metadata"
-fi
-grep -Fq -- 'Desktop theme set' "$test_root/notify.log" ||
-  fail "the completed theme switch was not visible to the user"
-grep -Fxq '# @vicinae.mode silent' "$theme_script" ||
-  fail "the theme command does not exit Vicinae after applying"
-if grep -Fq '# @vicinae.argument' "$theme_script"; then
-  fail "the theme command still asks for a free-form argument"
-fi
-
-: >"$test_root/theme.log"
-: >"$test_root/notify.log"
-if TEST_THEME_LOCKED=1 run_script "$theme_script" --apply cosmic-dusk "Cosmic Dusk"; then
-  fail "a second theme worker ignored the active application lock"
-fi
-[[ ! -s "$test_root/theme.log" ]] \
-  || fail "a contending theme worker reached the theme command"
-grep -Fq -- 'Desktop theme already changing' "$test_root/notify.log" \
-  || fail "lock contention was not explained to the user"
-
-: >"$test_root/theme.log"
-TEST_DMENU_CANCEL=1 run_script "$theme_script"
-[[ ! -s "$test_root/theme.log" ]] ||
-  fail "cancelling the theme picker applied a theme"
 
 echo "Vicinae workflow tests passed"

@@ -22,6 +22,7 @@ for _, module in ipairs({
     "session_restore",
     "window_actions",
     "window_model",
+    "page_key_routing",
 }) do
     package.loaded[module] = nil
 end
@@ -38,6 +39,7 @@ local exposes         = require("expose")
 local group_actions   = require("group_actions").new(hl)
 local display_mirror  = require("display_mirror").new(hl, { enabled = is_laptop })
 local nightlight      = require("nightlight")
+local page_key_routing = require("page_key_routing")
 local spotlights      = require("spotlight")
 local default_terminal = {
     name = "ghostty",
@@ -552,27 +554,29 @@ hl.bind(mainMod .. " + SHIFT + Next",  hl.dsp.window.move({ monitor = "r" }))
 -- other clients to receive the original keys.
 local ghostty_page_scroll_marker = "\u{2063}\u{2064}\u{2063}"
 
-local function ghostty_page_scroll(key)
+local function page_key_action(page_key, vicinae_direction)
     return function()
         local active = hl.get_active_window()
         local title = active and (active.title or "") or ""
-        if active
-            and active.class == "com.mitchellh.ghostty"
-            and title:find(ghostty_page_scroll_marker, 1, true)
-        then
-            hl.dispatch(hl.dsp.send_shortcut({
-                mods = "CTRL_ALT",
-                key = key,
-                window = active,
-            }))
-        else
-            hl.dispatch(hl.dsp.pass({ window = active }))
+        local actions = page_key_routing.plan(
+            active, title, ghostty_page_scroll_marker, page_key, vicinae_direction)
+
+        for _, action in ipairs(actions) do
+            if action.kind == "shortcut" then
+                hl.dispatch(hl.dsp.send_shortcut({
+                    mods = action.mods or "",
+                    key = action.key,
+                    window = active,
+                }))
+            else
+                hl.dispatch(hl.dsp.pass({ window = active }))
+            end
         end
     end
 end
 
-hl.bind("Prior", ghostty_page_scroll("Prior"), { repeating = true })
-hl.bind("Next",  ghostty_page_scroll("Next"),  { repeating = true })
+hl.bind("Prior", page_key_action("Prior", "Up"),   { repeating = true })
+hl.bind("Next",  page_key_action("Next",  "Down"), { repeating = true })
 
 -- Float center toggle with dim is bound in the SPOTLIT WINDOWS section below,
 -- which is where the state it toggles lives.

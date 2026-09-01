@@ -1,0 +1,118 @@
+{
+  "manifest_version": 3,
+  "name": "Osaka Jade",
+  "version": "1.0.0",
+  "description": "Bamboo-inspired deep jade with warm parchment text",
+  "theme": {
+    "colors": {
+      "frame": [
+        35,
+        55,
+        43
+      ],
+      "frame_inactive": [
+        17,
+        28,
+        24
+      ],
+      "frame_incognito": [
+        12,
+        21,
+        18
+      ],
+      "frame_incognito_inactive": [
+        9,
+        15,
+        13
+      ],
+      "toolbar": [
+        17,
+        28,
+        24,
+        0.97
+      ],
+      "background_tab": [
+        12,
+        21,
+        18,
+        0.95
+      ],
+      "tab_text": [
+        193,
+        196,
+        151
+      ],
+      "tab_background_text": [
+        129,
+        184,
+        168
+      ],
+      "bookmark_text": [
+        193,
+        196,
+        151
+      ],
+      "ntp_background": [
+        17,
+        28,
+        24
+      ],
+      "ntp_text": [
+        193,
+        196,
+        151
+      ],
+      "ntp_link": [
+        80,
+        148,
+        117
+      ],
+      "ntp_header": [
+        50,
+        71,
+        59
+      ],
+      "omnibox_background": [
+        12,
+        21,
+        18
+      ],
+      "omnibox_text": [
+        193,
+        196,
+        151
+      ],
+      "toolbar_button_icon": [
+        214,
+        213,
+        188
+      ],
+      "button_background": [
+        80,
+        148,
+        117
+      ]
+    },
+    "tints": {
+      "buttons": [
+        -1,
+        -1,
+        -1
+      ],
+      "frame_incognito": [
+        -1,
+        0.2,
+        0.15
+      ],
+      "frame_incognito_inactive": [
+        -1,
+        0.15,
+        0.1
+      ]
+    },
+    "properties": {
+      "ntp_background_alignment": "center",
+      "ntp_background_repeat": "no-repeat"
+    }
+  }
+}

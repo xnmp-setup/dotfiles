@@ -1,0 +1,29 @@
+[meta]
+version = 1
+name = "Flexoki Light"
+description = "Omarchy's warm paper-like Flexoki Light palette"
+variant = "light"
+
+[colors.core]
+background = "#FFFCF0"
+foreground = "#100F0F"
+secondary_background = "#F2EFE4"
+border = "#B7B5AC"
+accent = "#205EA6"
+
+[colors.accents]
+blue = "#205EA6"
+green = "#879A39"
+magenta = "#CE5D97"
+orange = "#D0772B"
+purple = "#CE5D97"
+red = "#D14D41"
+yellow = "#D0A215"
+cyan = "#3AA99F"
+
+[colors.list.item.selection]
+background = { name = "#CECDC3", opacity = 0.9 }
+secondary_background = "#E6E4D9"
+
+[colors.list.item.hover]
+background = { name = "#B7B5AC", opacity = 0.45 }

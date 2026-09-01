@@ -1,0 +1,29 @@
+[meta]
+version = 1
+name = "Sakura"
+description = "Elegant cherry-blossom warmth on deep burgundy-black"
+variant = "dark"
+
+[colors.core]
+background = "#0D0509"
+foreground = "#F0EAED"
+secondary_background = "#060204"
+border = "#7A5C66"
+accent = "#D9A56C"
+
+[colors.accents]
+blue = "#D9A56C"
+green = "#F29B9A"
+magenta = "#D1B399"
+orange = "#FF8E7C"
+purple = "#D1B399"
+red = "#E85F6F"
+yellow = "#D4A882"
+cyan = "#E8C099"
+
+[colors.list.item.selection]
+background = { name = "#230E18", opacity = 0.8 }
+secondary_background = "#230E18"
+
+[colors.list.item.hover]
+background = { name = "#D9A56C", opacity = 0.16 }

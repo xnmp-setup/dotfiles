@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+
+# Detached worker for the Vicinae desktop-theme extension. It serializes theme
+# writes and reports the final outcome after Vicinae has returned to its root.
+
+set -uo pipefail
+
+if (( $# != 2 )); then
+  echo "Usage: $0 <theme-slug> <theme-title>" >&2
+  exit 2
+fi
+
+slug="$1"
+title="$2"
+theme_cli="$HOME/.local/share/chezmoi/scripts/set-theme.sh"
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/desktop-theme"
+error_log="$state_dir/last-error.log"
+theme_lock_fd=""
+
+notify() {
+  command -v notify-send >/dev/null 2>&1 || return 0
+  notify-send "$1" "$2" --urgency="${3:-normal}"
+}
+
+mkdir -p "$state_dir"
+if command -v flock >/dev/null 2>&1; then
+  exec {theme_lock_fd}>"$state_dir/apply.lock"
+  if ! flock -n "$theme_lock_fd"; then
+    notify "Desktop theme already changing" \
+      "Wait for the current Chrome restart to finish before choosing another theme."
+    exit 75
+  fi
+fi
+
+if output=$(bash "$theme_cli" "$slug" --restart-chrome 2>&1); then
+  notify "Desktop theme set" "$title"
+  exit 0
+fi
+
+printf '%s\n' "$output" >"$error_log"
+error=$(printf '%s\n' "$output" | tail -n 3 | tr '\n' ' ' | cut -c 1-300)
+notify "Desktop theme was not set" "${error:-Unknown error}" critical
+printf '%s\n' "$output" >&2
+exit 1

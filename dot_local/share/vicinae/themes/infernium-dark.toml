@@ -1,0 +1,29 @@
+[meta]
+version = 1
+name = "Infernium Dark"
+description = "Molten orange highlights over biomechanical charcoal"
+variant = "dark"
+
+[colors.core]
+background = "#1C1C1C"
+foreground = "#E0E0E0"
+secondary_background = "#151515"
+border = "#767476"
+accent = "#E3884A"
+
+[colors.accents]
+blue = "#AEB1C0"
+green = "#767476"
+magenta = "#BA6435"
+orange = "#E99867"
+purple = "#BA6435"
+red = "#D66938"
+yellow = "#F7D383"
+cyan = "#E99867"
+
+[colors.list.item.selection]
+background = { name = "#D66938", opacity = 0.8 }
+secondary_background = "#292522"
+
+[colors.list.item.hover]
+background = { name = "#E3884A", opacity = 0.16 }
