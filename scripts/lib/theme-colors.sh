@@ -2,9 +2,8 @@
 #
 # Every app that cannot be handed a theme *file* has to be handed a palette
 # instead, and the palette always comes from the same place: the tauri-explorer
-# stylesheet for the theme. Only the vars that are reliably a solid hex across
-# every theme are read from it — background-solid, accent, accent-light,
-# text-primary, text-secondary — and everything else is mixed from those.
+# stylesheet for the theme. Optional desktop-surface and desktop-border solid
+# tokens preserve authored surfaces; older themes retain their mixed defaults.
 #
 # Mixing rather than hardcoding is what keeps light themes working: "a shade
 # lifted off the background" has to darken on a light theme and lighten on a
@@ -14,6 +13,18 @@
 #   css_var <file> <var-name-without-dashes>
 css_var() {
   grep -oP -- "--$2:\s*\K#[0-9a-fA-F]{3,8}" "$1" 2>/dev/null | head -1
+}
+
+# Optional opaque desktop token, with the existing blend as a fallback.
+# Reject non-solid CSS values: generated consumers require six-digit RGB.
+desktop_color() {
+  local value
+  value=$(css_var "$1" "$2")
+  if [[ "$value" =~ ^#([[:xdigit:]]{3}|[[:xdigit:]]{6})$ ]]; then
+    norm_hex "$value"
+  else
+    mix "$3" "$4" "$5"
+  fi
 }
 
 # Expand #abc to aabbcc so the mixer always has six digits to work with.

@@ -16,6 +16,9 @@
   --background-acrylic: #fffcf0;
   --background-card: #f2efe4;
   --background-card-secondary: #e6e4d9;
+  /* Opaque surfaces for compositor tabs and native greeter controls. */
+  --desktop-surface: #f2efe4;
+  --desktop-border: #d4d1c8;
   --miller-bg: #f2efe4;
   --content-bg: #fffcf0;
   --surface-stroke: rgba(183, 181, 172, 0.7);

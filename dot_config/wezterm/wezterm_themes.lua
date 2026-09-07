@@ -19,6 +19,7 @@ function M.setup(config, opts)
   -- so we re-derive and override them alongside the scheme.
   local resolve_scheme = assert(opts.resolve_scheme, 'resolve_scheme is required')
   local tab_bar_colors = assert(opts.tab_bar_colors, 'tab_bar_colors is required')
+  local background_opacity = assert(opts.background_opacity, 'background_opacity is required')
 
   -- ---------- Command palette: Set Theme ----------
   local function persist_color_scheme(name)
@@ -64,7 +65,9 @@ function M.setup(config, opts)
                 for k, v in pairs(overrides.colors or config.colors or {}) do
                   colors[k] = v
                 end
-                colors.tab_bar = tab_bar_colors(resolve_scheme(config, label))
+                local scheme = resolve_scheme(config, label)
+                colors.tab_bar = tab_bar_colors(scheme)
+                overrides.window_background_opacity = background_opacity(scheme)
                 overrides.colors = colors
                 -- window_frame is a separate table and also carries the scheme
                 -- background (the strip behind the tab buttons).

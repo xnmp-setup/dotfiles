@@ -13,6 +13,7 @@
 local M = {}
 
 local defaults = {
+    mode         = "dark",
     accent       = "d4607a", -- borders and the locked-group tint
     accent_light = "e87898", -- the far end of the active-border gradient
     background   = "0a0e28", -- also what shows through a window mid-resize
@@ -32,6 +33,12 @@ if ok and type(generated) == "table" then
     -- Anything the generator could not derive falls through to the default,
     -- so a partial file degrades one colour at a time rather than all of them.
     M.colors = setmetatable(generated, { __index = defaults })
+end
+
+-- Keep light windows nearly solid: a faint wallpaper tint without washed-out ink.
+function M.window_opacity(dark_opacity)
+    local opacity = M.colors.mode == "light" and "0.98" or tostring(dark_opacity)
+    return opacity .. " " .. opacity
 end
 
 --- "d4607a" -> "rgba(d4607aff)". Alpha is the usual two hex digits.

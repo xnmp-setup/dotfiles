@@ -33,6 +33,14 @@ local function eq(name, got, want)
 end
 
 -- ---------- mix ----------
+eq('Flexoki keeps paper subtly translucent', appearance.background_opacity({ background = '#fffcf0' }), 0.97)
+eq('Ayu keeps porcelain subtly translucent', appearance.background_opacity({ background = '#f8f9fa' }), 0.97)
+eq('MapQuest keeps parchment subtly translucent', appearance.background_opacity({ background = '#ecd3a1' }), 0.97)
+eq('dark schemes retain transparency', appearance.background_opacity({ background = '#1a1b26' }), 0.92)
+eq('missing background retains default', appearance.background_opacity({}), 0.92)
+eq('nil scheme retains default', appearance.background_opacity(nil), 0.92)
+eq('malformed color retains default', appearance.background_opacity({ background = '#xyz' }), 0.92)
+
 eq('mix at t=0 is the start color', appearance.mix('#102030', '#ffffff', 0), '#102030')
 eq('mix at t=1 is the end color', appearance.mix('#102030', '#ffffff', 1), '#ffffff')
 eq('mix halfway averages channels', appearance.mix('#000000', '#ffffff', 0.5), '#808080')

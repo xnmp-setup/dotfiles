@@ -21,6 +21,19 @@ local function parse_hex(hex)
   return tonumber(r, 16), tonumber(g, 16), tonumber(b, 16)
 end
 
+-- Use the scheme's background luminance so builtins and interactive selections
+-- follow the same policy as desktop themes. Unknown colors retain dark defaults.
+function M.background_opacity(scheme)
+  local r, g, b = parse_hex((scheme or {}).background)
+  if not r then return 0.92 end
+  local function linear(channel)
+    local value = channel / 255
+    return value <= 0.04045 and value / 12.92 or ((value + 0.055) / 1.055) ^ 2.4
+  end
+  local luminance = 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b)
+  return luminance > 0.5 and 0.97 or 0.92
+end
+
 -- Linear blend: t=0 yields `from`, t=1 yields `to`.
 function M.mix(from, to, t)
   local fr, fg, fb = parse_hex(from)
@@ -279,7 +292,6 @@ function M.apply(config)
   -- state; this template renders that exact scheme on each apply.
   config.color_scheme = '{{ $desktopTheme.wezterm }}'
   config.font_size = 14
-  config.window_background_opacity = 0.92
   config.window_padding = { left = 10, right = 10, top = 6, bottom = 6 }
 
   -- Ghostty: macos-titlebar-style = tabs + hidden window buttons.
@@ -305,6 +317,7 @@ function M.apply(config)
   config.tab_max_width = 32
   config.status_update_interval = M.status_update_interval_ms
   local scheme = M.resolve_scheme(config, config.color_scheme)
+  config.window_background_opacity = M.background_opacity(scheme)
   -- Per-user Windows fonts can exist on disk without DirectWrite exposing every
   -- family to WezTerm. Scan the directory explicitly so Inter resolves instead
   -- of falling through to the first registered monospace fallback.

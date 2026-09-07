@@ -65,6 +65,7 @@ require('wezterm_themes').setup(config, {
   persist_path = appearance.config_path,
   resolve_scheme = appearance.resolve_scheme,
   tab_bar_colors = appearance.tab_bar_colors,
+  background_opacity = appearance.background_opacity,
 })
 
 return config

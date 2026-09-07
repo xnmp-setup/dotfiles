@@ -193,6 +193,7 @@ touch "$test_root/Pictures/Wallpaper/omarchy-mapquest.jpg"
 touch "$test_root/Pictures/Wallpaper/omarchy-sakura.jpg"
 touch "$test_root/Pictures/Wallpaper/omarchy-sunset.jpg"
 printf 'theme = Old Theme\n' >"$test_root/.config/ghostty/config"
+touch "$test_root/greeter.css"
 printf '{"workbench.colorTheme": "Old Theme"}\n' \
   >"$test_root/.config/Code/User/settings.json"
 printf '{"theme": "obsidian", "cssTheme": "Old Theme", "accentColor": "#000000"}\n' \
@@ -323,6 +324,7 @@ run_set_theme() {
     PATH="$test_root/bin:$PATH" \
     HYPRLAND_INSTANCE_SIGNATURE=test \
     SET_THEME_GOOGLE_CHROME_EXTENSION_DIR="$test_root/google-chrome/extensions" \
+    SET_THEME_GREETER_CSS="$test_root/greeter.css" \
     DARKREADER_FORK_RELEASE_URL="file://$test_root/missing-darkreader-release.zip" \
     DARKREADER_FORK_RELEASE_SHA256="0000000000000000000000000000000000000000000000000000000000000000" \
     bash "$repo_root/scripts/set-theme.sh" "$@"
@@ -522,6 +524,38 @@ for omarchy_case in "${omarchy_cases[@]}"; do
     "path = $test_root/Pictures/Wallpaper/$omarchy_wallpaper"
   assert_contains "$test_root/.config/hypr/theme-colors.lua" \
     "accent       = \"${omarchy_accent#\#}\""
+  assert_contains "$test_root/.config/hypr/theme-colors.lua" \
+    "mode         = \"$omarchy_mode\""
+  expected_opacity=0.95
+  expected_shadow=0.45
+  if [[ "$omarchy_mode" == light ]]; then
+    expected_opacity=0.99
+    expected_shadow=0.12
+  fi
+  assert_contains "$test_root/.config/ghostty/config" "background-opacity = $expected_opacity"
+  assert_contains "$test_root/greeter.css" "box-shadow: 0 8px 32px rgba(0, 0, 0, $expected_shadow)"
+  if [[ "$omarchy_slug" == flexoki-light ]]; then
+    assert_contains "$test_root/.config/hypr/theme-colors.lua" 'surface      = "f2efe4"'
+    assert_contains "$test_root/.config/hypr/theme-colors.lua" 'border       = "d4d1c8"'
+    assert_contains "$test_root/greeter.css" 'background-color: #f2efe4;'
+    assert_contains "$test_root/greeter.css" 'background-color: rgba(255, 252, 240, 0.97);'
+  fi
+  # Reload the real theme module against each generated file: light -> dark
+  # transitions must restore the configured application opacity.
+  lua - "$repo_root" "$test_root" "$omarchy_mode" <<'LUA'
+local repo, root, mode = arg[1], arg[2], arg[3]
+package.path = root .. '/.config/hypr/?.lua;' .. repo .. '/dot_config/hypr/?.lua;' .. package.path
+-- Simulate the previous session's cached modules, then execute the actual
+-- config reload prelude before requiring the newly generated palette.
+package.loaded.theme = { window_opacity = function() return 'stale' end }
+package.loaded['theme-colors'] = { mode = mode == 'light' and 'dark' or 'light' }
+local config = assert(io.open(repo .. '/dot_config/hypr/hyprland.lua.tmpl'))
+local prelude = config:read('*a'):match('^(.-)local nary =')
+config:close()
+assert(load(prelude))()
+local theme = require 'theme'
+assert(theme.window_opacity(0.93) == (mode == 'light' and '0.98 0.98' or '0.93 0.93'))
+LUA
 
   zed_theme="$repo_root/dot_config/zed/themes/omarchy-extra.json"
   [[ "$omarchy_slug" == tokyo-night ]] \

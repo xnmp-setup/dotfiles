@@ -3,7 +3,7 @@
 quick-terminal-position = top
 quick-terminal-size = 65%,1000px
 
-background-opacity = 0.95
+background-opacity = {{ if eq $desktopTheme.mode "light" }}0.99{{ else }}0.95{{ end }}
 macos-hidden = never
 macos-titlebar-style = tabs
 

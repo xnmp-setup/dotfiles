@@ -12,6 +12,7 @@
 -- stateful module graph fresh before constructing new handlers; otherwise a
 -- chezmoi apply + `hyprctl reload` rereads this file but executes the old code.
 for _, module in ipairs({
+    "theme",
     "app_switcher",
     "display_mirror",
     "expose",
@@ -388,13 +389,13 @@ hl.window_rule({ name = "litexl-float",  match = { class = "com.lite_xl.LiteXL" 
 hl.window_rule({ name = "litexl-size",   match = { class = "com.lite_xl.LiteXL" }, size = "25% 65%" })
 hl.window_rule({ name = "litexl-center", match = { class = "com.lite_xl.LiteXL" }, center = true })
 
-hl.window_rule({ name = "obsidian-opacity",  match = { class = "obsidian" },                opacity = "0.91 0.91" })
-hl.window_rule({ name = "code-opacity",      match = { class = "^code$" },                  opacity = "0.93 0.93" })
-hl.window_rule({ name = "chrome-opacity",    match = { class = "^google-chrome$" },         opacity = "0.93 0.93" })
-hl.window_rule({ name = "zeddev-opacity",    match = { class = "dev.zed.Zed-Dev" },         opacity = "0.93 0.93" })
-hl.window_rule({ name = "zed-opacity",       match = { class = "dev.zed.Zed$" },            opacity = "0.93 0.93" })
-hl.window_rule({ name = "tauriexpl-opacity", match = { class = "tauri-explorer" },          opacity = "0.9 0.9" })
-hl.window_rule({ name = "ghostty-opacity",   match = { class = "com.mitchellh.ghostty" },   opacity = "0.95 0.95" })
+hl.window_rule({ name = "obsidian-opacity",  match = { class = "obsidian" },                opacity = theme.window_opacity(0.91) })
+hl.window_rule({ name = "code-opacity",      match = { class = "^code$" },                  opacity = theme.window_opacity(0.93) })
+hl.window_rule({ name = "chrome-opacity",    match = { class = "^google-chrome$" },         opacity = theme.window_opacity(0.93) })
+hl.window_rule({ name = "zeddev-opacity",    match = { class = "dev.zed.Zed-Dev" },         opacity = theme.window_opacity(0.93) })
+hl.window_rule({ name = "zed-opacity",       match = { class = "dev.zed.Zed$" },            opacity = theme.window_opacity(0.93) })
+hl.window_rule({ name = "tauriexpl-opacity", match = { class = "tauri-explorer" },          opacity = theme.window_opacity(0.9) })
+hl.window_rule({ name = "ghostty-opacity",   match = { class = "com.mitchellh.ghostty" },   opacity = theme.window_opacity(0.95) })
 
 hl.window_rule({ name = "imv-float",  match = { class = "^imv$" }, float = true })
 hl.window_rule({ name = "imv-center", match = { class = "^imv$" }, center = true })
