@@ -77,12 +77,16 @@ local function new(hl, window_actions)
 
     -- A `hyprctl reload` re-runs this config from scratch, so the table of claimed
     -- windows is gone while the windows themselves are still parked exactly where it
-    -- left them. The special workspace is the record: nothing else puts a window
-    -- there, so anything sitting in one can be taken back without ambiguity.
+    -- left them. The special workspace plus the declared class is the record: the pad
+    -- is the one window there of the class the pad launches. The class check is not a
+    -- formality -- an application started from the drop-down inherits its workspace
+    -- from Hyprland, and taking that window back as the pad would summon and focus it
+    -- instead of the terminal.
     local function reclaim(name)
+        local pad = pads[name]
         for _, w in ipairs(hl.get_windows() or {}) do
             local ws = w.workspace and w.workspace.name
-            if ws == "special:" .. name then
+            if ws == "special:" .. name and pad and w.class == pad.class then
                 live[name] = w.address
                 return w
             end
@@ -372,23 +376,51 @@ local function new(hl, window_actions)
     -- An isolated scratchpad owns its special workspace outright. Applications
     -- opened from it inherit that workspace from Hyprland, so move any unclaimed
     -- window straight onto the ordinary workspace underneath.
-    local function redirect_foreign_window(w)
-        if not (w and w.mapped) or claimed(w.address) then return end
-
-        local name = declared_workspace_name(w)
-        local pad = name and pads[name]
-        if not (pad and pad.isolate) then return end
-
-        local destination = workspace_under(name, w)
+    --
+    -- Focus follows an app the user just launched, but not a stray being swept out
+    -- from under a pad that is about to be summoned -- that one leaves silently, or
+    -- the summon would hand the keyboard to the window it is evicting.
+    local function move_out(w, name, follow)
+        local destination = workspace_under(name, w) or visible_workspace()
         if not (destination and destination.id and destination.id > 0) then
             return
         end
 
         hl.dispatch(hl.dsp.window.move({
             workspace = tostring(destination.id),
-            follow = true,
+            follow = follow and true or nil,
+            silent = not follow and true or nil,
             window = w,
         }))
+    end
+
+    -- Deliberately not gated on `mapped`: what makes a window a stray is where it
+    -- sits, not how far along its map is, and a window still settling is exactly the
+    -- one that most needs ejecting before the pad is summoned over it.
+    local function isolated_stray(w)
+        if not w or claimed(w.address) then return nil end
+
+        local name = declared_workspace_name(w)
+        local pad = name and pads[name]
+        return pad and pad.isolate and name or nil
+    end
+
+    local function redirect_foreign_window(w)
+        local name = isolated_stray(w)
+        if name then move_out(w, name, true) end
+    end
+
+    -- Windows that mapped onto the pad's workspace while the redirect had nowhere to
+    -- put them -- before the pad had ever been shown in this config generation, so no
+    -- host workspace was known -- are still sitting there. Summoning the pad would
+    -- reveal them stacked on top of it, so they leave first.
+    local function evict_strays(name)
+        local pad = pads[name]
+        if not (pad and pad.isolate) then return end
+
+        for _, w in ipairs(hl.get_windows() or {}) do
+            if isolated_stray(w) == name then move_out(w, name, false) end
+        end
     end
 
     --- Summon the named scratchpad, or dismiss it if it is already up.
@@ -412,6 +444,7 @@ local function new(hl, window_actions)
             hide(name, w)
         else
             remember_return(name)
+            evict_strays(name)
             show(name, w)
         end
     end

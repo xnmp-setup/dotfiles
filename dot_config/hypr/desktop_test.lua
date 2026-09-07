@@ -1486,6 +1486,52 @@ do
     equal("autohide keeps the user-selected group tab", tabs.current, obsidian)
 end
 
+-- A `hyprctl reload` drops the table of claimed windows, so the pad has to be
+-- recognised again from what is parked in its special workspace. An app launched
+-- from the drop-down lives there too, and taking that one back would summon and
+-- focus it instead of the terminal.
+do
+    local ws = { id = 1, name = "1" }
+    local special = { id = -94, name = "special:ghostty-drop" }
+    local other = window("other", "google-chrome", ws)
+    -- Ahead of the pad in window order: whichever comes first is what an
+    -- unqualified search would take.
+    local stray = window("stray", "obsidian", special)
+    local pad = window("pad", "com.mitchellh.ghostty", special)
+    -- Still settling. Where it sits already makes it a stray; waiting for the map to
+    -- finish would only let the pad be summoned on top of it.
+    local settling = window("settling", "obsidian", special)
+    settling.mapped = false
+
+    local hl, control = fake_runtime({
+        active = other,
+        special_workspace = special,
+        windows = { stray, pad, settling, other },
+        workspace = ws,
+    })
+    local scratchpad = scratchpads.new(hl, window_actions.new(hl))
+    scratchpad.define("ghostty-drop", {
+        class = "com.mitchellh.ghostty",
+        cmd = "ghostty",
+        w = 1600,
+        h = 1000,
+        isolate = true,
+    })
+
+    check("a foreign window parked in a pad workspace is not the scratchpad",
+        not scratchpad.is_scratchpad(stray))
+
+    scratchpad.toggle("ghostty-drop")
+    equal("reclaiming a pad after a reload focuses the declared class",
+        control.active(), pad)
+    equal("summoning an isolated pad evicts windows stranded in its workspace",
+        stray.workspace.id, ws.id)
+    equal("evicting a stray does not take focus off the pad",
+        control.active(), pad)
+    equal("eviction does not wait for a window to finish mapping",
+        settling.workspace.id, ws.id)
+end
+
 do
     local ws = { id = 1, name = "1" }
     local special = { id = -94, name = "special:ghostty-drop" }
