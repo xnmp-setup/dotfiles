@@ -20,6 +20,8 @@ source "$set_theme_script_dir/lib/chrome-layout.sh"
 source "$set_theme_script_dir/lib/chrome-theme.sh"
 # shellcheck source=lib/darkreader-theme.sh
 source "$set_theme_script_dir/lib/darkreader-theme.sh"
+# shellcheck source=lib/desktop-color-scheme.sh
+source "$set_theme_script_dir/lib/desktop-color-scheme.sh"
 # shellcheck source=lib/theme-colors.sh
 source "$set_theme_script_dir/lib/theme-colors.sh"
 # shellcheck source=lib/theme-state.sh
@@ -716,6 +718,18 @@ EOF
   fi
 fi
 }
+
+# --- Desktop colour scheme ---
+# Chrome and prefers-color-scheme sites follow the portal/gsettings scheme.
+# Dark Reader skips already-dark pages, so without this light themes leave
+# Google and other sites dark.
+if desktop_color_scheme_apply "$theme_mode"; then
+  echo "  ✓ Desktop colour scheme → $theme_mode ($(IFS=', '; echo "${desktop_color_scheme_applied[*]}"))"
+  reload+=("Desktop colour scheme: apps that follow prefers-color-scheme (Chrome etc.) pick it up live; restart others")
+  ((changed++))
+else
+  skipped+=("Desktop colour scheme ($desktop_color_scheme_error)")
+fi
 
 # --- Dark Reader (browser extension) ---
 # Dark Reader has no external settings API, and directly editing its live
