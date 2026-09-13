@@ -90,7 +90,7 @@ grep -Fq -- '--background-secondary-alt: #2a2a37;' \
 # The requested Omarchy themes are complete switch targets, not palette-only
 # entries that leave individual applications on the previous theme.
 omarchy_themes=(
-  kanagawa tokyo-night hackerman ethereal flexoki-light osaka-jade artzen
+  kanagawa tokyo-night hackerman ethereal flexoki-light ayu-light osaka-jade artzen
   infernium-dark mapquest sakura sunset
 )
 for omarchy_slug in "${omarchy_themes[@]}"; do
@@ -131,6 +131,9 @@ grep -Fq 'variant = "light"' \
   "$repo_root/dot_local/share/vicinae/themes/flexoki-light.toml" \
   || fail "Flexoki Light is not declared as a light desktop theme"
 grep -Fq 'variant = "light"' \
+  "$repo_root/dot_local/share/vicinae/themes/ayu-light.toml" \
+  || fail "Ayu Light is not declared as a light desktop theme"
+grep -Fq 'variant = "light"' \
   "$repo_root/dot_local/share/vicinae/themes/mapquest.toml" \
   || fail "MapQuest is not declared as a light desktop theme"
 
@@ -140,6 +143,7 @@ for desktop_wallpaper in \
   omarchy-hackerman.jpg \
   omarchy-ethereal.webp \
   marek-piwnicki-rwcONvax9qE-unsplash.jpg \
+  omarchy-ayu-light.jpg \
   stephen-leonardi-eSNjFDbw_i4-unsplash.jpg \
   omarchy-osaka-jade.webp \
   omarchy-artzen.png \
@@ -156,6 +160,7 @@ jq -e '
     {name: "Kanagawa", appearance: "dark"},
     {name: "Hackerman", appearance: "dark"},
     {name: "Ethereal", appearance: "dark"},
+    {name: "Ayu Light", appearance: "light"},
     {name: "Flexoki Light", appearance: "light"},
     {name: "Osaka Jade", appearance: "dark"},
     {name: "Artzen", appearance: "dark"},
@@ -186,6 +191,7 @@ touch "$test_root/Pictures/Wallpaper/omarchy-tokyo-night.webp"
 touch "$test_root/Pictures/Wallpaper/omarchy-hackerman.jpg"
 touch "$test_root/Pictures/Wallpaper/omarchy-ethereal.webp"
 touch "$test_root/Pictures/Wallpaper/marek-piwnicki-rwcONvax9qE-unsplash.jpg"
+touch "$test_root/Pictures/Wallpaper/img-20260909-082623.png"
 touch "$test_root/Pictures/Wallpaper/omarchy-osaka-jade.webp"
 touch "$test_root/Pictures/Wallpaper/omarchy-artzen.png"
 touch "$test_root/Pictures/Wallpaper/stephen-leonardi-eSNjFDbw_i4-unsplash.jpg"
@@ -484,13 +490,14 @@ assert_contains "$test_root/hyprctl.log" "hyprpaper wallpaper DP-1, $default_pat
 assert_contains "$test_root/hyprctl.log" "hyprpaper wallpaper DP-2, $default_path, fill"
 
 # Each requested theme switches the observable desktop state, uses its own
-# wallpaper and palette, and classifies both light themes correctly.
+# wallpaper and palette, and classifies every light theme correctly.
 omarchy_cases=(
   'kanagawa|Kanagawa|dark|omarchy-kanagawa.jpg|#7e9cd8|#1f1f28|#dcd7ba|#363646'
   'tokyo-night|Tokyo Night|dark|omarchy-tokyo-night.webp|#7aa2f7|#1a1b26|#a9b1d6|#292e42'
   'hackerman|Hackerman|dark|omarchy-hackerman.jpg|#82fb9c|#0b0c16|#ddf7ff|#1f253a'
   'ethereal|Ethereal|dark|omarchy-ethereal.webp|#7d82d9|#060b1e|#ffcead|#252e56'
   'flexoki-light|Flexoki Light|light|marek-piwnicki-rwcONvax9qE-unsplash.jpg|#205ea6|#fffcf0|#100f0f|#cecdc3'
+  'ayu-light|Ayu Light|light|img-20260909-082623.png|#3199e1|#f8f9fa|#5c6166|#d3e1f5'
   'osaka-jade|Osaka Jade|dark|omarchy-osaka-jade.webp|#509475|#111c18|#c1c497|#32473b'
   'artzen|Artzen|dark|omarchy-artzen.png|#da7a6f|#181c1f|#fdf9f8|#3b2b2c'
   'infernium-dark|Infernium Dark|dark|stephen-leonardi-eSNjFDbw_i4-unsplash.jpg|#e3884a|#1c1c1c|#e0e0e0|#d66938'

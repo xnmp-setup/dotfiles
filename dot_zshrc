@@ -339,6 +339,7 @@ alias ccw="claude --permission-mode auto --worktree"
 alias ccc="claude --continue --permission-mode auto"
 alias cx="codex"
 alias cxr="codex resume"
+alias cxc="codex resume --last"
 alias cc-dsp='docker sandbox run claude . --dangerously-skip-permissions'
 alias m="micro"
 alias cc-box='~/Repos/claude-docker-base/run_cc-box.sh'
@@ -772,18 +773,18 @@ set-theme() {
   [[ -f ~/.config/p10k-themes/current.zsh ]] && source ~/.config/p10k-themes/current.zsh && p10k reload 2>/dev/null
 }
 
-if (( ! $+functions[o] )) && ! alias o >/dev/null 2>&1; then
-  function o {
-    if command -v open >/dev/null 2>&1; then
-      command open "$@"
-    elif command -v xdg-open >/dev/null 2>&1; then
-      command xdg-open "$@"
-    else
-      echo "Neither open nor xdg-open is available." >&2
-      return 1
-    fi
-  }
-fi
+# if (( ! $+functions[o] )) && ! alias o >/dev/null 2>&1; then
+#   function o {
+#     if command -v open >/dev/null 2>&1; then
+#       command open "$@"
+#     elif command -v xdg-open >/dev/null 2>&1; then
+#       command xdg-open "$@"
+#     else
+#       echo "Neither open nor xdg-open is available." >&2
+#       return 1
+#     fi
+#   }
+# fi
 
 # Resolve the cwd's git remote to a github.com owner/repo slug (echoed on
 # stdout). Single remote is auto-picked; multiple present an fzf menu. Errors

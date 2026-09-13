@@ -36,6 +36,11 @@
         "path": "./themes/flexoki-light-color-theme.json"
       },
       {
+        "label": "Ayu Light",
+        "uiTheme": "vs",
+        "path": "./themes/ayu-light-color-theme.json"
+      },
+      {
         "label": "Osaka Jade",
         "uiTheme": "vs-dark",
         "path": "./themes/osaka-jade-color-theme.json"

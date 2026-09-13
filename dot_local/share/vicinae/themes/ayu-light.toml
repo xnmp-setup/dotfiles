@@ -1,0 +1,29 @@
+[meta]
+version = 1
+name = "Ayu Light"
+description = "Omarchy's clean Ayu Light palette"
+variant = "light"
+
+[colors.core]
+background = "#F8F9FA"
+foreground = "#5C6166"
+secondary_background = "#F3F4F5"
+border = "#C7C7C7"
+accent = "#3199E1"
+
+[colors.accents]
+blue = "#3199E1"
+green = "#6CBF43"
+magenta = "#9E75C7"
+orange = "#F07171"
+purple = "#9E75C7"
+red = "#EA6C6D"
+yellow = "#ECA944"
+cyan = "#46BA94"
+
+[colors.list.item.selection]
+background = { name = "#D3E1F5", opacity = 0.9 }
+secondary_background = "#E6E8EB"
+
+[colors.list.item.hover]
+background = { name = "#C7C7C7", opacity = 0.45 }

@@ -63,3 +63,8 @@
     type = "file"
     url = "https://raw.githubusercontent.com/rondilley/omarchy-sunset-theme/48d01770e062f0cd6fff7bb9b7dc48f8b1d65731/backgrounds/53906226451_d00b6afa3b_o.jpg"
     checksum.sha256 = "f21f7bf54ae63a3f91f552e964aa956d3790ce7f5ead30b88f4548f165700217"
+
+["Pictures/Wallpaper/omarchy-ayu-light.jpg"]
+    type = "file"
+    url = "https://raw.githubusercontent.com/fdidron/omarchy-ayu-light-theme/fca0566c4e34c750fa4c09174927d4fae17a9785/backgrounds/1-space-bullet.jpg"
+    checksum.sha256 = "40da997c0bc8743205aa6afee7719bb750d7d8e51d8bcb80dae26c3babc292bd"
