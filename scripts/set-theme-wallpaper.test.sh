@@ -162,6 +162,7 @@ jq -e '
     {name: "Ethereal", appearance: "dark"},
     {name: "Ayu Light", appearance: "light"},
     {name: "Flexoki Light", appearance: "light"},
+    {name: "Mint Light", appearance: "light"},
     {name: "Osaka Jade", appearance: "dark"},
     {name: "Artzen", appearance: "dark"},
     {name: "Infernium Dark", appearance: "dark"},

@@ -1,0 +1,58 @@
+/** Mint Light — fresh paper, deep spruce ink, and calm green accents. */
+[data-theme="mint-light"] {
+  color-scheme: light;
+  --theme-name: "Mint Light";
+  --theme-description: "Fresh mint-toned light palette with calm green accents";
+  --theme-order: 23;
+  --accent: #2e9c79;
+  --accent-light: #5bbf9c;
+  --accent-dark: #237a5f;
+  --text-primary: #3b413c;
+  --text-secondary: #5f6e67;
+  --text-tertiary: #8a9a92;
+  --text-on-accent: #f6fff8;
+  --background-solid: #f6fff8;
+  --background-mica: #f6fff8;
+  --background-acrylic: #f6fff8;
+  --background-card: #eaf7ef;
+  --background-card-secondary: #ddf0e5;
+  /* Opaque surfaces for compositor tabs and native greeter controls. */
+  --desktop-surface: #eaf7ef;
+  --desktop-border: #c3ded0;
+  --miller-bg: #eaf7ef;
+  --content-bg: #f6fff8;
+  --surface-stroke: rgba(195, 222, 208, 0.7);
+  --surface-stroke-flyout: rgba(195, 222, 208, 0.85);
+  --divider: rgba(195, 222, 208, 0.55);
+  --control-fill: rgba(46, 156, 121, 0.06);
+  --control-fill-secondary: rgba(46, 156, 121, 0.1);
+  --control-fill-tertiary: rgba(46, 156, 121, 0.04);
+  --control-fill-disabled: rgba(46, 156, 121, 0.025);
+  --subtle-fill: transparent;
+  --subtle-fill-secondary: rgba(46, 156, 121, 0.1);
+  --subtle-fill-tertiary: rgba(46, 156, 121, 0.05);
+  --control-stroke: rgba(195, 222, 208, 0.8);
+  --control-stroke-secondary: rgba(195, 222, 208, 0.55);
+  --address-bar-bg: rgba(46, 156, 121, 0.06);
+  --address-bar-stroke: rgba(195, 222, 208, 0.75);
+  --address-bar-highlight: rgba(46, 156, 121, 0.03);
+  --address-bar-bg-hover: rgba(46, 156, 121, 0.1);
+  --address-bar-stroke-hover: rgba(138, 154, 146, 0.8);
+  --focus-stroke-outer: #2e9c79;
+  --focus-stroke-inner: #f6fff8;
+  --system-critical: #d0644a;
+  --system-success: #3e9b78;
+  --system-caution: #c07a3e;
+  --shadow-flyout: 0 8px 24px rgba(59, 65, 60, 0.16), 0 2px 8px rgba(59, 65, 60, 0.1);
+  --shadow-dialog: 0 32px 64px rgba(59, 65, 60, 0.2), 0 4px 24px rgba(59, 65, 60, 0.12);
+  --shadow-tooltip: 0 4px 12px rgba(59, 65, 60, 0.14);
+  --shadow-card: 0 1px 4px rgba(59, 65, 60, 0.1), 0 0 1px rgba(59, 65, 60, 0.08);
+  --shadow-subtle: 0 1px 2px rgba(59, 65, 60, 0.08);
+  --mica-overlay: linear-gradient(170deg, rgba(46, 156, 121, 0.025), transparent 45%, rgba(62, 155, 120, 0.02));
+  --sidebar-opacity: 1;
+  --toolbar-opacity: 1;
+  --content-opacity: 1;
+  --titlebar-opacity: 1;
+  --statusbar-opacity: 1;
+  --icon-folder: #2e9c79;
+}

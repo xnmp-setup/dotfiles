@@ -34,6 +34,11 @@
     url = "https://images.unsplash.com/photo-1768928969838-c29382c18f4e?ixlib=rb-4.1.0&q=85&fm=jpg&crop=entropy&cs=srgb&dl=marek-piwnicki-rwcONvax9qE-unsplash.jpg"
     checksum.sha256 = "86e0d1dd962680e246db435b2b57258686cf8074f55b68fa07a1e4ed5dad302c"
 
+["Pictures/Wallpaper/luca-micheli-r9RW20TrQ0Y-unsplash.jpg"]
+    type = "file"
+    url = "https://images.unsplash.com/photo-1518098268026-4e89f1a2cd8e?ixlib=rb-4.1.0&q=85&fm=jpg&crop=entropy&cs=srgb&dl=luca-micheli-r9RW20TrQ0Y-unsplash.jpg"
+    checksum.sha256 = "dc2edfa4c70f706261c62c4f1a3d3ba1dc8ddcefa1a6c9ea434db1e1fe43efc2"
+
 ["Pictures/Wallpaper/stephen-leonardi-eSNjFDbw_i4-unsplash.jpg"]
     type = "file"
     url = "https://images.unsplash.com/photo-1551214012-84f95e060dee?ixlib=rb-4.1.0&q=85&fm=jpg&crop=entropy&cs=srgb&dl=leo_visions-eSNjFDbw_i4-unsplash.jpg"

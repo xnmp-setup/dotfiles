@@ -1,0 +1,29 @@
+[meta]
+version = 1
+name = "Mint Light"
+description = "Fresh mint-toned light palette with calm green accents"
+variant = "light"
+
+[colors.core]
+background = "#F6FFF8"
+foreground = "#3B413C"
+secondary_background = "#EAF7EF"
+border = "#C3DED0"
+accent = "#2E9C79"
+
+[colors.accents]
+blue = "#3E8CA6"
+green = "#3E9B78"
+magenta = "#9B6FA8"
+orange = "#C07A3E"
+purple = "#9B6FA8"
+red = "#D0644A"
+yellow = "#C07A3E"
+cyan = "#2FA893"
+
+[colors.list.item.selection]
+background = { name = "#CDEFDD", opacity = 0.9 }
+secondary_background = "#DDF0E5"
+
+[colors.list.item.hover]
+background = { name = "#C3DED0", opacity = 0.45 }
