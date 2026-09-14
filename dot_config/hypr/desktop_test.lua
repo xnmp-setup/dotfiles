@@ -1659,6 +1659,117 @@ do
         control.active(), secondary_window)
 end
 
+-- The claim on a drop-down ends when the user repurposes the window. A pad pulled
+-- out of its special workspace and tiled, or absorbed into a tab group, is a
+-- regular window now; summoning it would drag it back -- with its whole group,
+-- since Hyprland moves groups as one. The observed failure: F8 turned the main
+-- browser, tabs and all, into the drop-down.
+do
+    local ws = { id = 1, name = "1" }
+    local special = { id = -94, name = "special:chrome-drop" }
+    local terminal = window("terminal", "com.mitchellh.ghostty", ws)
+    local windows = { terminal }
+    local hl, control = fake_runtime({
+        active = terminal,
+        special_workspace = special,
+        windows = windows,
+        workspace = ws,
+    })
+    local scratchpad = scratchpads.new(hl, window_actions.new(hl))
+    scratchpad.define("chrome-drop", {
+        class = "google-chrome",
+        cmd = "google-chrome-stable --new-window",
+        w = 1800,
+        h = 1100,
+    })
+
+    local function launches()
+        local count = 0
+        for _, dispatch in ipairs(control.dispatches) do
+            if dispatch.kind == "exec" then count = count + 1 end
+        end
+        return count
+    end
+
+    scratchpad.toggle("chrome-drop")
+    equal("an unclaimed pad launches its command", launches(), 1)
+
+    local pad = window("pad", "google-chrome", ws)
+    windows[#windows + 1] = pad
+    control.emit("window.open", pad)
+    control.run_timer(80)
+    equal("the launched window is adopted and summoned", control.active(), pad)
+    check("the adopted window is parked in the special workspace",
+        control.special_shown())
+
+    scratchpad.toggle("chrome-drop")
+    check("the pad is dismissed", not control.special_shown())
+
+    -- The user pulls the pad onto workspace 1 and tiles it.
+    pad.workspace = ws
+    pad.floating = false
+    control.set_active(terminal)
+
+    scratchpad.toggle("chrome-drop")
+    equal("summoning a tiled ex-pad launches a fresh one instead", launches(), 2)
+    equal("a tiled ex-pad stays where the user put it", pad.workspace, ws)
+    check("a tiled ex-pad is not summoned", not control.special_shown())
+    check("a tiled ex-pad is no longer a scratchpad",
+        not scratchpad.is_scratchpad(pad))
+
+    -- A second window arrives for the second launch and becomes the pad.
+    local fresh = window("fresh", "google-chrome", ws)
+    windows[#windows + 1] = fresh
+    control.emit("window.open", fresh)
+    control.run_timer(80)
+    equal("the fresh window becomes the drop-down", control.active(), fresh)
+    equal("the tiled ex-pad is untouched by the fresh launch", pad.workspace, ws)
+    check("the fresh window is summoned", control.special_shown())
+end
+
+do
+    local ws = { id = 1, name = "1" }
+    local special = { id = -94, name = "special:chrome-drop" }
+    local terminal = window("terminal", "com.mitchellh.ghostty", ws)
+    local windows = { terminal }
+    local hl, control = fake_runtime({
+        active = terminal,
+        special_workspace = special,
+        windows = windows,
+        workspace = ws,
+    })
+    local scratchpad = scratchpads.new(hl, window_actions.new(hl))
+    scratchpad.define("chrome-drop", {
+        class = "google-chrome",
+        cmd = "google-chrome-stable --new-window",
+        w = 1800,
+        h = 1100,
+    })
+
+    scratchpad.toggle("chrome-drop")
+    local pad = window("pad", "google-chrome", ws)
+    windows[#windows + 1] = pad
+    control.emit("window.open", pad)
+    control.run_timer(80)
+    scratchpad.toggle("chrome-drop")
+
+    -- Still floating, but the user has tabbed it with their notes on workspace 1.
+    local obsidian = window("obsidian", "obsidian", ws)
+    obsidian.floating = true
+    windows[#windows + 1] = obsidian
+    pad.workspace = ws
+    local tabs = group(pad, obsidian)
+    control.set_active(terminal)
+
+    scratchpad.toggle("chrome-drop")
+    equal("summoning a grouped ex-pad does not move the group", pad.workspace, ws)
+    equal("the group's other tab is not dragged along", obsidian.workspace, ws)
+    check("a grouped ex-pad is not summoned", not control.special_shown())
+    equal("a grouped ex-pad keeps its tabs together", tabs.size, 2)
+    equal("summoning a grouped ex-pad launches a fresh one",
+        control.dispatches[#control.dispatches].kind, "exec")
+end
+
 -- Scratchpad geometry. The sizes below are shares of a monitor rather than pixel
 -- counts, so the same declaration has to land on screens of different sizes — the
 -- failure these replaced was a pad positioned entirely off a smaller display.

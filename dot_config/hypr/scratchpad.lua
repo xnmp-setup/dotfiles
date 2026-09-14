@@ -423,12 +423,40 @@ local function new(hl, window_actions)
         end
     end
 
+    -- The claim on a window lasts only as long as the window still looks like a
+    -- drop-down. A pad that has been pulled onto an ordinary workspace and tiled
+    -- there, or absorbed into a tab group, has been repurposed as a regular
+    -- window, and summoning it would drag it back into the special workspace --
+    -- and since Hyprland moves a group whole, every tab beside it too. Tiled on an
+    -- ordinary workspace is the same shape test open-link.sh uses to tell the
+    -- drop-down from an ordinary browser window; a window parked in the pad's own
+    -- special workspace is the pad by definition, floated or not.
+    local function repurposed(w)
+        local group = w.group
+        if group and (group.size or 0) > 1 then return true end
+
+        local id = w.workspace and w.workspace.id
+        return (id and id > 0 and not w.floating) and true or false
+    end
+
+    -- A claimed window that has lost the drop-down shape has been taken over by
+    -- the user. Release it; the next press launches a fresh one instead of
+    -- hijacking theirs.
+    local function claimed_window(name)
+        local w = window_for(name) or reclaim(name)
+        if w and not is_shown(w) and repurposed(w) then
+            live[name] = nil
+            return nil
+        end
+        return w
+    end
+
     --- Summon the named scratchpad, or dismiss it if it is already up.
     function M.toggle(name)
         local pad = pads[name]
         if not pad then return end
 
-        local w = window_for(name) or reclaim(name)
+        local w = claimed_window(name)
         if not w then
             -- Nothing to toggle yet. Rules do the floating and sizing so the window
             -- never flashes tiled at its natural size first — in resolved pixels,
