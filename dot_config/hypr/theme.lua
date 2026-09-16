@@ -57,6 +57,29 @@ function M.active_gradient(angle)
     }
 end
 
+--- Linear blend of two hex colours: mix("000000", "ffffff", 0.25) -> "404040".
+--- @param a string  hex colour at t = 0
+--- @param b string  hex colour at t = 1
+--- @param t number  0..1
+function M.mix(a, b, t)
+    local out = {}
+    for i = 1, 5, 2 do
+        local ca, cb = tonumber(a:sub(i, i + 1), 16), tonumber(b:sub(i, i + 1), 16)
+        out[#out + 1] = ("%02x"):format(math.floor(ca + (cb - ca) * t + 0.5))
+    end
+    return table.concat(out)
+end
+
+--- The focused tab's body: the background nudged toward the accent, so the
+--- pill carries the theme's hue instead of a neutral lift toward the text.
+--- Light themes take a lighter touch — a saturated tint under dark ink reads
+--- muddy, and the accent edge already does the pointing.
+--- @param t number|nil  extra push toward the accent, 0..1 (default 0)
+function M.tab_tint(t)
+    local base = M.colors.mode == "light" and 0.10 or 0.16
+    return M.mix(M.colors.background, M.colors.accent, base + (t or 0))
+end
+
 --- A groupbar tab fill. The groupbar renders its fill as a vertical cairo
 --- ramp stretched over the tab rect: the angle is ignored, the FIRST colour
 --- lands at the bottom, stops are spaced evenly across the rect, and the ramp
@@ -68,24 +91,50 @@ end
 --- more than the corner radius and carve everything that hangs over, and the
 --- real (rounded) bottom corners are cut off along with it.
 ---
+--- The same ramp is also the only way to give a tab any internal detail, so
+--- the body may be a bottom-to-top gradient and may end in an `edge`: a band
+--- of a second colour along the top of the pill, which the rect's rounding
+--- clips into the corner curve. That is how the focused tab gets its accent
+--- line without an indicator (see the groupbar block for why not).
+---
 --- Stops sit half a pixel apart, which is what makes the carve line land on a
 --- pixel boundary instead of straddling one. Cairo interpolates between
 --- adjacent stops, so the fill ramps from clear to opaque over that half
 --- pixel; each screen row samples the ramp at its centre, and with the last
 --- clear stop at `carve - 0.5` the row below the line reads 0 and the row
 --- above reads 1. A whole-pixel spacing would put a half-lit row on the
---- window's border instead. (Cairo works in the texture's own space, not the
---- screen's; the two coincide because the fill is stretched to the rect.)
+--- window's border instead. The edge boundary is placed the same way.
+--- (Cairo works in the texture's own space, not the screen's; the two
+--- coincide because the fill is stretched to the rect.)
 ---
---- @param hex string        body colour of the pill
---- @param alpha string|nil  alpha for the body of the pill
+--- @param spec table|string  body colour hex, or {
+---   bottom  = hex,        body colour at the carve line
+---   top     = hex|nil,    body colour just under the edge (default: bottom)
+---   alpha   = string|nil, body alpha, two hex digits (default "ff")
+---   edge    = hex|nil,    colour of the band along the top of the pill
+---   edge_px = number|nil, height of that band in px (default 2)
+--- }
+--- @param alpha string|nil  body alpha when `spec` is a plain hex string
 --- @param height number     height of the tab rect in px (group:groupbar:height)
 --- @param carve number      px carved off the bottom of the rect
-function M.tab_fill(hex, alpha, height, carve)
-    local clear, body = M.rgba(hex, "00"), M.rgba(hex, alpha)
+function M.tab_fill(spec, alpha, height, carve)
+    if type(spec) == "string" then spec = { bottom = spec, alpha = alpha } end
+    local bottom, top = spec.bottom, spec.top or spec.bottom
+    local body_alpha  = spec.alpha or "ff"
+    local edge_px     = spec.edge and (spec.edge_px or 2) or 0
+    local edge_at     = height - edge_px -- px above the rect's bottom
+    local body_span   = math.max(edge_at - carve, 1)
+
     local stops = {}
     for i = 1, height * 2 - 1 do -- stop i sits i/2 px above the rect's bottom
-        stops[i] = i <= carve * 2 - 1 and clear or body
+        local y = i / 2
+        if y <= carve - 0.5 then
+            stops[i] = M.rgba(bottom, "00")
+        elseif y <= edge_at - 0.5 then
+            stops[i] = M.rgba(M.mix(bottom, top, (y - carve) / body_span), body_alpha)
+        else
+            stops[i] = M.rgba(spec.edge)
+        end
     end
     return { colors = stops, angle = 0 }
 end

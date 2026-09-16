@@ -95,10 +95,28 @@ local TAB_HEIGHT   = 28
 local TAB_ROUNDING = 8
 local TAB_DROP     = TAB_ROUNDING
 local TAB_FLOAT    = 4 -- how far an unfocused pill sits off the window
+-- Softer corners while preserving usable window edges. Also the groupbar's
+-- side inset: the focused pill lands square on the window's top border, so
+-- it has to start where the border's corner curve ends, or the curve leaves
+-- a notch between the pill's corner and the window's.
+local WINDOW_ROUNDING = 10
 
-local function tab_fill(hex, alpha, detached)
+local function tab_fill(spec, alpha, detached)
     local carve = TAB_DROP + (detached and TAB_FLOAT or 0)
-    return theme.tab_fill(hex, alpha, TAB_HEIGHT + TAB_DROP, carve)
+    return theme.tab_fill(spec, alpha, TAB_HEIGHT + TAB_DROP, carve)
+end
+
+-- The focused pill: the background pushed toward the accent, a touch more
+-- at the top than where it meets the window. The tint carries the theme's
+-- hue while keeping the title's contrast (the body stays close to the
+-- background the text was picked against). Locked groups push the tint
+-- further, and their title takes the accent, so the two states stay
+-- distinct without resorting to a solid accent block.
+local function focused_fill(locked)
+    return tab_fill({
+        bottom = theme.tab_tint(locked and 0.14 or 0),
+        top    = theme.tab_tint(locked and 0.26 or 0.10),
+    }, nil, false)
 end
 
 ------------------
@@ -159,7 +177,7 @@ hl.config({
     },
 
     decoration = {
-        rounding     = 10, -- Softer corners while preserving usable window edges
+        rounding     = WINDOW_ROUNDING,
         dim_inactive = false,
         dim_strength = 0.4,
         dim_special  = 0.4,
@@ -236,9 +254,10 @@ hl.config({
             border_active   = theme.active_gradient(),
             border_inactive = theme.rgba(theme.colors.border, "aa"),
         },
-        -- Tab strip, painted like WezTerm's tab bar rather than the default
-        -- yellow gradient: flat, bar in the theme's background, active tab a
-        -- shade lifted off it. Locked groups get the theme's accent.
+        -- Tab strip, painted like a browser's tab bar rather than the default
+        -- yellow gradient: unfocused tabs are translucent pills of the theme's
+        -- background; the focused tab is an accent-tinted pill (see
+        -- focused_fill). Locked groups get the same pill, tinted harder.
         --
         -- height has to lead font_size: the strip does not grow to fit its text,
         -- so a font raised on its own is clipped top and bottom.
@@ -253,7 +272,7 @@ hl.config({
         -- between tabs, every corner rounded (round_only_edges would square
         -- the corners where pills meet). The focused pill is opaque, bold,
         -- and its square bottom sits flush on the window; unfocused pills
-        -- float above it.
+        -- float above it. The tint gradient is carried by the same fill.
         --
         -- Every one of those is per-tab, and the only per-tab knob the
         -- groupbar has is the fill, so all of it is done in theme.tab_fill:
@@ -294,9 +313,9 @@ hl.config({
             -- lift them back into the middle of the visible pill.
             text_offset      = TAB_DROP // 2,
             col = {
-                active          = tab_fill(theme.colors.surface, "ff", false),
+                active          = focused_fill(false),
                 inactive        = tab_fill(theme.colors.background, "88", true),
-                locked_active   = tab_fill(theme.colors.accent, "ff", false),
+                locked_active   = focused_fill(true),
                 locked_inactive = tab_fill(theme.colors.background, "88", true),
             },
             text_color                 = theme.rgba(theme.colors.text),
