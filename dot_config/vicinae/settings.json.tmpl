@@ -8,6 +8,18 @@
 {
    "$schema": "https://vicinae.com/schemas/config.json",
    "close_on_focus_loss": true,
+   // Arrow keys stop at the list ends; Hyprland's PageUp/PageDown remap
+   // (hypr/page_key_routing.lua) relies on that. 0.19 ignores this key and always wraps.
+   "wrap_navigation": false,
+   // Keep the launcher an ordinary toplevel window: hyprland.lua parks it on a
+   // blurred special workspace keyed on class "vicinae". Vicinae 0.19 got this from
+   // XDG_CURRENT_DESKTOP=GNOME; newer versions probe the compositor instead and need
+   // the explicit opt-out. Unknown keys are ignored, so older versions are unaffected.
+   "launcher_window": {
+      "layer_shell": {
+         "enabled": false
+      }
+   },
    "theme": {
       "light": {
          "name": {{ $desktopTheme.vicinae_light | toJson }}

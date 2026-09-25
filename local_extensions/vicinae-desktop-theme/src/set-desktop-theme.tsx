@@ -20,6 +20,7 @@ import {
   slugifyThemeTitle,
   themeApplyArguments,
 } from "./theme-domain";
+import { findThemeFile, themeDirectories } from "./theme-sources";
 
 type ThemeState = Readonly<{
   themes: readonly DesktopTheme[];
@@ -34,22 +35,12 @@ const themeWorker = join(
   home,
   ".local/share/chezmoi/scripts/apply-desktop-theme-worker",
 );
-const dataHome = process.env.XDG_DATA_HOME ?? join(home, ".local/share");
-const dataDirectories = (
-  process.env.XDG_DATA_DIRS ?? "/usr/local/share:/usr/share"
-)
-  .split(":")
-  .filter(Boolean);
-const themeDirectories = Array.from(
-  new Set([dataHome, ...dataDirectories].map((path) => join(path, "vicinae/themes"))),
-);
+const vicinaeThemeDirectories = themeDirectories(process.env, home);
 const stateDirectory = process.env.XDG_STATE_HOME ?? join(home, ".local/state");
 const currentThemeFile = join(stateDirectory, "desktop-theme/current.json");
 
 const readThemeSource = (slug: string): string => {
-  const path = themeDirectories
-    .map((directory) => join(directory, `${slug}.toml`))
-    .find(existsSync);
+  const path = findThemeFile(vicinaeThemeDirectories, slug, existsSync);
   if (!path) {
     throw new Error(`No Vicinae palette is installed for ${slug}`);
   }
