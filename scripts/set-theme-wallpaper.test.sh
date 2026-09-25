@@ -489,6 +489,8 @@ assert_contains "$test_root/.config/hypr/hyprpaper.conf" "preload = $default_pat
 assert_contains "$test_root/.config/hypr/hyprlock.conf" "path = /must/not/change.png"
 assert_contains "$test_root/hyprctl.log" "hyprpaper wallpaper DP-1, $default_path, fill"
 assert_contains "$test_root/hyprctl.log" "hyprpaper wallpaper DP-2, $default_path, fill"
+# Monitors connected after the switch fall back to the wildcard assignment.
+assert_contains "$test_root/hyprctl.log" "hyprpaper wallpaper , $default_path, fill"
 
 # Each requested theme switches the observable desktop state, uses its own
 # wallpaper and palette, and classifies every light theme correctly.

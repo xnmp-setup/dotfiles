@@ -406,9 +406,12 @@ apply_hyprpaper_live() {
   else
     mapfile -t monitors < <(hyprctl monitors 2>/dev/null | awk '/^Monitor / { print $2 }')
   fi
-  (( ${#monitors[@]} > 0 )) || return 1
+  # The wildcard (empty monitor) covers outputs connected later; without it a
+  # hotplugged monitor matches nothing and Hyprland shows its stock wallpaper.
+  hyprctl hyprpaper wallpaper ", $path, $fit_mode" &>/dev/null || return 1
+  (( ${#monitors[@]} > 0 )) || return 0
 
-  # A fallback target does not replace a monitor previously assigned by name.
+  # Named assignments outrank the wildcard, so replace any left by earlier runs.
   for monitor in "${monitors[@]}"; do
     hyprctl hyprpaper wallpaper "$monitor, $path, $fit_mode" &>/dev/null || return 1
   done
