@@ -26,6 +26,8 @@ source "$set_theme_script_dir/lib/desktop-color-scheme.sh"
 source "$set_theme_script_dir/lib/theme-colors.sh"
 # shellcheck source=lib/theme-state.sh
 source "$set_theme_script_dir/lib/theme-state.sh"
+# shellcheck source=lib/typora-theme.sh
+source "$set_theme_script_dir/lib/typora-theme.sh"
 # shellcheck source=lib/youtube-music-theme.sh
 source "$set_theme_script_dir/lib/youtube-music-theme.sh"
 
@@ -490,6 +492,64 @@ if [[ -d "$ytmusic_config_dir" ]] || command -v youtube-music-desktop-app &>/dev
   fi
 else
   skipped+=("YouTube Music (not installed)")
+fi
+
+# --- Typora ---
+# Typora cannot reload a theme or be told to switch one, and it rewrites its
+# own profile on exit (see lib/typora-theme.sh). So the current theme is
+# written twice: as "<slug>.css" for the Themes menu, and as the fixed
+# "desktop.css" that the profile is pointed at. Once "Desktop" is selected,
+# every later switch is a stylesheet rewrite that takes effect on relaunch.
+typora_palette="$HOME/.config/tauri-explorer/themes/$slug.css"
+typora_ansi=$(typora_ghostty_theme_for "$slug") || typora_ansi=""
+typora_obsidian=$(typora_obsidian_theme_for "$slug") || typora_obsidian=""
+typora_roots=()
+while IFS= read -r typora_root; do
+  typora_roots+=("$typora_root")
+done < <(typora_config_roots)
+if (( ${#typora_roots[@]} == 0 )); then
+  skipped+=("Typora (not installed, or never launched)")
+else
+  typora_ok=1
+  typora_note=""
+  for typora_root in "${typora_roots[@]}"; do
+    typora_themes="$typora_root/themes"
+    if ! typora_generate_theme "$typora_palette" "$typora_ansi" "$typora_obsidian" "$slug" \
+        "$typora_themes/$slug.css" \
+      || ! typora_publish_desktop "$typora_themes" "$slug"; then
+      typora_ok=0
+      skipped+=("Typora (${typora_theme_error:-cannot write $typora_themes})")
+      continue
+    fi
+
+    typora_profile="$typora_root/profile.data"
+    if [[ ! -f "$typora_profile" ]]; then
+      # macOS keeps preferences in its defaults database, not profile.data.
+      typora_note="choose Themes → Desktop once"
+      continue
+    fi
+    typora_select_theme "$typora_profile" "$TYPORA_DESKTOP_THEME" \
+      "$(css_var "$typora_palette" background-solid)"
+    case $? in
+      0) ;;
+      2)
+        if [[ "$(typora_selected_theme "$typora_profile")" == "$TYPORA_DESKTOP_THEME.css" ]]; then
+          typora_note="restart to see it"
+        else
+          typora_note="choose Themes → Desktop once, then it follows set-theme"
+        fi
+        ;;
+      *)
+        typora_ok=0
+        skipped+=("Typora ($typora_theme_error; stylesheet written, choose Themes → Desktop)")
+        ;;
+    esac
+  done
+  if (( typora_ok )); then
+    echo "  ✓ Typora → $slug (Desktop theme)"
+    reload+=("Typora: ${typora_note:-applies at next launch}")
+    ((changed++))
+  fi
 fi
 
 # --- Chrome (deferred until the final application phase) ---

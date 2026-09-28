@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Generate a Typora theme for every desktop palette, plus the "Desktop" theme
+# for the currently selected one. Skips machines where Typora has never run.
+
+set -uo pipefail
+
+source_dir={{ .chezmoi.sourceDir | toJson }}
+# shellcheck source=scripts/lib/theme-colors.sh
+source "$source_dir/scripts/lib/theme-colors.sh"
+# shellcheck source=scripts/lib/theme-state.sh
+source "$source_dir/scripts/lib/theme-state.sh"
+# shellcheck source=scripts/lib/typora-theme.sh
+source "$source_dir/scripts/lib/typora-theme.sh"
+
+roots=()
+while IFS= read -r root; do
+  roots+=("$root")
+done < <(typora_config_roots)
+(( ${#roots[@]} > 0 )) || exit 0
+
+state_file=$(desktop_theme_state_file)
+current_slug=$(desktop_theme_read_state_value "$state_file" slug || true)
+
+for palette in "$HOME/.config/tauri-explorer/themes/"*.css; do
+  [[ -f "$palette" ]] || continue
+  slug=$(basename -- "$palette" .css)
+  ansi=$(typora_ghostty_theme_for "$slug") || ansi=""
+  obsidian=$(typora_obsidian_theme_for "$slug") || obsidian=""
+  for root in "${roots[@]}"; do
+    if ! typora_generate_theme "$palette" "$ansi" "$obsidian" "$slug" "$root/themes/$slug.css"; then
+      echo "typora theme $slug: $typora_theme_error" >&2
+      continue
+    fi
+    if [[ "$slug" == "$current_slug" ]]; then
+      typora_publish_desktop "$root/themes" "$slug" \
+        || echo "typora theme: cannot publish Desktop theme in $root" >&2
+    fi
+  done
+done
