@@ -1,0 +1,5 @@
+# Domains Focus blocks while do-not-disturb is on (one per line).
+# The www. variant of each is blocked automatically.
+youtube.com
+m.youtube.com
+youtu.be
