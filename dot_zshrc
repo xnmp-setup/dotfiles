@@ -773,18 +773,19 @@ set-theme() {
   [[ -f ~/.config/p10k-themes/current.zsh ]] && source ~/.config/p10k-themes/current.zsh && p10k reload 2>/dev/null
 }
 
-# if (( ! $+functions[o] )) && ! alias o >/dev/null 2>&1; then
-#   function o {
-#     if command -v open >/dev/null 2>&1; then
-#       command open "$@"
-#     elif command -v xdg-open >/dev/null 2>&1; then
-#       command xdg-open "$@"
-#     else
-#       echo "Neither open nor xdg-open is available." >&2
-#       return 1
-#     fi
-#   }
-# fi
+# Deliberately shadows Orbiton's `o` binary (~/go/bin/o); run it by full path.
+if (( ! $+functions[o] )) && ! alias o >/dev/null 2>&1; then
+  function o {
+    if command -v open >/dev/null 2>&1; then
+      command open "$@"
+    elif command -v xdg-open >/dev/null 2>&1; then
+      command xdg-open "$@"
+    else
+      echo "Neither open nor xdg-open is available." >&2
+      return 1
+    fi
+  }
+fi
 
 # Resolve the cwd's git remote to a github.com owner/repo slug (echoed on
 # stdout). Single remote is auto-picked; multiple present an fzf menu. Errors
