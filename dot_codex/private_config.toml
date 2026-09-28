@@ -66,3 +66,11 @@ trusted_hash = "sha256:81b8bda268005f15e4880e0813e73c4dd300162dd45bbc028741b2ef4
 
 [hooks.state."/home/chong/.codex/hooks.json:stop:0:0"]
 trusted_hash = "sha256:e94985131fd32938c219616130ca61158110d11a57c490ad17c11ff3553d3b1d"
+
+[mcp_servers.blender]
+# Community Blender MCP addon (ahujasid/blender-mcp). Requires the "MCP for
+# Blender" addon enabled in a GUI Blender with "Start MCP Server" clicked;
+# the addon refuses to run under `blender --background`.
+command = "/home/chong/.local/bin/uvx"
+args = ["blender-mcp"]
+startup_timeout_sec = 60
