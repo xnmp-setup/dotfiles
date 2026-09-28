@@ -88,7 +88,6 @@ local function fake_runtime(spec)
     local active = spec.active
     local windows = spec.windows or {}
     local normal_workspace = spec.workspace or { id = 1, name = "1" }
-    local special_workspace, special_monitor
     local callbacks, timers, dispatches, executions, configs, monitors = {}, {}, {}, {}, {}, {}
     local bindings = {}
     local active_monitor = spec.active_monitor or {
@@ -159,15 +158,75 @@ local function fake_runtime(spec)
         unbind = function(key) bindings[key] = nil end,
     }
 
+    -- Every monitor the runtime has seen, so a shown special workspace can be
+    -- found wherever it is.
+    local known_monitors = {}
+    local function know(monitor)
+        for _, seen in ipairs(known_monitors) do
+            if seen == monitor then return end
+        end
+        known_monitors[#known_monitors + 1] = monitor
+    end
+    for _, monitor in ipairs(spec.monitors or {}) do know(monitor) end
+    know(active_monitor)
+
+    local function focus_monitor(monitor)
+        active_monitor.focused = false
+        active_monitor = monitor
+        active_monitor.focused = true
+        know(monitor)
+    end
+
+    -- Hyprland keeps one special workspace per name. A test that declares
+    -- spec.special_workspace gets that one workspace for every name.
+    local specials, special_count = {}, 0
+    local function special_named(name)
+        if spec.special_workspace then return spec.special_workspace end
+        name = tostring(name):gsub("^special:", "")
+        if not specials[name] then
+            specials[name] = { id = -94 - special_count, name = "special:" .. name }
+            special_count = special_count + 1
+        end
+        return specials[name]
+    end
+
+    local function showing(workspace)
+        for _, monitor in ipairs(known_monitors) do
+            local shown = monitor.active_special_workspace
+            if shown and shown.id == workspace.id then return monitor end
+        end
+    end
+
+    -- Hyprland moves and floats a tab group as one unit: acting on any member
+    -- acts on every member.
+    local function affected(target)
+        local target_group = target.group
+        return target_group and target_group.members or { target }
+    end
+
+    local function leave_group(target)
+        local target_group = target.group
+        if not target_group then return end
+        for index = #target_group.members, 1, -1 do
+            if target_group.members[index] == target then
+                table.remove(target_group.members, index)
+            end
+        end
+        target_group.size = #target_group.members
+        if target_group.current == target then
+            target_group.current = target_group.members[1]
+            target_group.current_index = 1
+        end
+        target.group = nil
+    end
+
     function hl.dispatch(value)
         dispatches[#dispatches + 1] = value
         local args = value.args or {}
 
         if value.kind == "focus" then
             if args.monitor then
-                active_monitor.focused = false
-                active_monitor = args.monitor
-                active_monitor.focused = true
+                focus_monitor(args.monitor)
             else
                 active = args.window
             end
@@ -179,43 +238,64 @@ local function fake_runtime(spec)
                 active = target_group.current
             end
         elseif value.kind == "float" and args.window then
-            args.window.floating = args.action == "on"
+            for _, member in ipairs(affected(args.window)) do
+                member.floating = args.action == "on"
+            end
         elseif value.kind == "toggle_special" then
-            if special_workspace then
-                if special_monitor == active_monitor then
-                    special_monitor.active_special_workspace = nil
-                    special_monitor = nil
-                    special_workspace = nil
-                    if spec.fallback_on_hide then
-                        active = spec.fallback_on_hide
-                        local fallback_group = active.group
-                        if fallback_group then
-                            fallback_group.current = active
-                            fallback_group.current_index = window_model.group_index(active)
-                        end
+            local workspace = special_named(args)
+            local shown_on = showing(workspace)
+            if shown_on == active_monitor then
+                active_monitor.active_special_workspace = nil
+                if spec.fallback_on_hide then
+                    active = spec.fallback_on_hide
+                    local fallback_group = active.group
+                    if fallback_group then
+                        fallback_group.current = active
+                        fallback_group.current_index = window_model.group_index(active)
                     end
-                else
-                    special_monitor.active_special_workspace = nil
-                    special_monitor = active_monitor
-                    special_monitor.active_special_workspace = special_workspace
                 end
             else
-                special_workspace = spec.special_workspace
-                    or { id = -94, name = "special:" .. tostring(args) }
-                special_monitor = active_monitor
-                special_monitor.active_special_workspace = special_workspace
+                if shown_on then shown_on.active_special_workspace = nil end
+                active_monitor.active_special_workspace = workspace
+                workspace.monitor = active_monitor
             end
+        elseif value.kind == "move" and args.window and args.out_of_group then
+            leave_group(args.window)
         elseif value.kind == "move" and args.window and args.workspace then
+            local destination
             if tostring(args.workspace):match("^special:") then
-                args.window.workspace = spec.special_workspace
-                    or { id = -94, name = args.workspace }
+                destination = special_named(args.workspace)
             else
-                args.window.workspace = {
+                destination = {
                     id = tonumber(args.workspace),
                     name = tostring(args.workspace),
                 }
             end
-            if args.follow then active = args.window end
+            local origin = args.window.workspace
+            for _, member in ipairs(affected(args.window)) do
+                member.workspace = destination
+            end
+            -- Hyprland's Lua window.move is silent only for an explicit
+            -- `follow = false`; it ignores `silent`, and anything else follows:
+            -- it focuses the destination's own monitor, shows a special
+            -- destination there, and closes a special the window left
+            -- (ConfigActions.cpp moveToWorkspace, v0.56.1).
+            if args.follow ~= false then
+                if destination.name:match("^special:") then
+                    local monitor = destination.monitor or active_monitor
+                    focus_monitor(monitor)
+                    local shown_on = showing(destination)
+                    if shown_on then shown_on.active_special_workspace = nil end
+                    monitor.active_special_workspace = destination
+                    destination.monitor = monitor
+                elseif origin and origin.name
+                    and origin.name:match("^special:")
+                then
+                    local shown_on = showing(origin)
+                    if shown_on then shown_on.active_special_workspace = nil end
+                end
+                active = args.window
+            end
         end
     end
 
@@ -234,11 +314,32 @@ local function fake_runtime(spec)
                 if windows[index] == target then table.remove(windows, index) end
             end
         end,
-        set_active_monitor = function(value)
-            active_monitor.focused = false
-            active_monitor = value
-            active_monitor.focused = true
+        set_active_monitor = focus_monitor,
+        -- Hyprland's mapWindow for a window the test launched. It opens on the
+        -- focused monitor's shown special workspace, else its active workspace,
+        -- and takes focus. With group:auto_group (on by default, and unset in
+        -- this config) it joins the focused window's tab group when that group
+        -- is on the same workspace, unless it is floating and the group is tiled
+        -- (Window.cpp mapWindow, v0.56.1).
+        map_window = function(target)
+            target.workspace = active_monitor.active_special_workspace
+                or active_monitor.active_workspace
+            local focused = active
+            local focused_group = focused and focused.group
+            if focused_group and focused.workspace
+                and focused.workspace.id == target.workspace.id
+                and not (target.floating and not focused.floating)
+            then
+                focused_group.members[#focused_group.members + 1] = target
+                focused_group.size = #focused_group.members
+                focused_group.current = target
+                focused_group.current_index = focused_group.size
+                target.group = focused_group
+            end
+            windows[#windows + 1] = target
+            active = target
         end,
+        special = special_named,
         run_timer = function(timeout)
             for index, timer in ipairs(timers) do
                 if timer and timer.timeout == timeout then
@@ -250,7 +351,12 @@ local function fake_runtime(spec)
             return false
         end,
         set_active = function(value) active = value end,
-        special_shown = function() return special_workspace ~= nil end,
+        special_shown = function()
+            for _, monitor in ipairs(known_monitors) do
+                if monitor.active_special_workspace then return true end
+            end
+            return false
+        end,
     }
 
     return hl, control
@@ -1462,15 +1568,6 @@ do
     check("showing a scratchpad opens its special workspace",
         control.special_shown())
 
-    local child = window("pad-child", "custom-app", special)
-    control.emit("window.open", child)
-    equal("isolated scratchpads redirect foreign windows to their host",
-        child.workspace.id, ws.id)
-    check("redirected scratchpad children follow onto the host workspace",
-        control.active() == child)
-    equal("redirected scratchpad children are not grouped",
-        control.dispatches[#control.dispatches].args.into_or_create_group, nil)
-
     scratchpad.toggle("ghostty-drop")
     equal("dismissal restores the exact prior window", control.active(), chrome)
     equal("dismissal restores the exact prior group tab", tabs.current, chrome)
@@ -1484,6 +1581,20 @@ do
     equal("clicking another tab while open preserves that selection",
         control.active(), obsidian)
     equal("autohide keeps the user-selected group tab", tabs.current, obsidian)
+
+    -- Last: following a child out of the shown pad closes the pad, as Hyprland
+    -- does for any followed move out of a shown special workspace.
+    scratchpad.toggle("ghostty-drop")
+    local child = window("pad-child", "custom-app", special)
+    control.emit("window.open", child)
+    equal("isolated scratchpads redirect foreign windows to their host",
+        child.workspace.id, ws.id)
+    check("redirected scratchpad children follow onto the host workspace",
+        control.active() == child)
+    equal("redirected scratchpad children are not grouped",
+        control.dispatches[#control.dispatches].args.into_or_create_group, nil)
+    check("following a redirected child closes the drop-down",
+        not control.special_shown())
 end
 
 -- A `hyprctl reload` drops the table of claimed windows, so the pad has to be
@@ -2025,6 +2136,190 @@ do
     equal("the first press launches the app", launch.args, "ghostty")
     equal("the launch rule sizes in resolved pixels", launch.rules.size[1], 1536)
     equal("the launch rule height is resolved too", launch.rules.size[2], 840)
+end
+
+-- F8 and F9 pressed together (2026-09-28): afterwards every tab group on
+-- workspace 1 was floating in special:chrome-drop. The chrome drop-down had no
+-- live claim, so F8 launched Chrome while F9 dismissed the terminal drop-down
+-- and handed focus back to a tab -- both before Chrome had mapped a window.
+-- Chrome forwards `--new-window` to its running browser process, so the exec
+-- rule's float never reaches the new window: it maps tiled beside the focused
+-- tab, and group:auto_group makes it another tab of that group. Adopting it
+-- then summons the whole group, since Hyprland moves and floats a group as
+-- one. Every later F8 that finds its claim grouped launches again, and the
+-- next focused group goes the same way.
+do
+    local ws1 = { id = 1, name = "1" }
+    local ws6 = { id = 6, name = "6" }
+    local primary = monitor({
+        id = 1, name = "DP-2", width = 3440, height = 1440,
+        focused = true, workspace = ws1,
+    })
+    local secondary = monitor({
+        id = 0, name = "DP-1", x = 3440, width = 2560, height = 1440,
+        workspace = ws6,
+    })
+    ws1.monitor, ws6.monitor = primary, secondary
+
+    local codex = window("codex", "com.mitchellh.ghostty", ws1)
+    local progress = window("progress", "google-chrome", ws1)
+    local explorer = window("explorer", "tauri-explorer", ws1)
+    group(codex, progress, explorer)
+    local notes = window("notes", "obsidian", ws1)
+    local vault = window("vault", "obsidian", ws1)
+    group(notes, vault)
+    local browser = window("browser", "google-chrome", ws6)
+    local ordinary = { codex, progress, explorer, notes, vault, browser }
+    local home = {
+        [codex] = 1, [progress] = 1, [explorer] = 1,
+        [notes] = 1, [vault] = 1, [browser] = 6,
+    }
+
+    local windows = {}
+    for index, w in ipairs(ordinary) do windows[index] = w end
+    local hl, control = fake_runtime({
+        active = codex,
+        active_monitor = primary,
+        monitors = { secondary, primary },
+        windows = windows,
+        workspace = ws1,
+        workspaces = { ws1, ws6 },
+    })
+    local terminal = window("terminal", "com.mitchellh.ghostty",
+        control.special("ghostty-drop"))
+    terminal.floating = true
+    windows[#windows + 1] = terminal
+
+    local scratchpad = scratchpads.new(hl, window_actions.new(hl))
+    scratchpad.define("chrome-drop", {
+        class = "google-chrome",
+        cmd = "google-chrome-stable --new-window",
+        w = 1800, h = 1100,
+    })
+    scratchpad.define("ghostty-drop", {
+        class = "com.mitchellh.ghostty",
+        cmd = "ghostty",
+        w = 0.8, h = 0.7, max_w = 1600,
+        anchor = "top", gap = 12,
+        monitor = "primary",
+        isolate = true,
+    })
+
+    -- The ordinary windows no longer tiled on the workspace the user left them.
+    local function displaced()
+        local moved = {}
+        for _, w in ipairs(ordinary) do
+            if w.workspace.id ~= home[w] or w.floating then
+                moved[#moved + 1] = w.stable_id
+            end
+        end
+        return table.concat(moved, ",")
+    end
+
+    local function launches()
+        local count = 0
+        for _, dispatch in ipairs(control.dispatches) do
+            if dispatch.kind == "exec" then count = count + 1 end
+        end
+        return count
+    end
+
+    -- Chrome maps its window some time after the key press, wherever focus is.
+    local function chrome_maps(id)
+        local opened = window(id, "google-chrome")
+        control.map_window(opened)
+        control.emit("window.open", opened)
+        control.emit("window.active")
+        control.run_timer(80)
+        return opened
+    end
+
+    -- Working in the terminal drop-down, summoned from the Codex tab.
+    scratchpad.toggle("ghostty-drop")
+    control.emit("window.active")
+    equal("precondition: the terminal drop-down has focus",
+        control.active(), terminal)
+
+    -- F8 and F9 together.
+    local before = launches()
+    scratchpad.toggle("chrome-drop")
+    scratchpad.toggle("ghostty-drop")
+    control.emit("window.active")
+    equal("precondition: F8 without a drop-down launches Chrome",
+        launches(), before + 1)
+    equal("precondition: dismissing the terminal refocuses the tab",
+        control.active(), codex)
+
+    local fresh = chrome_maps("fresh")
+    equal("F8+F9: every ordinary window stays tiled where it was",
+        displaced(), "")
+    equal("F8+F9: the tab group under focus is not dragged into the drop-down",
+        codex.workspace.name, "1")
+    check("F8+F9: the tab group under focus stays tiled", not codex.floating)
+    equal("F8+F9: the launched window is what comes up", control.active(), fresh)
+
+    -- Dismiss whatever came up, then summon the drop-down again.
+    before = launches()
+    scratchpad.toggle("chrome-drop")
+    control.emit("window.active")
+    scratchpad.toggle("chrome-drop")
+    if launches() > before then chrome_maps("again") end
+    equal("F8 twice more: the next tab group is not taken either",
+        displaced(), "")
+end
+
+-- A launched pad is summoned onto its pinned monitor even when its special
+-- workspace was last shown on the other one. Hyprland's Lua window.move ignores
+-- `silent`; a followed move into the special would show it on the monitor it
+-- last lived on and skip the toggle that brings it to the pinned one.
+do
+    local ws1 = { id = 1, name = "1" }
+    local ws6 = { id = 6, name = "6" }
+    local primary = monitor({
+        id = 1, name = "DP-2", width = 3440, height = 1440,
+        focused = true, workspace = ws1,
+    })
+    local secondary = monitor({
+        id = 0, name = "DP-1", x = 3440, width = 2560, height = 1440,
+        workspace = ws6,
+    })
+    ws1.monitor, ws6.monitor = primary, secondary
+    local editor = window("editor", "zed", ws1)
+
+    local windows = { editor }
+    local hl, control = fake_runtime({
+        active = editor,
+        active_monitor = primary,
+        monitors = { secondary, primary },
+        windows = windows,
+        workspace = ws1,
+        workspaces = { ws1, ws6 },
+    })
+    local special = control.special("ghostty-drop")
+    special.monitor = secondary
+
+    local scratchpad = scratchpads.new(hl, window_actions.new(hl))
+    scratchpad.define("ghostty-drop", {
+        class = "com.mitchellh.ghostty",
+        cmd = "ghostty",
+        w = 0.8, h = 0.7,
+        anchor = "top", gap = 12,
+        monitor = "primary",
+        isolate = true,
+    })
+
+    scratchpad.toggle("ghostty-drop")
+    local terminal = window("terminal", "com.mitchellh.ghostty")
+    terminal.floating = true
+    control.map_window(terminal)
+    control.emit("window.open", terminal)
+    control.run_timer(80)
+
+    equal("a launched pad comes up on its pinned monitor",
+        primary.active_special_workspace, special)
+    equal("a launched pad does not come up on the monitor it last lived on",
+        secondary.active_special_workspace, nil)
+    equal("a launched pad has focus", control.active(), terminal)
 end
 
 io.write(("%d checks, %d failures\n"):format(checks, failures))

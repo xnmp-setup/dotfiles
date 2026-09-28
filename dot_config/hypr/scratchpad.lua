@@ -255,12 +255,37 @@ local function new(hl, window_actions)
         hl.dispatch(hl.dsp.focus({ window = w }))
     end
 
+    local function in_group(w)
+        local group = w.group
+        return (group and (group.size or 0) > 1) and true or false
+    end
+
+    -- Hyprland moves and floats a tab group as one unit, so summoning a window
+    -- that sits in a group summons every tab beside it. A launched pad can be
+    -- in one without anybody having put it there: Chrome forwards
+    -- `--new-window` to its running browser process, so the exec rule that
+    -- floats the launch never reaches the window, and it maps tiled -- straight
+    -- into the focused tab group under group:auto_group. A summon therefore
+    -- moves exactly one window: take it out of its group first, and if
+    -- Hyprland refuses (the global `lockgroups`), leave everything where it is.
+    local function detached(w)
+        if not in_group(w) then return true end
+        hl.dispatch(hl.dsp.window.move({ out_of_group = true, window = w }))
+        return not in_group(w)
+    end
+
     -- A special workspace is shown on whichever monitor is focused, and the ordinary
     -- workspace underneath is read from the same place, so a pad pinned to a monitor
     -- has to have that monitor focused before either happens. The window to restore
     -- on dismissal was recorded by its address before this, so moving focus here does
     -- not lose it.
     local function show(name, w)
+        -- Grouped by someone else: not ours to move, and no longer our pad.
+        if not detached(w) then
+            live[name] = nil
+            return
+        end
+
         local box = layout(pads[name])
         if box and box.monitor and not box.monitor.focused then
             hl.dispatch(hl.dsp.focus({ monitor = box.monitor }))
@@ -268,9 +293,13 @@ local function new(hl, window_actions)
 
         focused_once[name] = nil
         host_workspace[name] = visible_workspace()
+        -- `follow = false`, not `silent`: Hyprland's Lua window.move reads only
+        -- `follow`, and a followed move shows the special on the monitor it last
+        -- lived on -- which then counts as shown, so the toggle below that would
+        -- bring it to this monitor never runs.
         hl.dispatch(hl.dsp.window.move({
             workspace = "special:" .. name,
-            silent = true,
+            follow = false,
             window = w,
         }))
         if not is_shown(w) then
@@ -388,8 +417,7 @@ local function new(hl, window_actions)
 
         hl.dispatch(hl.dsp.window.move({
             workspace = tostring(destination.id),
-            follow = follow and true or nil,
-            silent = not follow and true or nil,
+            follow = follow and true or false,
             window = w,
         }))
     end
@@ -432,8 +460,7 @@ local function new(hl, window_actions)
     -- drop-down from an ordinary browser window; a window parked in the pad's own
     -- special workspace is the pad by definition, floated or not.
     local function repurposed(w)
-        local group = w.group
-        if group and (group.size or 0) > 1 then return true end
+        if in_group(w) then return true end
 
         local id = w.workspace and w.workspace.id
         return (id and id > 0 and not w.floating) and true or false
