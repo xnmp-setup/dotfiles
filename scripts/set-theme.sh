@@ -759,7 +759,11 @@ EOF
           pgrep -x "$chrome_proc" &>/dev/null || break
           sleep 0.5
         done
-        if command -v setsid &>/dev/null; then
+        # Through the compositor where there is one (see chrome_layout_launch):
+        # launched from here it would inherit this shell's environment.
+        if chrome_layout_launch "$chrome_bin"; then
+          :
+        elif command -v setsid &>/dev/null; then
           setsid -f "$chrome_bin" &>/dev/null
         else
           nohup "$chrome_bin" &>/dev/null &
