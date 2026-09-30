@@ -117,6 +117,33 @@ darkreader_bridge_register "$extension" "$host"
 [[ "$darkreader_bridge_loaded" == 0 ]] \
   || fail "a stale Web Store manifest was reported as the loaded fork"
 
+# Current Chrome records an unpacked extension without its manifest; the
+# granted permissions and the manifest on disk identify the fork instead.
+write_manifestless_preferences() {
+  jq -n --arg id "$DARKREADER_EXTENSION_ID" --arg path "$1" --argjson api "$2" \
+    '{extensions: {settings: {($id): {path: $path, location: 4,
+      active_permissions: {api: $api}}}}}' \
+    >"$HOME/.config/google-chrome/Default/Preferences"
+}
+write_manifestless_preferences "$extension" '["alarms", "nativeMessaging", "storage"]'
+darkreader_bridge_register "$extension" "$host"
+[[ "$darkreader_bridge_loaded" == 1 ]] \
+  || fail "a loaded fork recorded without a manifest was not detected"
+
+write_manifestless_preferences "$extension" '["alarms", "storage"]'
+darkreader_bridge_register "$extension" "$host"
+[[ "$darkreader_bridge_loaded" == 0 ]] \
+  || fail "an extension without nativeMessaging was reported as the loaded fork"
+
+jq '.version = "0.0.1"' "$extension/manifest.json" >"$test_root/old-manifest"
+cp "$extension/manifest.json" "$test_root/fork-manifest"
+mv "$test_root/old-manifest" "$extension/manifest.json"
+write_manifestless_preferences "$extension" '["alarms", "nativeMessaging", "storage"]'
+darkreader_bridge_register "$extension" "$host"
+[[ "$darkreader_bridge_loaded" == 0 ]] \
+  || fail "an unpacked build of another version was reported as the fork"
+mv "$test_root/fork-manifest" "$extension/manifest.json"
+
 # A failed future update must preserve a working installed release.
 DARKREADER_FORK_VERSION_NAME="future release"
 DARKREADER_FORK_RELEASE_SHA256="$(printf '0%.0s' {1..64})"

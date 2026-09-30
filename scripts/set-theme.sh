@@ -846,6 +846,20 @@ if [[ -f "$dr_css" ]] && command -v jq &>/dev/null; then
         }' > "$dr_file"
     fi
 
+    # Dark Reader's default settings pin per-site themes for filter-only sites
+    # (Google Docs, Office Online, SharePoint, OneDrive): copies of its default
+    # theme with mode 1. A per-site theme wins over .theme, so light palettes
+    # still inverted those sites to dark. Re-derive them from the palette
+    # theme on every switch, keeping the cssFilter engine those sites need.
+    # This replaces customThemes wholesale: the bridge cannot read the live
+    # settings, so site themes added in Dark Reader's own UI are not kept.
+    tmp=$(mktemp)
+    jq '.theme as $theme | .customThemes = ([
+          "*.officeapps.live.com", "*.sharepoint.com",
+          "docs.google.com", "onedrive.live.com"
+        ] | map({url: [.], theme: ($theme + {engine: "cssFilter"}), builtIn: true}))' \
+      "$dr_file" >"$tmp" && mv "$tmp" "$dr_file"
+
     if (( dr_mode == 1 )); then
       dr_applied_bg=$(jq -r '.theme.darkSchemeBackgroundColor' "$dr_file")
       dr_applied_fg=$(jq -r '.theme.darkSchemeTextColor' "$dr_file")

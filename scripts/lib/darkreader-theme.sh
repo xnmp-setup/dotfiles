@@ -49,12 +49,23 @@ darkreader_bridge_is_loaded() {
       fi
       [[ "$(realpath -m "$configured_path")" == "$(realpath -m "$extension_dir")" ]] \
         || continue
+      # Older Chrome copies the manifest into Preferences, and may keep a stale
+      # Web Store one there, so when present it is the authority. Current
+      # Chrome omits it for unpacked extensions; then the granted permissions
+      # and the manifest on disk at the configured path stand in for it.
       jq -e \
         --arg id "$DARKREADER_EXTENSION_ID" \
-        --arg version "$DARKREADER_FORK_MANIFEST_VERSION" '
-        .extensions.settings[$id].manifest as $manifest |
-        $manifest.version == $version and
-        ($manifest.permissions | index("nativeMessaging") != null)
+        --arg version "$DARKREADER_FORK_MANIFEST_VERSION" \
+        --arg disk_version "$(jq -r '.version // empty' \
+          "$configured_path/manifest.json" 2>/dev/null)" '
+        .extensions.settings[$id] as $ext |
+        if $ext.manifest then
+          $ext.manifest.version == $version and
+          ($ext.manifest.permissions | index("nativeMessaging") != null)
+        else
+          $disk_version == $version and
+          ($ext.active_permissions.api // [] | index("nativeMessaging") != null)
+        end
       ' "$preferences" >/dev/null 2>&1 && return 0
     done < <(find "$browser_root" -maxdepth 3 -type f -name Preferences \
       -print0 2>/dev/null)
