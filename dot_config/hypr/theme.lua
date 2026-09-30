@@ -37,7 +37,7 @@ end
 
 -- Keep light windows nearly solid: a faint wallpaper tint without washed-out ink.
 function M.window_opacity(dark_opacity)
-    local opacity = M.colors.mode == "light" and "0.98" or tostring(dark_opacity)
+    local opacity = M.colors.mode == "light" and "0.96" or tostring(dark_opacity)
     return opacity .. " " .. opacity
 end
 
