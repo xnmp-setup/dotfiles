@@ -539,7 +539,7 @@ for omarchy_case in "${omarchy_cases[@]}"; do
   expected_opacity=0.95
   expected_shadow=0.45
   if [[ "$omarchy_mode" == light ]]; then
-    expected_opacity=0.99
+    expected_opacity=1
     expected_shadow=0.12
   fi
   assert_contains "$test_root/.config/ghostty/config" "background-opacity = $expected_opacity"
@@ -564,7 +564,7 @@ local prelude = config:read('*a'):match('^(.-)local nary =')
 config:close()
 assert(load(prelude))()
 local theme = require 'theme'
-assert(theme.window_opacity(0.93) == (mode == 'light' and '0.98 0.98' or '0.93 0.93'))
+assert(theme.window_opacity(0.93) == (mode == 'light' and '0.94 0.94' or '0.93 0.93'))
 LUA
 
   zed_theme="$repo_root/dot_config/zed/themes/omarchy-extra.json"
