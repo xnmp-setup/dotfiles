@@ -36,8 +36,10 @@ if ok and type(generated) == "table" then
 end
 
 -- Keep light windows nearly solid: a faint wallpaper tint without washed-out ink.
+-- This is the only transparency layer in light mode; Ghostty adds none of its
+-- own (background-opacity 1), so every app shows the same tint.
 function M.window_opacity(dark_opacity)
-    local opacity = M.colors.mode == "light" and "0.96" or tostring(dark_opacity)
+    local opacity = M.colors.mode == "light" and "0.94" or tostring(dark_opacity)
     return opacity .. " " .. opacity
 end
 

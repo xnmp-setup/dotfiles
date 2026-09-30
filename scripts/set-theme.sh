@@ -300,7 +300,7 @@ if [[ -f "$config" ]]; then
   fi
 
   ghostty_opacity=0.95
-  [[ "$theme_mode" == light ]] && ghostty_opacity=0.99
+  [[ "$theme_mode" == light ]] && ghostty_opacity=1
   if grep -q '^background-opacity[[:space:]]*=' "$config"; then
     sed -i "s/^background-opacity[[:space:]]*=.*/background-opacity = $ghostty_opacity/" "$config"
   else
