@@ -1,0 +1,754 @@
+#!/usr/bin/env python3
+"""Desktop notifications for coding agents (Claude Code and Codex).
+
+Both agents can already ask the terminal to raise a notification, but what
+arrives is the terminal's: Ghostty labels every one "Ghostty", Codex's body is
+the raw markdown of its reply, and nothing says which session it came from.
+This replaces those with one toast per event that names the agent, the event
+and the session, and focuses the agent's window when clicked.
+
+Usage (wired up by this repo; see the files named):
+  agent-notify claude          Claude hook payload on stdin
+                               (~/.claude/settings.json: Notification, Stop)
+  agent-notify codex '<json>'  Codex legacy `notify` program, payload in argv
+                               (~/.codex/config.toml: notify)
+  agent-notify record <agent>  Remember the active window for this session
+                               (both agents' UserPromptSubmit hooks)
+
+Events, and the payload fields each was verified against:
+  Claude 2.1.285  Stop: last_assistant_message (optional), stop_hook_active.
+                  Notification: notification_type == "permission_prompt";
+                  its message is only "Claude needs your permission", so the
+                  tool and command come from the pending tool_use in the
+                  transcript, which Claude writes before it asks.
+  Codex 0.159     argv[-1] = {"type": "agent-turn-complete", "thread-id",
+                  "cwd", "client", "last-assistant-message", ...}.
+Headless runs (`claude -p`, `codex exec`) are skipped: nobody is waiting on
+them, and agents run each other that way as subagents.
+
+Click to focus: on UserPromptSubmit the window the user typed into is the
+active one, so its Hyprland address is recorded under $XDG_RUNTIME_DIR, keyed
+by the terminal surface the agent runs in. A toast for that session skips
+itself while that window is focused (as Ghostty's own did for its surface)
+and otherwise offers a default action that focuses it. The key is per window,
+not per tab: a session in a background tab of the focused window stays quiet,
+and a click raises the window without switching tabs. A prompt is recorded
+only when the focused window's process is an ancestor of the hook, so an
+injected prompt (a /loop wakeup) arriving while another app is focused keeps
+the old record; a terminal whose panes are not its children (a tmux or
+detached mux server) never records and gets plain toasts.
+
+External dependencies, each optional; without one the matching feature is
+skipped, never an error:
+  notify-send (libnotify)  the toast itself. Without it, or when it fails (no
+                           daemon, as under WSL), macOS uses osascript as plain
+                           text; failing that, a Codex toast goes to Codex's
+                           terminal as OSC 9, which is what Codex's TUI sent
+                           before (Claude's hooks have no terminal to use).
+  mako                     renders the markup, colours and per-app styling
+                           (~/.config/mako/config); other daemons get the same
+                           text with at most <i> markup.
+  hyprctl (Hyprland)       window record, focused-window skip, click to focus.
+  agent-session-title      saved session names (this repo, ~/.local/bin).
+  quickshell-statusbar     the Claude and OpenAI marks, referenced in place
+                           from the chezmoi external clone; no icon if absent.
+
+A hook must never block or fail its agent, so every path exits 0, and the
+entry points only parse their payload before handing delivery to a detached
+child. Everything slow (transcript, session title, hyprctl, waiting for a
+click) happens there, bounded by timeouts.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+from dataclasses import asdict, dataclass, replace
+from pathlib import Path
+from collections.abc import Iterable, Mapping
+
+# The toast body is a glance, not the reply: about two lines at mako's width.
+MESSAGE_LIMIT = 160
+SESSION_LIMIT = 60
+# Inputs are cut to this before any parsing so a runaway reply cannot make a
+# hook slow, and so the event handed to the delivery child stays far below the
+# kernel's per-argument limit (128 KiB) even as 4-byte characters. Far more
+# than MESSAGE_LIMIT survives markdown stripping.
+RAW_LIMIT = 4_000
+STDIN_LIMIT = 4 * 1024 * 1024
+TRANSCRIPT_TAIL_BYTES = 512 * 1024
+# How long a clickable toast's helper may wait for the click. mako expires
+# every toast after 10s (ignore-timeout), which closes it sooner; this only
+# bounds a daemon that never answers.
+CLICK_WAIT_SECONDS = 15 * 60
+COMMAND_TIMEOUT_SECONDS = 3
+
+APP_NAMES = {"claude": "Claude", "codex": "Codex"}
+# kind -> (summary, urgency, category). The urgency and category let the mako
+# config colour attention toasts without parsing their text.
+EVENT_STYLE = {
+    "done": ("Finished", "normal", "agent.done"),
+    "attention": ("Needs permission", "critical", "agent.attention"),
+}
+
+
+@dataclass(frozen=True)
+class Event:
+    """One agent event worth a toast, as parsed from a hook payload."""
+
+    agent: str  # "claude" | "codex"
+    kind: str  # "done" | "attention"
+    message: str  # the reply or payload message, still raw
+    cwd: str = ""
+    session_id: str = ""
+    # Claude only: where the permission prompt's tool call, or a reply the
+    # payload left out, can be read back from.
+    transcript_path: str = ""
+    window_key: str = ""
+
+
+@dataclass(frozen=True)
+class Toast:
+    app: str
+    summary: str
+    body: str  # Pango markup
+    urgency: str
+    category: str
+    icon: str = ""
+
+
+# --------------------------------------------------------------------------
+# Payload parsing (pure)
+# --------------------------------------------------------------------------
+
+
+def parse_payload(text: str | None) -> dict:
+    """A JSON object, or {} for anything else: hooks must tolerate junk."""
+    try:
+        value = json.loads(text or "")
+    except (ValueError, TypeError, RecursionError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _text(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+    # JSON can carry a lone surrogate ("\ud800"), which no encoder accepts;
+    # it would fail later, as a subprocess argument.
+    return value[:RAW_LIMIT].encode("utf-8", "replace").decode("utf-8")
+
+
+def is_headless_claude(env: Mapping[str, str]) -> bool:
+    # `claude -p` and SDK hosts run as "sdk-*"; the interactive CLI as "cli".
+    return env.get("CLAUDE_CODE_ENTRYPOINT", "").startswith("sdk")
+
+
+def claude_event(payload: Mapping, env: Mapping[str, str]) -> Event | None:
+    if is_headless_claude(env):
+        return None
+    name = payload.get("hook_event_name")
+    common = {
+        "agent": "claude",
+        "cwd": _text(payload.get("cwd")),
+        "session_id": _text(payload.get("session_id")),
+        "transcript_path": _text(payload.get("transcript_path")),
+    }
+    if name == "Stop":
+        # A Stop hook that blocked re-fires with this set; the turn has not
+        # really finished, and one toast per turn is the contract.
+        if payload.get("stop_hook_active"):
+            return None
+        return Event(kind="done",
+                     message=_text(payload.get("last_assistant_message")),
+                     **common)
+    if name == "Notification":
+        if payload.get("notification_type") != "permission_prompt":
+            return None
+        return Event(kind="attention", message=_text(payload.get("message")),
+                     **common)
+    return None
+
+
+def codex_event(payload: Mapping) -> Event | None:
+    if payload.get("type") != "agent-turn-complete":
+        return None
+    if payload.get("client") == "codex_exec":
+        return None
+    return Event(
+        agent="codex",
+        kind="done",
+        message=_text(payload.get("last-assistant-message")),
+        cwd=_text(payload.get("cwd")),
+        session_id=_text(payload.get("thread-id")),
+    )
+
+
+def window_key(agent: str, env: Mapping[str, str], session_id: str) -> str:
+    """Identify the terminal surface a session lives in, most specific first.
+
+    The agent is part of the key because an agent run from inside another's
+    session (a subagent) inherits that session's terminal environment; its
+    record must not overwrite the outer session's.
+    """
+    ghostty = env.get("GHOSTTY_AGENT_STATE_DIR", "")
+    if ghostty:
+        return f"{agent}|ghostty|{ghostty}"
+    pane = env.get("WEZTERM_PANE", "")
+    if pane:
+        socket = os.path.basename(env.get("WEZTERM_UNIX_SOCKET", ""))
+        return f"{agent}|wezterm|{socket}|{pane}"
+    if session_id:
+        return f"{agent}|session|{session_id}"
+    return ""
+
+
+def record_filename(key: str) -> str:
+    # Keys hold paths and sockets; a digest is always a safe, bounded name.
+    return hashlib.sha256(key.encode()).hexdigest()[:32]
+
+
+# --------------------------------------------------------------------------
+# Transcript reading (pure over parsed records)
+# --------------------------------------------------------------------------
+
+
+def _blocks(record: Mapping) -> list:
+    message = record.get("message")
+    content = message.get("content") if isinstance(message, dict) else None
+    return [b for b in content if isinstance(b, dict)] if isinstance(content, list) else []
+
+
+def pending_tool_uses(records: Iterable[Mapping]) -> list[dict]:
+    """Tool calls that have no result yet, oldest first."""
+    pending: dict[str, dict] = {}
+    for record in records:
+        for block in _blocks(record):
+            if block.get("type") == "tool_use" and record.get("type") == "assistant":
+                pending[str(block.get("id"))] = block
+            elif block.get("type") == "tool_result":
+                pending.pop(str(block.get("tool_use_id")), None)
+    return list(pending.values())
+
+
+# Calls that wait on their own children: a permission prompt raised inside a
+# subagent leaves only this outer call pending in the main transcript.
+_DELEGATING_TOOLS = frozenset({"Agent", "Task"})
+
+
+def permission_subject(records: Iterable[Mapping]) -> dict | None:
+    """The call awaiting consent, when the transcript says so unambiguously."""
+    pending = pending_tool_uses(records)
+    if len(pending) != 1 or pending[0].get("name") in _DELEGATING_TOOLS:
+        return None
+    return pending[0]
+
+
+def last_assistant_text(records: Iterable[Mapping]) -> str:
+    text = ""
+    for record in records:
+        if record.get("type") != "assistant":
+            continue
+        parts = [b.get("text") for b in _blocks(record)
+                 if b.get("type") == "text" and isinstance(b.get("text"), str)]
+        if parts:
+            text = "\n".join(parts)
+    return text
+
+
+# The argument that says what a tool call does, in order of preference.
+_DETAIL_KEYS = ("command", "file_path", "notebook_path", "path", "url",
+                "pattern", "query", "description", "prompt")
+
+
+def describe_tool_use(block: Mapping) -> str:
+    name = block.get("name") if isinstance(block.get("name"), str) else ""
+    args = block.get("input") if isinstance(block.get("input"), dict) else {}
+    detail = next((args[k] for k in _DETAIL_KEYS if isinstance(args.get(k), str) and args[k].strip()), "")
+    if not detail:
+        detail = next((v for v in args.values() if isinstance(v, str) and v.strip()), "")
+    detail = collapse_whitespace(detail[:RAW_LIMIT])
+    if name and detail:
+        return f"{name}: {detail}"
+    return name or detail
+
+
+# --------------------------------------------------------------------------
+# Text shaping (pure)
+# --------------------------------------------------------------------------
+
+_ANSI = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)?)")
+# C0/C1 controls, plus the bidi and direction marks that can make a toast
+# display text in an order other than the one it was sent in.
+_CONTROL = re.compile(
+    "[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]")
+# Line-start markers left where block structure was removed, for join_lines.
+# Control characters, so sanitize() has already guaranteed they are unused.
+_BLOCK, _HEADING_MARK = "\x01", "\x02"
+_FENCE = re.compile(r"^[ \t]*(?:```|~~~).*$", re.M)
+_CODE_SPAN = re.compile(r"(`+)(.+?)\1", re.S)
+_IMAGE = re.compile(r"!\[([^\]]*)\]\((?:[^()\s]|\([^()]*\))*(?:\s+\"[^\"]*\")?\)")
+_LINK = re.compile(r"\[([^\]]+)\]\((?:[^()\s]|\([^()]*\))*(?:\s+\"[^\"]*\")?\)")
+_REF_LINK = re.compile(r"\[([^\]]+)\]\[[^\]]*\]")
+_REF_DEF = re.compile(r"^[ \t]{0,3}\[[^\]]+\]:[ \t]+\S.*$", re.M)
+_AUTOLINK = re.compile(r"<((?:https?|mailto|ftp):[^>\s]+)>")
+_RULE = re.compile(r"^[ \t]*(?:[-*_][ \t]*){3,}$", re.M)
+_HEADING = re.compile(r"^[ \t]{0,3}#{1,6}[ \t]+(.*?)[ \t#]*$", re.M)
+_QUOTE = re.compile(r"^[ \t]{0,3}(?:>[ \t]?)+", re.M)
+_LIST = re.compile(r"^[ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+(?:\[[ xX]\][ \t]+)?", re.M)
+_TABLE_RULE = re.compile(r"^[ \t]*\|?(?:[ \t]*:?-{2,}:?[ \t]*\|)+[ \t]*:?-*:?[ \t]*\|?[ \t]*$", re.M)
+_TABLE_ROW = re.compile(r"^[ \t]*\|(.*?)\|?[ \t]*$", re.M)
+_STRONG = re.compile(r"(\*\*|__)(?=\S)(.+?)(?<=\S)\1", re.S)
+_EM_STAR = re.compile(r"(?<![\w*])\*(?=[^\s*])(.+?)(?<=[^\s*])\*(?![\w*])", re.S)
+_EM_UNDER = re.compile(r"(?<![\w_])_(?=[^\s_])(.+?)(?<=[^\s_])_(?![\w_])", re.S)
+_STRIKE = re.compile(r"~~(?=\S)(.+?)(?<=\S)~~", re.S)
+_SPACE = re.compile(r"\s+")
+_SENTENCE_END = re.compile(r"[.!?:;,…·—–-]$")
+
+
+def sanitize(text: str) -> str:
+    """Drop terminal escapes and control characters, keeping line breaks."""
+    return _CONTROL.sub("", _ANSI.sub("", text.replace("\r\n", "\n").replace("\r", "\n")))
+
+
+def collapse_whitespace(text: str) -> str:
+    return _SPACE.sub(" ", sanitize(text)).strip()
+
+
+def strip_markdown(text: str) -> str:
+    """Markdown to one line of plain text, keeping what a reader would see."""
+    text = sanitize(text[:RAW_LIMIT])
+    # Code spans are literal: park them so emphasis rules cannot reach inside
+    # (`**kwargs`, `snake_case_name`). NUL cannot survive sanitize, so it is a
+    # safe placeholder delimiter.
+    spans: list[str] = []
+
+    def park(match: re.Match) -> str:
+        spans.append(match.group(2).strip())
+        return f"\0{len(spans) - 1}\0"
+
+    text = _FENCE.sub("", text)
+    text = _CODE_SPAN.sub(park, text)
+    text = _REF_DEF.sub("", text)
+    text = _IMAGE.sub(r"\1", text)
+    text = _LINK.sub(r"\1", text)
+    text = _REF_LINK.sub(r"\1", text)
+    text = _AUTOLINK.sub(r"\1", text)
+    text = _RULE.sub("", text)
+    text = _TABLE_RULE.sub("", text)
+    text = _TABLE_ROW.sub(
+        lambda m: _BLOCK + " · ".join(c.strip() for c in m.group(1).split("|")), text)
+    text = _HEADING.sub(_HEADING_MARK + r"\1", text)
+    text = _QUOTE.sub(_BLOCK, text)
+    text = _LIST.sub(_BLOCK, text)
+    text = _STRONG.sub(r"\2", text)
+    text = _STRIKE.sub(r"\1", text)
+    text = _EM_STAR.sub(r"\1", text)
+    text = _EM_UNDER.sub(r"\1", text)
+    text = re.sub(r"\0(\d+)\0", lambda m: spans[int(m.group(1))], text)
+    return join_lines(text)
+
+
+def join_lines(text: str) -> str:
+    """Flatten lines into one, marking where a heading or list item ended.
+
+    Block starts (list items, quotes, table rows) and both sides of a heading
+    join with a middle dot, so "Summary / Fixed it" does not read as one
+    clause. Other breaks join with a space when the line ends a sentence or the
+    next carries on in lower case (a soft wrap), and with a dot otherwise.
+    """
+    joined, after_heading = "", False
+    for raw in text.split("\n"):
+        mark = raw.lstrip(" \t")[:1]
+        line = collapse_whitespace(raw)
+        if not line:
+            continue
+        if joined:
+            structural = mark in (_BLOCK, _HEADING_MARK) or after_heading
+            soft = not structural and (_SENTENCE_END.search(joined) or line[:1].islower())
+            joined += " " if soft else " · "
+        joined += line
+        after_heading = mark == _HEADING_MARK
+    return joined
+
+
+def truncate(text: str, limit: int = MESSAGE_LIMIT) -> str:
+    """Cut on a word boundary with an ellipsis; hard-cut one unbroken word."""
+    if limit <= 0:
+        return ""
+    if len(text) <= limit:
+        return text
+    cut = text[: limit - 1]
+    space = cut.rfind(" ")
+    if space >= limit // 2:
+        cut = cut[:space]
+    return cut.rstrip(" ,;:-–—") + "…"
+
+
+def pango_escape(text: str) -> str:
+    return (text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            .replace('"', "&quot;").replace("'", "&apos;"))
+
+
+def session_label(title: str, cwd: str) -> str:
+    title = collapse_whitespace(title or "")
+    if title:
+        return title
+    return os.path.basename((cwd or "").rstrip("/"))
+
+
+def message_text(event: Event, transcript: list[dict] | None) -> str:
+    """The toast's message line, before truncation."""
+    if event.kind == "attention":
+        call = permission_subject(transcript or [])
+        described = describe_tool_use(call) if call else ""
+        return described or collapse_whitespace(event.message)
+    reply = event.message or last_assistant_text(transcript or [])
+    return strip_markdown(reply)
+
+
+def codex_mark(theme_mode: str) -> str:
+    # Same choice as the status bar's ProviderMark.qml: the ink mark on light
+    # surfaces, the cream one on dark.
+    return "openai-dark.svg" if theme_mode == "light" else "openai.svg"
+
+
+def build_toast(event: Event, session: str, message: str, icon: str) -> Toast:
+    summary, urgency, category = EVENT_STYLE[event.kind]
+    lines = []
+    if session:
+        # Plain <i> is in the freedesktop body-markup subset, so a daemon
+        # other than mako still renders it rather than printing the tag.
+        lines.append(f"<i>{pango_escape(truncate(session, SESSION_LIMIT))}</i>")
+    message = truncate(message)
+    if message:
+        lines.append(pango_escape(message))
+    return Toast(app=APP_NAMES[event.agent], summary=summary, body="\n".join(lines),
+                 urgency=urgency, category=category, icon=icon)
+
+
+def notify_send_argv(toast: Toast, clickable: bool) -> list[str]:
+    argv = ["notify-send", f"--app-name={toast.app}", f"--urgency={toast.urgency}",
+            f"--category={toast.category}"]
+    if toast.icon:
+        argv.append(f"--icon={toast.icon}")
+    if clickable:
+        argv += ["--action=default=Focus", "--wait"]
+    return argv + ["--", toast.summary, toast.body]
+
+
+def osascript_argv(toast: Toast) -> list[str]:
+    plain = re.sub(r"</?i>", "", toast.body)
+    for entity, char in (("&lt;", "<"), ("&gt;", ">"), ("&quot;", '"'), ("&apos;", "'"), ("&amp;", "&")):
+        plain = plain.replace(entity, char)
+    script = ("on run argv\n"
+              "display notification (item 3 of argv) with title (item 1 of argv) subtitle (item 2 of argv)\n"
+              "end run")
+    return ["osascript", "-e", script, toast.app, toast.summary, plain.replace("\n", " — ")]
+
+
+def terminal_notification(toast: Toast) -> bytes:
+    """OSC 9 for the terminal to raise itself: the fallback with no notifier.
+
+    It is what Codex's TUI sent before agent-notify replaced it, so a terminal
+    that turned it into a toast (WezTerm on Windows under WSL) still does.
+    """
+    plain = re.sub(r"</?i>", "", toast.body).split("\n")
+    for entity, char in (("&lt;", "<"), ("&gt;", ">"), ("&quot;", '"'), ("&apos;", "'"), ("&amp;", "&")):
+        plain = [line.replace(entity, char) for line in plain]
+    text = collapse_whitespace(f"{toast.app} · {toast.summary}: " + " — ".join(plain))
+    return f"\x1b]9;{truncate(text, 200)}\x07".encode()
+
+
+def should_record(active_pid: object, ancestors: set[int]) -> bool:
+    """Whether the focused window is the terminal this hook runs under.
+
+    Prompts the user did not type (a /loop wakeup, a queued or scheduled
+    prompt) also fire UserPromptSubmit, possibly while another app is focused;
+    recording that app would silence the session's toasts while it stays
+    focused. The terminal is an ancestor process of its agent's hooks.
+    """
+    return isinstance(active_pid, int) and active_pid > 1 and active_pid in ancestors
+
+
+# --------------------------------------------------------------------------
+# System access (every call time-boxed; absence means "skip")
+# --------------------------------------------------------------------------
+
+
+def run(argv: list[str], timeout: float = COMMAND_TIMEOUT_SECONDS) -> str | None:
+    if not shutil.which(argv[0]):
+        return None
+    try:
+        done = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True,
+                              text=True, timeout=timeout, check=False)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+    return done.stdout if done.returncode == 0 else None
+
+
+def hyprland_available(env: Mapping[str, str]) -> bool:
+    return bool(env.get("HYPRLAND_INSTANCE_SIGNATURE")) and shutil.which("hyprctl") is not None
+
+
+def active_window_info() -> dict:
+    return parse_payload(run(["hyprctl", "-j", "activewindow"]))
+
+
+def active_window() -> str:
+    address = active_window_info().get("address")
+    return address if isinstance(address, str) else ""
+
+
+def ancestor_pids(pid: int, limit: int = 64) -> set[int]:
+    """This process's ancestry from /proc (Linux, as Hyprland is)."""
+    chain: set[int] = set()
+    while pid > 1 and len(chain) < limit:
+        chain.add(pid)
+        try:
+            stat = Path(f"/proc/{pid}/stat").read_text()
+            # Fields after comm, which may itself contain spaces or ")".
+            pid = int(stat.rsplit(")", 1)[1].split()[1])
+        except (OSError, IndexError, ValueError):
+            break
+    return chain
+
+
+def window_exists(address: str) -> bool:
+    try:
+        clients = json.loads(run(["hyprctl", "-j", "clients"]) or "[]")
+    except ValueError:
+        return False
+    return isinstance(clients, list) and any(
+        isinstance(c, dict) and c.get("address") == address for c in clients)
+
+
+def focus_window(address: str) -> None:
+    # This Hyprland runs a Lua config, where hyprctl dispatch evaluates Lua
+    # (see dot_config/hypr/executable_open-link.sh); the legacy dispatcher is
+    # the fallback for a Hyprland still on hyprlang.
+    lua = f'hl.dsp.focus({{ window = "address:{address}" }})'
+    if (run(["hyprctl", "dispatch", lua]) or "").strip() != "ok":
+        run(["hyprctl", "dispatch", "focuswindow", f"address:{address}"])
+
+
+def runtime_dir(env: Mapping[str, str]) -> Path | None:
+    base = env.get("XDG_RUNTIME_DIR", "")
+    return Path(base) / "agent-notify" if base else None
+
+
+def read_record(env: Mapping[str, str], key: str) -> str:
+    folder = runtime_dir(env)
+    if not key or folder is None:
+        return ""
+    try:
+        return (folder / record_filename(key)).read_text().strip()
+    except OSError:
+        return ""
+
+
+def write_record(env: Mapping[str, str], key: str, address: str) -> None:
+    folder = runtime_dir(env)
+    if not key or not address or folder is None:
+        return
+    folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+    target = folder / record_filename(key)
+    temporary = target.with_name(f".{target.name}.{os.getpid()}")
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(descriptor, "w") as handle:
+        handle.write(address + "\n")
+    os.replace(temporary, target)
+
+
+def read_transcript_tail(path: str) -> list[dict]:
+    """Parsed records from the end of a JSONL transcript; [] if unreadable."""
+    if not path:
+        return []
+    try:
+        with open(path, "rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            size = handle.tell()
+            handle.seek(max(0, size - TRANSCRIPT_TAIL_BYTES))
+            lines = handle.read().decode("utf-8", "replace").splitlines()
+    except OSError:
+        return []
+    if size > TRANSCRIPT_TAIL_BYTES:
+        lines = lines[1:]  # the first line is almost certainly cut
+    return [r for r in map(parse_payload, lines) if r]
+
+
+def session_title(agent: str, session_id: str) -> str:
+    if not session_id:
+        return ""
+    helper = shutil.which("agent-session-title") or str(Path(__file__).with_name("agent-session-title"))
+    if not os.access(helper, os.X_OK):
+        return ""
+    try:
+        done = subprocess.run([helper, agent, session_id], stdin=subprocess.DEVNULL,
+                              capture_output=True, text=True,
+                              timeout=COMMAND_TIMEOUT_SECONDS, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return done.stdout.strip() if done.returncode == 0 else ""
+
+
+def theme_mode(env: Mapping[str, str]) -> str:
+    # Written by scripts/set-theme.sh on every platform it runs on.
+    state = Path(env.get("XDG_STATE_HOME") or Path.home() / ".local/state")
+    try:
+        mode = parse_payload((state / "desktop-theme/current.json").read_text()).get("mode")
+    except OSError:
+        mode = None
+    return mode if mode in ("light", "dark") else "dark"
+
+
+def icon_path(agent: str, env: Mapping[str, str]) -> str:
+    # The marks belong to the status bar repo, cloned by .chezmoiexternal.toml;
+    # they are referenced in place so there is one copy of each.
+    data = Path(env.get("XDG_DATA_HOME") or Path.home() / ".local/share")
+    name = "claude.svg" if agent == "claude" else codex_mark(theme_mode(env))
+    path = data / "quickshell-statusbar/quickshell/assets" / name
+    return str(path) if path.is_file() else ""
+
+
+# --------------------------------------------------------------------------
+# Commands
+# --------------------------------------------------------------------------
+
+
+def deliver(event: Event, env: Mapping[str, str], tty_fd: int | None = None) -> None:
+    """Resolve everything slow, then show the toast (runs detached)."""
+    address = ""
+    if event.window_key and hyprland_available(env):
+        address = read_record(env, event.window_key)
+        if address and address == active_window():
+            return  # the user is looking at it already
+        if address and not window_exists(address):
+            address = ""
+
+    needs_transcript = event.kind == "attention" or not event.message
+    transcript = read_transcript_tail(event.transcript_path) if needs_transcript else []
+    toast = build_toast(
+        event,
+        session_label(session_title(event.agent, event.session_id), event.cwd),
+        message_text(event, transcript),
+        icon_path(event.agent, env),
+    )
+
+    if not show(toast, address) and tty_fd is not None:
+        try:
+            os.write(tty_fd, terminal_notification(toast))
+        except OSError:
+            pass
+
+
+def show(toast: Toast, address: str) -> bool:
+    """Raise the toast; False when no desktop notifier took it.
+
+    notify-send exists without a notification daemon on some hosts (WSL), so
+    its failure counts the same as its absence.
+    """
+    if shutil.which("notify-send"):
+        clickable = bool(address)
+        chosen = run(notify_send_argv(toast, clickable),
+                     timeout=CLICK_WAIT_SECONDS if clickable else COMMAND_TIMEOUT_SECONDS)
+        if clickable and (chosen or "").strip() == "default":
+            focus_window(address)
+        return chosen is not None
+    if shutil.which("osascript"):
+        return run(osascript_argv(toast)) is not None
+    return False
+
+
+def open_terminal() -> int | None:
+    """The controlling terminal, for the OSC 9 fallback, if there is one.
+
+    Codex runs its notify program with the TUI's terminal; Claude runs hooks
+    without one. It must be opened here: the delivery child starts a new
+    session and so has no controlling terminal of its own.
+    """
+    try:
+        return os.open("/dev/tty", os.O_WRONLY | os.O_NOCTTY)
+    except OSError:
+        return None
+
+
+def detach(event: Event) -> None:
+    """Hand delivery to a child in its own session so the hook returns now."""
+    tty_fd = open_terminal()
+    argv = [sys.executable, os.path.abspath(__file__), "_deliver",
+            json.dumps(asdict(event), ensure_ascii=False)]
+    if tty_fd is not None:
+        argv.append(str(tty_fd))
+    try:
+        subprocess.Popen(
+            argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, start_new_session=True, close_fds=True,
+            pass_fds=(tty_fd,) if tty_fd is not None else (),
+        )
+    finally:
+        if tty_fd is not None:
+            os.close(tty_fd)
+
+
+def read_stdin() -> str:
+    try:
+        data = sys.stdin.buffer.read(STDIN_LIMIT)
+        # Drain the rest so the agent writing a huge payload never meets a
+        # closed pipe (EPIPE) because this process stopped reading early.
+        while sys.stdin.buffer.read(1 << 20):
+            pass
+        return data.decode("utf-8", "replace")
+    except (OSError, ValueError, AttributeError):
+        return ""
+
+
+def main(argv: list[str], env: Mapping[str, str]) -> None:
+    command = argv[1] if len(argv) > 1 else ""
+    if command == "claude":
+        payload = parse_payload(read_stdin())
+        event = claude_event(payload, env)
+    elif command == "codex":
+        event = codex_event(parse_payload(argv[2] if len(argv) > 2 else ""))
+    elif command == "record":
+        agent = argv[2] if len(argv) > 2 else ""
+        payload = parse_payload(read_stdin())
+        if agent not in APP_NAMES or (agent == "claude" and is_headless_claude(env)):
+            return
+        # Claude marks prompts it injected itself (loop wakeups, schedules).
+        if payload.get("source", "user") != "user":
+            return
+        session = _text(payload.get("session_id")) or env.get("CODEX_THREAD_ID", "")
+        key = window_key(agent, env, session)
+        if key and hyprland_available(env):
+            window = active_window_info()
+            address = window.get("address")
+            if isinstance(address, str) and should_record(window.get("pid"), ancestor_pids(os.getpid())):
+                write_record(env, key, address)
+        return
+    elif command == "_deliver":
+        data = parse_payload(argv[2] if len(argv) > 2 else "")
+        fields = {k: _text(data.get(k)) for k in Event.__dataclass_fields__}
+        tty_arg = argv[3] if len(argv) > 3 else ""
+        tty_fd = int(tty_arg) if tty_arg.isdigit() else None
+        if fields["agent"] in APP_NAMES and fields["kind"] in EVENT_STYLE:
+            deliver(Event(**fields), env, tty_fd)
+        return
+    else:
+        return
+
+    if event is not None:
+        detach(replace(event, window_key=window_key(event.agent, env, event.session_id)))
+
+
+if __name__ == "__main__":
+    try:
+        main(sys.argv, os.environ)
+    except Exception:  # noqa: BLE001 - a notifier must never fail its hook
+        pass
+    sys.exit(0)

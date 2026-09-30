@@ -22,6 +22,8 @@ source "$set_theme_script_dir/lib/chrome-theme.sh"
 source "$set_theme_script_dir/lib/darkreader-theme.sh"
 # shellcheck source=lib/desktop-color-scheme.sh
 source "$set_theme_script_dir/lib/desktop-color-scheme.sh"
+# shellcheck source=lib/mako-theme.sh
+source "$set_theme_script_dir/lib/mako-theme.sh"
 # shellcheck source=lib/theme-colors.sh
 source "$set_theme_script_dir/lib/theme-colors.sh"
 # shellcheck source=lib/theme-state.sh
@@ -1036,6 +1038,33 @@ elif [[ -d "$hypr_dir" ]]; then
   skipped+=("Hyprland (no tauri theme CSS at $hypr_css to derive colours)")
 else
   skipped+=("Hyprland (no config dir at $hypr_dir)")
+fi
+
+# --- Mako (notifications) ---
+# mako's config includes ~/.config/mako/theme for its colours (see
+# lib/mako-theme.sh), generated here from the same tauri stylesheet as the
+# rest of the desktop. makoctl talks to the running daemon; with no daemon up
+# (set-theme over ssh, or a machine without mako) the file is still written
+# and the next mako start reads it.
+mako_palette="$HOME/.config/tauri-explorer/themes/$slug.css"
+mako_theme="$HOME/.config/mako/theme"
+# Gated on the daemon, not the config dir: chezmoi installs ~/.config/mako on
+# every OS, including those that never run mako.
+if command -v mako &>/dev/null || command -v makoctl &>/dev/null; then
+  if mako_generate_theme "$mako_palette" "$slug" "$theme_mode" "$mako_theme"; then
+    echo "  ✓ Mako → $slug"
+    if command -v makoctl &>/dev/null && makoctl reload &>/dev/null; then
+      echo "    reloaded"
+      reload+=("Mako: reloaded automatically")
+    else
+      reload+=("Mako: makoctl reload (next start picks it up otherwise)")
+    fi
+    ((changed++))
+  else
+    skipped+=("Mako ($mako_theme_error)")
+  fi
+else
+  skipped+=("Mako (not installed)")
 fi
 
 # --- Greeter appearance (regreet) ---

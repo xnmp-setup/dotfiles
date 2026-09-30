@@ -8,7 +8,18 @@ model_reasoning_effort = "medium"
 # parse in 0.145 — this key is top-level.
 approvals_reviewer = "auto_review"
 
+# Turn-complete toasts come from ~/.local/bin/agent-notify, which Codex runs
+# with the legacy notify payload as its last argument (JSON: type
+# "agent-turn-complete", thread-id, cwd, client, last-assistant-message). The
+# program is exec'd without a shell or ~ expansion, so sh supplies $HOME and
+# the same line works under any home directory. Top-level, like the key above.
+notify = ["/bin/sh", "-c", "exec \"$HOME/.local/bin/agent-notify\" codex \"$1\"", "agent-notify"]
+
 [tui]
+# agent-notify replaces the TUI's own OSC 9 notifications, which Ghostty
+# forwards as a bare "Ghostty" toast carrying the reply's raw markdown. They
+# are on by default.
+notifications = false
 # Publish the saved chat name as the native pane title. WezTerm consumes it
 # directly; the Ghostty wrapper resolves the same name from the rename index
 # while its custom OSC 2 renderer is active.
@@ -41,12 +52,17 @@ trust_level = "trusted"
 
 # Pre-trusted hashes for the hooks in ~/.codex/hooks.json, so a freshly
 # provisioned machine runs them without a trust prompt. Tracked here only
-# because both the hook definitions (.codex/hooks.json) and the script they all
-# invoke (.local/bin/wezterm-agent-status) are managed by this repo — the hashes
-# describe content chezmoi itself installs. Regenerate these (delete the block,
-# re-trust in Codex, copy back) whenever hooks.json changes, or the hooks go
-# silently untrusted. The keys embed an absolute path, so they only match on a
-# machine whose home is /home/chong.
+# because both the hook definitions (.codex/hooks.json) and the scripts they
+# invoke (.local/bin/wezterm-agent-status, .local/bin/agent-notify) are managed
+# by this repo — the hashes describe content chezmoi itself installs. Regenerate
+# these (delete the block, re-trust in Codex, copy back) whenever hooks.json
+# changes, or the hooks go silently untrusted. A hash covers only the handler's
+# own definition (event, matcher, command, timeout; not the script's contents):
+# sha256 of the sorted, compact JSON of {"event_name": "<snake_case>",
+# "matcher": ..., "hooks": [{"type": "command", "command": ..., "async": false,
+# "timeout": 600}]}, per codex-rs/hooks/src/engine/discovery.rs hook_hash().
+# The keys embed an absolute path, so they only match on a machine whose home
+# is /home/chong.
 [hooks.state]
 
 [hooks.state."/home/chong/.codex/hooks.json:pre_tool_use:0:0"]
@@ -63,6 +79,9 @@ trusted_hash = "sha256:b0d31ab879e0e8b09aeb2646569e02852f1e59e831bdabd9078cd5ca3
 
 [hooks.state."/home/chong/.codex/hooks.json:user_prompt_submit:0:0"]
 trusted_hash = "sha256:81b8bda268005f15e4880e0813e73c4dd300162dd45bbc028741b2ef4c989da2"
+
+[hooks.state."/home/chong/.codex/hooks.json:user_prompt_submit:0:1"]
+trusted_hash = "sha256:1027ca77f1af29b8728e7f9935ecb79282e219aab80b532cf139ea6b043a268d"
 
 [hooks.state."/home/chong/.codex/hooks.json:stop:0:0"]
 trusted_hash = "sha256:e94985131fd32938c219616130ca61158110d11a57c490ad17c11ff3553d3b1d"

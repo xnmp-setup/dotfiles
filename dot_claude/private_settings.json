@@ -44,6 +44,10 @@
           {
             "type": "command",
             "command": "~/.local/bin/wezterm-agent-status working"
+          },
+          {
+            "type": "command",
+            "command": "~/.local/bin/agent-notify record claude"
           }
         ]
       }
@@ -67,6 +71,15 @@
             "command": "~/.local/bin/wezterm-agent-status notification"
           }
         ]
+      },
+      {
+        "matcher": "permission_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.local/bin/agent-notify claude"
+          }
+        ]
       }
     ],
     "Stop": [
@@ -79,6 +92,10 @@
           {
             "type": "command",
             "command": "python3 ~/.claude/scripts/render.py --hook"
+          },
+          {
+            "type": "command",
+            "command": "~/.local/bin/agent-notify claude"
           }
         ]
       }

@@ -3,10 +3,47 @@
 default-timeout=10000
 ignore-timeout=1
 
-# Claude Code permission prompts arrive as terminal notifications that
-# ghostty forwards to the desktop; keep them off screen entirely (they still
-# land in history: `makoctl restore`).
-[summary="Claude Code"]
+# "Frosted" cards: translucent, rounded, a hairline border. The translucency
+# only reads as frosted glass because Hyprland blurs what is behind this
+# layer (namespace "notifications"; layer rule in hypr/hyprland.lua). Without
+# that compositor rule the same cards are simply see-through.
+#
+# Inter where installed; Pango falls through the family list otherwise.
+font=Inter, Noto Sans, sans-serif 9.5
+width=360
+# Tall enough for agent-notify's ~160-character excerpt under its session
+# line; mako ellipsizes anything past this.
+height=180
+padding=12,14
+border-size=1
+border-radius=14
+# The bar's exclusive zone already pushes this layer below it, so the margin
+# only spaces cards from the bar, from each other and from the screen edge.
+margin=10
+outer-margin=0,2,0,0
+# The agent marks (see ~/.local/bin/agent-notify) are bare glyphs, not app
+# tiles, so they sit smaller than a tile would to balance two lines of text.
+max-icon-size=30
+icon-location=left
+anchor=top-right
+# Above fullscreen windows too: a finished agent is worth seeing mid-video.
+layer=overlay
+max-visible=4
+
+# Colours and the Pango format (app line, bold summary, dim body) follow the
+# desktop theme: scripts/set-theme.sh rewrites this file and reloads mako.
+# chezmoi creates a default copy once (create_theme) so a fresh machine has a
+# complete config before its first set-theme; mako refuses the whole config
+# if an include is missing. Must stay above the first [section], where mako
+# accepts only style options.
+include=~/.config/mako/theme
+
+# Claude Code's own terminal notifications arrive through Ghostty's OSC 9
+# forwarding. agent-notify replaces them, and ~/.claude.json's
+# preferredNotifChannel should stop them at the source; this is the backstop,
+# matched on Ghostty's desktop entry so agent-notify's own "Claude" toasts
+# never match. Hidden toasts still land in history (`makoctl restore`).
+[summary="Claude Code" desktop-entry=com.mitchellh.ghostty]
 invisible=1
 
 # Focus mode: toggled by the quickshell status bar (and any keybind) via

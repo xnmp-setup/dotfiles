@@ -1,0 +1,24 @@
+# Default colours for mako, shipped by chezmoi (dot_config/mako/create_theme)
+# and created only when missing. scripts/set-theme.sh replaces this file with
+# one generated from the active theme (a Nord-like dark palette until then).
+# Included from ~/.config/mako/config, which holds everything but colour.
+background-color=#292e39a8
+text-color=#eceff4
+border-color=#eceff423
+progress-color=over #88c0d066
+format=<span size="8.5pt" weight="600" foreground="#88c0d0">%a</span>\n<span size="10pt" weight="600">%s</span>\n<span foreground="#bcbfc6">%b</span>
+
+# Agent toasts (~/.local/bin/agent-notify): each app line in its own ink.
+[app-name=Claude]
+format=<span size="8.5pt" weight="600" foreground="#e08a6a">%a</span>\n<span size="10pt" weight="600">%s</span>\n<span foreground="#bcbfc6">%b</span>
+
+[app-name=Codex]
+format=<span size="8.5pt" weight="600" foreground="#eceff4">%a</span>\n<span size="10pt" weight="600">%s</span>\n<span foreground="#bcbfc6">%b</span>
+
+# Last, so it wins over the per-app lines: anything waiting on the user.
+[urgency=critical]
+border-color=#ebcb8b
+format=<span size="8.5pt" weight="600" foreground="#ebcb8b">%a</span>\n<span size="10pt" weight="600">%s</span>\n<span foreground="#bcbfc6">%b</span>
+
+[hidden]
+format=<span size="8.5pt" foreground="#bcbfc6">+%h more</span>
