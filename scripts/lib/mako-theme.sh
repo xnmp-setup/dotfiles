@@ -7,7 +7,7 @@
 # never overwrites, so rewrites here are not drift.
 #
 # The look is the "frosted" card: a translucent theme surface that Hyprland
-# blurs behind (layer rule in hyprland.lua), a hairline border, an app line in
+# blurs behind (layer rule in hyprland.lua), a defined border, an app line in
 # the app's accent, a bold summary and a dimmer body. Attention (critical)
 # toasts take the theme's caution colour for the border and app line.
 
@@ -52,17 +52,17 @@ mako_generate_theme() {
   dim=$(mix "$text" "$bg" 25)
 
   # Light cards need more opacity to hold text contrast over a busy
-  # wallpaper; the border is a white glint on light and a faint ink line on
-  # dark, as frosted glass reads in each.
+  # wallpaper. Use the theme's text colour for a contrasting outline in both
+  # modes; a white border disappears against light surfaces.
   case "$theme_mode" in
     light)
       surface_alpha=$(mako_alpha 72)
-      border="ffffff$(mako_alpha 70)"
+      border="$text$(mako_alpha 40)"
       claude_ink=c96442
       ;;
     dark)
       surface_alpha=$(mako_alpha 66)
-      border="$text$(mako_alpha 14)"
+      border="$text$(mako_alpha 45)"
       claude_ink=e08a6a
       ;;
     *)

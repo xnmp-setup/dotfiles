@@ -1,5 +1,5 @@
 {
-  "description": "Mirror Codex session state into the WezTerm tab bar (see ~/.local/bin/wezterm-agent-status). Same states and same script as the Claude Code hooks in ~/.claude/settings.json, so both agents' tabs read identically. UserPromptSubmit also records the focused window for ~/.local/bin/agent-notify (click-to-focus toasts).",
+  "description": "Mirror Codex session state into the terminal tab bar (see ~/.local/bin/wezterm-agent-status). UserPromptSubmit records the focused window for click-to-focus toasts. agent-notify sends a toast only when Codex requests user input.",
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -14,6 +14,12 @@
         "matcher": "*",
         "hooks": [
           { "type": "command", "command": "~/.local/bin/wezterm-agent-status working" }
+        ]
+      },
+      {
+        "matcher": "^request_user_input(_async)?$",
+        "hooks": [
+          { "type": "command", "command": "~/.local/bin/agent-notify codex" }
         ]
       }
     ],

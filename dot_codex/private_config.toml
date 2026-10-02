@@ -8,12 +8,10 @@ model_reasoning_effort = "medium"
 # parse in 0.145 — this key is top-level.
 approvals_reviewer = "auto_review"
 
-# Turn-complete toasts come from ~/.local/bin/agent-notify, which Codex runs
-# with the legacy notify payload as its last argument (JSON: type
-# "agent-turn-complete", thread-id, cwd, client, last-assistant-message). The
-# program is exec'd without a shell or ~ expansion, so sh supplies $HOME and
-# the same line works under any home directory. Top-level, like the key above.
-notify = ["/bin/sh", "-c", "exec \"$HOME/.local/bin/agent-notify\" codex \"$1\"", "agent-notify"]
+# Input-request toasts come from ~/.local/bin/agent-notify via the
+# PreToolUse/request_user_input hook in ~/.codex/hooks.json. Keep the legacy
+# turn-complete notify command unset so completions (including subagents)
+# never raise desktop notifications.
 
 [tui]
 # agent-notify replaces the TUI's own OSC 9 notifications, which Ghostty
@@ -34,7 +32,7 @@ fullscreen_transcript = false
 open_transcript = "alt-t"
 
 # Lifecycle hooks are off by default; without this Codex silently ignores
-# ~/.codex/hooks.json (which drives the WezTerm tab status — see that file).
+# ~/.codex/hooks.json (terminal tab status and input-request notifications).
 [features]
 hooks = true
 
@@ -67,6 +65,9 @@ trust_level = "trusted"
 
 [hooks.state."/home/chong/.codex/hooks.json:pre_tool_use:0:0"]
 trusted_hash = "sha256:2fd69f9806e7e9729439fc0e9c7f1a8ff0c20cb3d9ca840d0eb09758bbd550e0"
+
+[hooks.state."/home/chong/.codex/hooks.json:pre_tool_use:1:0"]
+trusted_hash = "sha256:a875ec0b8119351929d8013fefca782552f10a8f8a87f563f33e4213fb2034d5"
 
 [hooks.state."/home/chong/.codex/hooks.json:permission_request:0:0"]
 trusted_hash = "sha256:45b51991c1ba4191e319305984ef81eb651ed15b53259a8d05edf02c37711b72"

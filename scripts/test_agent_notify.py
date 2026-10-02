@@ -41,6 +41,12 @@ an = load_module()
 INTERACTIVE = {"CLAUDE_CODE_ENTRYPOINT": "cli"}
 
 
+def codex_input_payload(question="Which branch?", **overrides):
+    return {"hook_event_name": "PreToolUse", "tool_name": "request_user_input",
+            "session_id": "t", "cwd": "/w/proj",
+            "tool_input": {"questions": [{"question": question}]}, **overrides}
+
+
 class PayloadParsing(unittest.TestCase):
     def test_malformed_and_non_object_payloads_are_empty(self):
         for text in (None, "", "   ", "{", "not json", "[1,2]", "42", '"s"', "null",
@@ -78,21 +84,41 @@ class PayloadParsing(unittest.TestCase):
         self.assertIsNone(an.claude_event({}, INTERACTIVE))
         self.assertIsNone(an.claude_event({"hook_event_name": "PreToolUse"}, INTERACTIVE))
 
-    def test_codex_turn_complete_and_exclusions(self):
+    def test_codex_completion_and_background_events_are_silent(self):
         payload = {"type": "agent-turn-complete", "thread-id": "t1", "cwd": "/w/x",
                    "client": "codex-tui", "last-assistant-message": "Shipped."}
-        event = an.codex_event(payload)
-        self.assertEqual((event.agent, event.kind, event.message, event.session_id),
-                         ("codex", "done", "Shipped.", "t1"))
+        self.assertIsNone(an.codex_event(payload))
         self.assertIsNone(an.codex_event({**payload, "client": "codex_exec"}))
         self.assertIsNone(an.codex_event({**payload, "type": "approval-requested"}))
         self.assertIsNone(an.codex_event({}))
-        self.assertEqual(an.codex_event({"type": "agent-turn-complete",
-                                         "last-assistant-message": None}).message, "")
+        for name in ("Stop", "SubagentStop", "PostToolUse", "PermissionRequest"):
+            self.assertIsNone(an.codex_event(codex_input_payload(hook_event_name=name)))
+        self.assertIsNone(an.codex_event(codex_input_payload(tool_name="Bash")))
+
+    def test_codex_input_request_contains_the_question_and_session(self):
+        for tool in ("request_user_input", "request_user_input_async"):
+            event = an.codex_event(codex_input_payload("Which branch?", tool_name=tool))
+            self.assertEqual((event.agent, event.kind, event.message, event.cwd, event.session_id),
+                             ("codex", "input", "Which branch?", "/w/proj", "t"))
+
+    def test_codex_malformed_questions_have_a_useful_fallback(self):
+        for value in (None, [], "bad", 7, [None, {}, {"question": 7}]):
+            event = an.codex_event(codex_input_payload(tool_input={"questions": value}))
+            self.assertEqual(event.message, "Codex needs your input")
+        for value in (None, [], "bad"):
+            event = an.codex_event(codex_input_payload(tool_input=value))
+            self.assertEqual(event.message, "Codex needs your input")
+
+    def test_codex_multiple_questions_are_combined(self):
+        event = an.codex_event(codex_input_payload(tool_input={"questions": [
+            {"question": "Which branch?"}, {"question": "Deploy now?"}]}))
+        self.assertEqual(event.message, "Which branch? · Deploy now?")
+        async_event = an.codex_event(codex_input_payload(tool_name="request_user_input_async",
+            tool_input={"questions": [{"title": "Which branch?"}]}))
+        self.assertEqual(async_event.message, "Which branch?")
 
     def test_huge_fields_are_bounded(self):
-        event = an.codex_event({"type": "agent-turn-complete",
-                                "last-assistant-message": "word " * 1_000_000})
+        event = an.codex_event(codex_input_payload("word " * 1_000_000))
         self.assertLessEqual(len(event.message), an.RAW_LIMIT)
 
 
@@ -144,8 +170,7 @@ class MarkdownAndText(unittest.TestCase):
         self.assertEqual(an.strip_markdown("## Notes\nlower case start"), "Notes · lower case start")
 
     def test_lone_surrogates_do_not_survive_parsing(self):
-        event = an.codex_event(an.parse_payload(
-            '{"type": "agent-turn-complete", "last-assistant-message": "a\\ud800b"}'))
+        event = an.codex_event(codex_input_payload("a\ud800b"))
         event.message.encode("utf-8")  # would raise on a surrogate
 
     def test_huge_input_is_fast_and_bounded(self):
@@ -388,13 +413,44 @@ class CommandBehaviour(unittest.TestCase):
 
     def test_codex_entry_point_uses_theme_matched_mark(self):
         self.install("notify-send", FAKE_NOTIFY_SEND)
-        payload = {"type": "agent-turn-complete", "thread-id": "t", "cwd": "/w/proj",
-                   "client": "codex-tui", "last-assistant-message": "Ok & <done>"}
-        self.run_cli("codex", json.dumps(payload))
+        self.run_cli("codex", stdin=json.dumps(codex_input_payload("Ok & <done>")))
         [argv] = self.sent(wait=5)
         self.assertIn("--app-name=Codex", argv)
+        self.assertIn("--urgency=critical", argv)
+        self.assertIn("--category=agent.attention", argv)
+        self.assertEqual(argv[-2], "Needs input")
         self.assertTrue(any(a.endswith("/openai-dark.svg") for a in argv), argv)
         self.assertEqual(argv[-1], "<i>proj</i>\nOk &amp; &lt;done&gt;")
+
+    def test_codex_completion_never_reaches_the_notifier(self):
+        self.install("notify-send", FAKE_NOTIFY_SEND)
+        for client in ("codex-tui", "codex_exec", None):
+            payload = {"type": "agent-turn-complete", "client": client,
+                       "last-assistant-message": "Shipped."}
+            done = self.run_cli("codex", json.dumps(payload))
+            self.assertEqual((done.returncode, done.stderr), (0, ""))
+        for name in ("Stop", "SubagentStop", "PermissionRequest", "PostToolUse"):
+            self.run_cli("codex", stdin=json.dumps(codex_input_payload(hook_event_name=name)))
+        self.assertEqual(self.sent(wait=0.5), [])
+
+    def test_codex_input_toast_focuses_its_recorded_window(self):
+        self.install("notify-send", FAKE_NOTIFY_SEND)
+        self.install("hyprctl", FAKE_HYPRCTL)
+        self.record("codex", env={"FAKE_ACTIVE": "0xother"})
+        self.run_cli("codex", stdin=json.dumps(codex_input_payload()),
+                     env={"FAKE_ACTION": "default"})
+        [argv] = self.sent(wait=5)
+        self.assertIn("--action=default=Focus", argv)
+        dispatches = [line for line in (self.log / "hyprctl").read_text().splitlines()
+                      if line.startswith("dispatch")]
+        self.assertEqual(dispatches, ['dispatch hl.dsp.focus({ window = "address:0xother" })'])
+
+    def test_codex_input_in_the_focused_window_stays_quiet(self):
+        self.install("notify-send", FAKE_NOTIFY_SEND)
+        self.install("hyprctl", FAKE_HYPRCTL)
+        self.record("codex")
+        self.run_cli("codex", stdin=json.dumps(codex_input_payload()))
+        self.assertEqual(self.sent(wait=0.5), [])
 
     def test_missing_icon_sends_without_one(self):
         self.install("notify-send", FAKE_NOTIFY_SEND)
@@ -446,7 +502,7 @@ class CommandBehaviour(unittest.TestCase):
     def test_hook_returns_before_a_slow_notifier(self):
         self.install("notify-send", "#!/bin/sh\nsleep 5\n")
         started = time.monotonic()
-        done = self.run_cli("codex", json.dumps({"type": "agent-turn-complete", "last-assistant-message": "x"}))
+        done = self.run_cli("codex", stdin=json.dumps(codex_input_payload("Which branch?")))
         self.assertEqual(done.returncode, 0)
         self.assertLess(time.monotonic() - started, 2.0)
 
@@ -466,16 +522,15 @@ class CommandBehaviour(unittest.TestCase):
 
     def test_huge_and_hostile_payloads_still_toast(self):
         self.install("notify-send", FAKE_NOTIFY_SEND)
-        # As large as Codex itself can pass (one argument is capped at 128 KiB).
-        emoji = {"type": "agent-turn-complete", "last-assistant-message": "\U0001f600" * 30_000}
-        self.run_cli("codex", json.dumps(emoji, ensure_ascii=False))
+        emoji = codex_input_payload("\U0001f600" * 30_000)
+        self.run_cli("codex", stdin=json.dumps(emoji, ensure_ascii=False))
         [argv] = self.sent(wait=5)
         self.assertTrue(argv[-1].endswith("…"))
         (self.log / "notify-send").unlink()
-        surrogate = '{"type": "agent-turn-complete", "last-assistant-message": "bad \\ud800 char"}'
-        self.run_cli("codex", surrogate)
+        surrogate = codex_input_payload("bad \ud800 char")
+        self.run_cli("codex", stdin=json.dumps(surrogate))
         [argv] = self.sent(wait=5)
-        self.assertEqual(argv[-1], "bad \ufffd char".replace("\ufffd", "?"))
+        self.assertEqual(argv[-1], "<i>proj</i>\nbad ? char")
 
     def test_huge_stdin_is_drained(self):
         payload = json.dumps({"hook_event_name": "Stop", "last_assistant_message": "x" * (6 << 20)})

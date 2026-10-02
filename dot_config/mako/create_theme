@@ -4,7 +4,7 @@
 # Included from ~/.config/mako/config, which holds everything but colour.
 background-color=#292e39a8
 text-color=#eceff4
-border-color=#eceff423
+border-color=#eceff472
 progress-color=over #88c0d066
 format=<span size="8.5pt" weight="600" foreground="#88c0d0">%a</span>\n<span size="10pt" weight="600">%s</span>\n<span foreground="#bcbfc6">%b</span>
 

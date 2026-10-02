@@ -3,7 +3,7 @@
 default-timeout=10000
 ignore-timeout=1
 
-# "Frosted" cards: translucent, rounded, a hairline border. The translucency
+# "Frosted" cards: translucent, rounded, a clearly defined border. The translucency
 # only reads as frosted glass because Hyprland blurs what is behind this
 # layer (namespace "notifications"; layer rule in hypr/hyprland.lua). Without
 # that compositor rule the same cards are simply see-through.
@@ -15,7 +15,7 @@ width=360
 # line; mako ellipsizes anything past this.
 height=180
 padding=12,14
-border-size=1
+border-size=2
 border-radius=14
 # The bar's exclusive zone already pushes this layer below it, so the margin
 # only spaces cards from the bar, from each other and from the screen edge.

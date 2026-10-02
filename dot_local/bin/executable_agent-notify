@@ -10,8 +10,8 @@ and the session, and focuses the agent's window when clicked.
 Usage (wired up by this repo; see the files named):
   agent-notify claude          Claude hook payload on stdin
                                (~/.claude/settings.json: Notification, Stop)
-  agent-notify codex '<json>'  Codex legacy `notify` program, payload in argv
-                               (~/.codex/config.toml: notify)
+  agent-notify codex           Codex hook payload on stdin
+                               (~/.codex/hooks.json: PreToolUse/request_user_input)
   agent-notify record <agent>  Remember the active window for this session
                                (both agents' UserPromptSubmit hooks)
 
@@ -21,10 +21,10 @@ Events, and the payload fields each was verified against:
                   its message is only "Claude needs your permission", so the
                   tool and command come from the pending tool_use in the
                   transcript, which Claude writes before it asks.
-  Codex 0.159     argv[-1] = {"type": "agent-turn-complete", "thread-id",
-                  "cwd", "client", "last-assistant-message", ...}.
-Headless runs (`claude -p`, `codex exec`) are skipped: nobody is waiting on
-them, and agents run each other that way as subagents.
+  Codex          PreToolUse: tool_name == "request_user_input" (or its async
+                  variant); tool_input.questions, session_id, cwd. Completion
+                  events, including legacy notify payloads, stay silent.
+Headless Claude runs (`claude -p`) are skipped: nobody is waiting on them.
 
 Click to focus: on UserPromptSubmit the window the user typed into is the
 active one, so its Hyprland address is recorded under $XDG_RUNTIME_DIR, keyed
@@ -94,6 +94,7 @@ APP_NAMES = {"claude": "Claude", "codex": "Codex"}
 EVENT_STYLE = {
     "done": ("Finished", "normal", "agent.done"),
     "attention": ("Needs permission", "critical", "agent.attention"),
+    "input": ("Needs input", "critical", "agent.attention"),
 }
 
 
@@ -102,7 +103,7 @@ class Event:
     """One agent event worth a toast, as parsed from a hook payload."""
 
     agent: str  # "claude" | "codex"
-    kind: str  # "done" | "attention"
+    kind: str  # "done" | "attention" | "input"
     message: str  # the reply or payload message, still raw
     cwd: str = ""
     session_id: str = ""
@@ -176,16 +177,25 @@ def claude_event(payload: Mapping, env: Mapping[str, str]) -> Event | None:
 
 
 def codex_event(payload: Mapping) -> Event | None:
-    if payload.get("type") != "agent-turn-complete":
+    if payload.get("hook_event_name") != "PreToolUse":
         return None
-    if payload.get("client") == "codex_exec":
+    if payload.get("tool_name") not in ("request_user_input", "request_user_input_async"):
         return None
+    tool_input = payload.get("tool_input")
+    questions = tool_input.get("questions") if isinstance(tool_input, dict) else None
+    # A toast is a glance: bound both the number of questions inspected and
+    # their combined text, even when a malformed tool call supplies huge input.
+    messages = []
+    if isinstance(questions, list):
+        messages = [_text(q.get("question")) or _text(q.get("title"))
+                    for q in questions[:8] if isinstance(q, dict)]
+    message = _text(" · ".join(m for m in messages if m.strip()))
     return Event(
         agent="codex",
-        kind="done",
-        message=_text(payload.get("last-assistant-message")),
+        kind="input",
+        message=message or "Codex needs your input",
         cwd=_text(payload.get("cwd")),
-        session_id=_text(payload.get("thread-id")),
+        session_id=_text(payload.get("session_id")),
     )
 
 
@@ -714,7 +724,10 @@ def main(argv: list[str], env: Mapping[str, str]) -> None:
         payload = parse_payload(read_stdin())
         event = claude_event(payload, env)
     elif command == "codex":
-        event = codex_event(parse_payload(argv[2] if len(argv) > 2 else ""))
+        # Older, already-running sessions may still invoke the legacy notify
+        # command with argv JSON. Parse it too so completions become silent as
+        # soon as this script is installed, without waiting for a restart.
+        event = codex_event(parse_payload(argv[2] if len(argv) > 2 else read_stdin()))
     elif command == "record":
         agent = argv[2] if len(argv) > 2 else ""
         payload = parse_payload(read_stdin())
