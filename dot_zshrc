@@ -338,6 +338,7 @@ alias ccr="claude --resume --permission-mode auto"
 alias ccw="claude --permission-mode auto --worktree"
 alias ccc="claude --continue --permission-mode auto"
 alias cx="codex"
+alias cxl="codex --model gpt-6-luna -c 'model_reasoning_effort=\"high\"'"
 alias cxr="codex resume"
 alias cxc="codex resume --last"
 alias cc-dsp='docker sandbox run claude . --dangerously-skip-permissions'
