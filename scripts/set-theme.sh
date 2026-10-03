@@ -30,6 +30,8 @@ source "$set_theme_script_dir/lib/theme-colors.sh"
 source "$set_theme_script_dir/lib/theme-state.sh"
 # shellcheck source=lib/typora-theme.sh
 source "$set_theme_script_dir/lib/typora-theme.sh"
+# shellcheck source=lib/scrivo-theme.sh
+source "$set_theme_script_dir/lib/scrivo-theme.sh"
 # shellcheck source=lib/youtube-music-theme.sh
 source "$set_theme_script_dir/lib/youtube-music-theme.sh"
 
@@ -494,6 +496,21 @@ if [[ -d "$ytmusic_config_dir" ]] || command -v youtube-music-desktop-app &>/dev
   fi
 else
   skipped+=("YouTube Music (not installed)")
+fi
+
+# --- Scrivo (TyporaClone) ---
+scrivo_config="${XDG_CONFIG_HOME:-$HOME/.config}/dev.scrivo.editor"
+if [[ -d "$HOME/Repos/TyporaClone" || -d "$scrivo_config" ]] \
+  || command -v scrivo &>/dev/null; then
+  if scrivo_apply_theme "$HOME/.config/tauri-explorer/themes" "$scrivo_config" "$slug" "$theme_mode"; then
+    echo "  ✓ Scrivo (TyporaClone) → $title"
+    reload+=("Scrivo (TyporaClone): relaunch")
+    ((changed++))
+  else
+    skipped+=("Scrivo (TyporaClone) (${scrivo_theme_error:-cannot write theme catalog})")
+  fi
+else
+  skipped+=("Scrivo (TyporaClone) (not installed)")
 fi
 
 # --- Typora ---

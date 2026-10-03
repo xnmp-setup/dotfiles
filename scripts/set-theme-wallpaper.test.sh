@@ -174,6 +174,7 @@ jq -e '
   || fail "Omarchy Zed theme family is incomplete or has an invalid mode"
 
 mkdir -p "$test_root/.config/hypr" \
+  "$test_root/Repos/TyporaClone" \
   "$test_root/.config/ghostty/themes" \
   "$test_root/.config/tauri-explorer/themes" \
   "$test_root/.config/Code/User" \
@@ -207,6 +208,8 @@ printf '{"theme": "obsidian", "cssTheme": "Old Theme", "accentColor": "#000000"}
   >"$test_root/Vaults/Technical Vault/.obsidian/appearance.json"
 cp -r "$repo_root/dot_local/share/chrome-themes/cosmic-dusk" \
   "$test_root/.local/share/chrome-themes/cosmic-dusk"
+cp "$repo_root/dot_config/tauri-explorer/themes/cosmic-dusk.css" \
+  "$test_root/.config/tauri-explorer/themes/cosmic-dusk.css"
 cp -r "$repo_root/dot_vscode/extensions/local.omarchy-desktop-themes-0.0.1" \
   "$test_root/.vscode/extensions/"
 for omarchy_slug in "${omarchy_themes[@]}"; do
@@ -328,6 +331,7 @@ run_set_theme() {
     TEST_CHROME_STOPPED="$test_root/chrome-stopped" \
     TEST_SYSTEMCTL_LOG="$test_root/systemctl.log" \
     HOME="$test_root" \
+    XDG_CONFIG_HOME="$test_root/.config" \
     PATH="$test_root/bin:$PATH" \
     HYPRLAND_INSTANCE_SIGNATURE=test \
     SET_THEME_GOOGLE_CHROME_EXTENSION_DIR="$test_root/google-chrome/extensions" \
@@ -460,6 +464,11 @@ theme_state="$test_root/.local/state/desktop-theme/current.json"
 assert_contains "$theme_state" '"slug": "cosmic-dusk"'
 assert_contains "$theme_state" '"title": "Cosmic Dusk"'
 assert_contains "$theme_state" '"mode": "dark"'
+assert_contains "$test_root/default.out" '✓ Scrivo (TyporaClone) → Cosmic Dusk'
+jq -e '.theme == "builtin:desktop:cosmic-dusk" and .mode == "dark" and
+  (.themes[] | select(.id == "builtin:desktop:cosmic-dusk") | .css | contains("--background-primary:"))' \
+  "$test_root/.config/dev.scrivo.editor/desktop-theme.json" >/dev/null \
+  || fail "set-theme did not install and select Scrivo's desktop palette"
 assert_contains "$test_root/.config/ghostty/config" 'theme = Cosmic Dusk'
 assert_contains "$test_root/systemctl.log" \
   'reload --user app-com.mitchellh.ghostty.service'
