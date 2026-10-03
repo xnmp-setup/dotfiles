@@ -1,9 +1,24 @@
 # Scrivo (~/Repos/TyporaClone) consumes this catalog before its first paint.
-# Uses the existing desktop palettes and preserves already installed CSS files.
+# Obsidian is the authority for matching themes; desktop palettes fill gaps.
 scrivo_theme_error=""
+scrivo_theme_lib_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+
+scrivo_obsidian_theme_for() {
+  local slug="$1" entry name
+  local root="${SCRIVO_OBSIDIAN_THEMES_DIR:-$HOME/Vaults/Technical Vault/.obsidian/themes}"
+  for entry in "$root/"*/theme.css; do
+    [[ -f "$entry" ]] || continue
+    name=$(basename -- "${entry%/*}" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+    if [[ "$name" == "$slug" ]]; then
+      printf '%s\n' "$entry"
+      return 0
+    fi
+  done
+  return 1
+}
 
 scrivo_generate_theme() {
-  local palette="$1" slug="$2" destination="$3"
+  local palette="$1" slug="$2" destination="$3" obsidian="${4:-}"
   local bg fg muted accent surface border on_accent mode temporary token value
   local error_color string_color number_color
   scrivo_theme_error=""
@@ -33,7 +48,7 @@ scrivo_generate_theme() {
   temporary=$(mktemp "$destination.XXXXXX") || return 1
   if ! cat >"$temporary" <<EOF
 /* Desktop palette: $slug. Compatible with Scrivo and Obsidian variables. */
-:root, .theme-dark, .theme-light {
+:where(:root, .theme-dark, .theme-light) {
   color-scheme: $mode;
   --background-primary: $bg;
   --background-secondary: #$surface;
@@ -71,12 +86,24 @@ EOF
     rm -f -- "$temporary"
     return 1
   fi
+  if [[ -n "$obsidian" ]]; then
+    if ! command -v node >/dev/null; then
+      rm -f -- "$temporary"
+      scrivo_theme_error="Node.js is required to import Obsidian palettes"
+      return 1
+    fi
+    if ! node "$scrivo_theme_lib_dir/scrivo-obsidian-theme.cjs" "$obsidian" >>"$temporary"; then
+      rm -f -- "$temporary"
+      scrivo_theme_error="cannot import Obsidian palette: $obsidian"
+      return 1
+    fi
+  fi
   mv -- "$temporary" "$destination" || { rm -f -- "$temporary"; return 1; }
 }
 
 scrivo_apply_theme() {
   local palettes="$1" root="$2" slug="$3" mode="$4"
-  local palette name title css entries temporary
+  local palette name title css entries temporary obsidian
   scrivo_theme_error=""
   command -v jq >/dev/null || { scrivo_theme_error="jq not installed"; return 1; }
   [[ "$slug" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ && "$mode" =~ ^(light|dark)$ ]] \
@@ -87,8 +114,11 @@ scrivo_apply_theme() {
   for palette in "$palettes/"*.css; do
     [[ -f "$palette" ]] || continue
     name=$(basename -- "$palette" .css)
-    [[ -f "$root/themes/$name.css" ]] && continue
-    scrivo_generate_theme "$palette" "$name" "$root/themes/$name.css" || return 1
+    obsidian=$(scrivo_obsidian_theme_for "$name") || obsidian=""
+    # Refresh existing matched themes too: preserving the old desktop-only
+    # CSS would retain its mismatched backgrounds, headings and text colors.
+    [[ -z "$obsidian" && -f "$root/themes/$name.css" ]] && continue
+    scrivo_generate_theme "$palette" "$name" "$root/themes/$name.css" "$obsidian" || return 1
   done
   entries=$(mktemp "$root/catalog.XXXXXX") || return 1
   temporary=$(mktemp "$root/desktop-theme.json.XXXXXX") || { rm -f -- "$entries"; return 1; }
