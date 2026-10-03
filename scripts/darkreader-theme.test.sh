@@ -38,8 +38,8 @@ mkdir -p "$fixture/background"
 jq -n '{
   manifest_version: 3,
   name: "Dark Reader (automatic desktop themes)",
-  version: "4.9.129.3",
-  version_name: "4.9.129.3 desktop-theme-bridge.3",
+  version: "4.9.133.1",
+  version_name: "4.9.133.1 desktop-theme-bridge.1",
   key: "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqBY2tfTtJYiVMirbII2r3WofqCDaxS2zwPddSsgxUWKRm/MW/ymL2ZaP24MmwnegGIoxHkBVyi4cps4/q76c98ViyijoQvdJjAv3ZtUOwbWlYnZ5pU6gPCeZrScHxoTJdxxJJ30DZpMc6qsc3yJVQJlABG2FQFPrhPEGFLP9sCq/M7pY1xH++KsG+jYLB6cU3ItvZ4zntUXRwG2ZBx+XZelsd6FdkVXbDXj/47TNk2Qq8PAqyiK45GgQ+KJjuISAo89ip1xI4tONLCjSHPinD3nz6HiMikQzwn4L8SsB4Wy7rBhMhPRGIWbwHed+L+W3LXhB05Lhwk0YxuOb7QNWRQIDAQAB",
   permissions: ["alarms", "nativeMessaging", "storage"],
   background: {service_worker: "background/index.js"}
