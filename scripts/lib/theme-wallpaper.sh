@@ -26,6 +26,7 @@ declare -A theme_wallpapers=(
   [sakura]="omarchy-sakura.jpg"
   [sunset]="omarchy-sunset.jpg"
   [mint-light]="luca-micheli-r9RW20TrQ0Y-unsplash.jpg"
+  [everforest-light-medium]="golden-meadow-sunset.png"
 )
 
 # Display-name exceptions that cannot be recovered from simple title casing.
@@ -50,6 +51,7 @@ declare -A locally_managed_desktop_themes=(
   [mapquest]=1
   [sakura]=1
   [mint-light]=1
+  [everforest-light-medium]=1
   [sunset]=1
 )
 

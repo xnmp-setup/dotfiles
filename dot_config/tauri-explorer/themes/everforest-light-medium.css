@@ -1,0 +1,100 @@
+/**
+ * Everforest Light (Medium) Theme - Warm, low-contrast forest palette
+ *
+ * Cream paper backgrounds, slate text, natural green primary accent.
+ * Colours are sainnhe/everforest's light/medium palette (palette.md).
+ *
+ * Key palette:
+ *   bg: #fdf6e3   panel: #f4f0d9   surface: #efebd4   border: #bdc3af
+ *   accent: #8da101   spectrum: red #f85552, orange #f57d26, yellow #dfa000, aqua #35a77c, blue #3a94c5, purple #df69ba
+ */
+
+[data-theme="everforest-light-medium"] {
+  color-scheme: light;
+
+  /* Theme metadata */
+  --theme-name: "Everforest Light Medium";
+  --theme-description: "Warm, low-contrast forest palette on cream paper with natural green accents";
+  --theme-order: 36;
+
+  /* Accent colors - forest green */
+  --accent: #8da101;
+  --accent-light: #93b259;
+  --accent-dark: #35a77c;
+
+  /* Text colors */
+  --text-primary: #5c6a72;
+  --text-secondary: #829181;
+  --text-tertiary: #939f91;
+  --text-on-accent: #fdf6e3;
+
+  /* Background colors - opaque hex. Content surfaces are bg0, the warm
+     editor ground Ghostty also uses; bg1 is greener, so it is kept to the
+     structural (sidebar) material only. */
+  --background-solid: #fdf6e3;
+  --background-mica: #fdf6e3;
+  --background-acrylic: #fdf6e3;
+  --background-card: #fdf6e3;
+  --background-card-secondary: #f4f0d9;
+  /* Opaque surfaces for compositor tabs and native greeter controls. */
+  --desktop-surface: #f4f0d9;
+  --desktop-border: #bdc3af;
+  --miller-bg: #fdf6e3;
+  --content-bg: #fdf6e3;
+
+  /* Surface/border colors - bg5 */
+  --surface-stroke: rgba(189, 195, 175, 0.7);
+  --surface-stroke-flyout: rgba(189, 195, 175, 0.85);
+  --divider: rgba(189, 195, 175, 0.55);
+
+  /* Control/input backgrounds - green tint */
+  --control-fill: rgba(141, 161, 1, 0.06);
+  --control-fill-secondary: rgba(141, 161, 1, 0.1);
+  --control-fill-tertiary: rgba(141, 161, 1, 0.04);
+  --control-fill-disabled: rgba(141, 161, 1, 0.025);
+
+  /* Subtle hover/active fills - green */
+  --subtle-fill: transparent;
+  --subtle-fill-secondary: rgba(141, 161, 1, 0.1);
+  --subtle-fill-tertiary: rgba(141, 161, 1, 0.05);
+
+  /* Control borders */
+  --control-stroke: rgba(189, 195, 175, 0.8);
+  --control-stroke-secondary: rgba(189, 195, 175, 0.55);
+
+  /* Address bar - green tint */
+  --address-bar-bg: rgba(141, 161, 1, 0.06);
+  --address-bar-stroke: rgba(189, 195, 175, 0.75);
+  --address-bar-highlight: rgba(141, 161, 1, 0.03);
+  --address-bar-bg-hover: rgba(141, 161, 1, 0.1);
+  --address-bar-stroke-hover: rgba(147, 159, 145, 0.8);
+
+  /* Focus indicators */
+  --focus-stroke-outer: #8da101;
+  --focus-stroke-inner: #fdf6e3;
+
+  /* System status colors */
+  --system-critical: #f85552;
+  --system-success: #8da101;
+  --system-caution: #dfa000;
+
+  /* Shadows - slate fg, soft on cream */
+  --shadow-flyout: 0 8px 24px rgba(92, 106, 114, 0.16), 0 2px 8px rgba(92, 106, 114, 0.1);
+  --shadow-dialog: 0 32px 64px rgba(92, 106, 114, 0.2), 0 4px 24px rgba(92, 106, 114, 0.12);
+  --shadow-tooltip: 0 4px 12px rgba(92, 106, 114, 0.14);
+  --shadow-card: 0 1px 4px rgba(92, 106, 114, 0.1), 0 0 1px rgba(92, 106, 114, 0.08);
+  --shadow-subtle: 0 1px 2px rgba(92, 106, 114, 0.08);
+
+  /* Mica overlay - green/aqua wash */
+  --mica-overlay: linear-gradient(170deg, rgba(141, 161, 1, 0.025), transparent 45%, rgba(53, 167, 124, 0.02));
+
+  /* Per-section opacity */
+  --sidebar-opacity: 1;
+  --toolbar-opacity: 1;
+  --content-opacity: 1;
+  --titlebar-opacity: 1;
+  --statusbar-opacity: 1;
+
+  /* Icon colors - green folders */
+  --icon-folder: #8da101;
+}

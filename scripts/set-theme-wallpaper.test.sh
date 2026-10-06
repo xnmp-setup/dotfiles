@@ -168,7 +168,8 @@ jq -e '
     {name: "Infernium Dark", appearance: "dark"},
     {name: "MapQuest", appearance: "light"},
     {name: "Sakura", appearance: "dark"},
-    {name: "Sunset", appearance: "dark"}
+    {name: "Sunset", appearance: "dark"},
+    {name: "Everforest Light Medium", appearance: "light"}
   ]
 ' "$repo_root/dot_config/zed/themes/omarchy-extra.json" >/dev/null \
   || fail "Omarchy Zed theme family is incomplete or has an invalid mode"
@@ -622,13 +623,16 @@ assert_contains "$test_root/prefix.out" "Switching all apps to: Cosmic Dusk (cos
 assert_contains "$test_root/prefix.out" "matched theme prefix: cosmic → cosmic-dusk"
 assert_contains "$test_root/.config/hypr/hyprpaper.conf" "path = $default_path"
 
-# Exact associated slugs remain unchanged, the former Everforest alias now
-# resolves to the canonical slug, and unrelated names retain pass-through
-# behavior.
+# Exact associated slugs remain unchanged, a prefix shared by the Everforest
+# variants is refused rather than guessed, a variant prefix resolves, and
+# unrelated names retain pass-through behavior.
 [[ "$(resolve_theme_slug gruvbox)" == "gruvbox" ]] \
   || fail "an exact associated theme did not remain unchanged"
-[[ "$(resolve_theme_slug everforest)" == "everforest-dark-medium" ]] \
-  || fail "the Everforest prefix did not resolve to the canonical theme"
+if resolve_theme_slug everforest >/dev/null 2>&1; then
+  fail "the Everforest prefix shared by dark and light variants was accepted"
+fi
+[[ "$(resolve_theme_slug everforest-l)" == "everforest-light-medium" ]] \
+  || fail "the Everforest Light prefix did not resolve to the canonical theme"
 [[ "$(resolve_theme_slug unknown-theme)" == "unknown-theme" ]] \
   || fail "a non-associated theme did not pass through unchanged"
 

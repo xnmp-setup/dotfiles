@@ -41,6 +41,11 @@
         "path": "./themes/mint-light-color-theme.json"
       },
       {
+        "label": "Everforest Light Medium",
+        "uiTheme": "vs",
+        "path": "./themes/everforest-light-medium-color-theme.json"
+      },
+      {
         "label": "Ayu Light",
         "uiTheme": "vs",
         "path": "./themes/ayu-light-color-theme.json"
