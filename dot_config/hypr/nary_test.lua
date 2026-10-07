@@ -1002,5 +1002,66 @@ end
 
 --------------------------------------------------------------------------------
 
+-- Drop outcomes are asserted on placed boxes, including nested and tabbed
+-- tiles. The explicit id must win over whichever window release has focused.
+do
+    local function drop(root, tiles, msg, area)
+        nary.state.trees[KEY], nary.state.history[KEY], nary.state.halves[KEY] = root, nil, nil
+        local ctx, boxes = geometry(tiles, "2", area)
+        nary.dispatch(ctx, msg)
+        nary.recalculate(ctx)
+        return ctx, boxes
+    end
+    local ctx, boxes = drop(C("h", L("1"), L("2"), L("3")), { "1", "2", "3" }, "drop 1 900 200")
+    check("dropping past the last tile reorders the row", box_of(boxes, "1"), "667,0 333x400")
+    check("the former neighbour moves into the freed slot", box_of(boxes, "2"), "0,0 333x400")
+    nary.dispatch(ctx, "undo")
+    nary.recalculate(ctx)
+    check("undo restores the pre-drop arrangement", box_of(boxes, "1"), "0,0 333x400")
+
+    _, boxes = drop(C("h", L("1"), L("2"), L("3")), { "1", "2", "3" }, "drop 1 750 60")
+    check("a drop above a neighbour makes a vertical pair", box_of(boxes, "1"), "500,0 500x200")
+    check("that neighbour occupies the lower half", box_of(boxes, "3"), "500,200 500x200")
+    check("the other sibling keeps its whole column", box_of(boxes, "2"), "0,0 500x400")
+
+    _, boxes = drop(C("h", L("1"), L("2"), L("3")), { "1", "2", "3" }, "drop 1 750 399")
+    check("a workspace-edge drop creates a full-width band", box_of(boxes, "1"), "0,200 1000x200")
+    check("remaining tiles share the other band", box_of(boxes, "2"), "0,0 500x200")
+
+    _, boxes = drop(C("v", L("1"), C("h", L("2"), L("3"))), { "1", "2", "3" }, "drop 3 100 150")
+    check("a nested tile can be dropped beside another row", box_of(boxes, "3"), "0,0 500x200")
+    check("the anchor stays beside the dropped nested tile", box_of(boxes, "1"), "500,0 500x200")
+
+    _, boxes = drop(C("h", L("1"), L("2"), L("3")), { { "1", "9" }, "2", "3" }, "drop 9 900 200")
+    check("dropping a nonvisible tab moves its whole tile", box_of(boxes, "1"), "667,0 333x400")
+
+    local weighted = C("h", L("1"), L("2"), L("3"))
+    weighted.children[2].weight = 3
+    _, boxes = drop(weighted, { "1", "2", "3" }, "drop 1 350 60")
+    check("a weighted anchor keeps its share when split", box_of(boxes, "1"), "0,0 750x200")
+    check("the weighted anchor is split evenly", box_of(boxes, "2"), "0,200 750x200")
+
+    local resized = C("h", C("v", L("1"), L("2")), L("3"))
+    resized.children[1].children[1].weight = 19
+    _, boxes = drop(resized, { "1", "2", "3" }, "drop 1 900 200")
+    check("an old nested resize cannot dominate the new row",
+        widths(boxes, "1", "2", "3"), "333 333 333")
+
+    _, boxes = drop(C("h", L("1"), L("2")), { "1", "2" }, "drop 1 -1000 200")
+    check("a pointer beyond the workspace still chooses an edge", box_of(boxes, "1"), "0,0 500x400")
+    _, boxes = drop(C("h", L("1"), L("2")), { "1", "2" }, "drop 1 4900 -1900",
+        { x = 4000, y = -2100, w = 1000, h = 400 })
+    check("drops use global monitor coordinates", box_of(boxes, "1"), "4500,-2100 500x400")
+    _, boxes = drop(C("h", L("1")), { "1" }, "drop 1 999 399")
+    check("a lone tile remains usable and fills the workspace", box_of(boxes, "1"), "0,0 1000x400")
+    for _, msg in ipairs({ "drop", "drop 1 nil 10", "drop 1 1e999 10", "drop 1 20 30 extra" }) do
+        ctx, boxes = drop(C("h", L("1"), L("2")), { "1", "2" }, msg)
+        check("malformed drop is rejected: " .. msg, type(nary.dispatch(ctx, msg)), "string")
+        check("malformed drop keeps the tile in place: " .. msg, box_of(boxes, "1"), "0,0 500x400")
+    end
+    _, boxes = drop(C("h", L("1"), L("2")), { "1", "2" }, "drop 999 900 200")
+    check("a closed or absent tile cannot move another window", box_of(boxes, "1"), "0,0 500x400")
+end
+
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)

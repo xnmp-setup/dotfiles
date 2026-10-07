@@ -120,6 +120,7 @@
 --                   tiling altogether (floated to be spotlit, say)
 --   restore         put that photograph back, once the window has tiled again
 --   resize <dx> <dy> grow/shrink the focused TILE by that many pixels per axis
+--   drop <window> <x> <y> insert a tile at a global pointer position
 --   untab l|r|u|d   when the focused tab next leaves its tile, put it that side
 --   enter l|r|u|d <space>  a window is crossing into <space> travelling that
 --                   way; land it as a division at the edge it comes in by
@@ -739,6 +740,97 @@ local function layout_node(ctx, node, area, place)
     end
 end
 
+-- Spatial drops use the remaining tiles' geometry, independent of focus and
+-- target enumeration order. Workspace edges claim a band; elsewhere the
+-- nearest tile is the anchor and the pointer's relative position picks a side.
+local function finite(value)
+    return type(value) == "number" and value == value and math.abs(value) < math.huge
+end
+
+local function drop_side(box, x, y)
+    local dx = (x - box.x) / box.w - 0.5
+    local dy = (y - box.y) / box.h - 0.5
+    if math.abs(dx) >= math.abs(dy) then return "h", dx < 0 and -1 or 1 end
+    return "v", dy < 0 and -1 or 1
+end
+
+local function cmd_drop(root, key, ctx, args)
+    local id, sx, sy = args:match("^(%S+)%s+(%S+)%s+(%S+)$")
+    local x, y = tonumber(sx), tonumber(sy)
+    local area = ctx.area
+    if not id or not finite(x) or not finite(y) or not area
+        or not finite(area.x) or not finite(area.y)
+        or not finite(area.w) or not finite(area.h) or area.w <= 0 or area.h <= 0 then
+        return "nary: drop expects a window id and finite global x y coordinates"
+    end
+    local work = copy(root)
+    local moving = find_leaf(work, id)
+    if not moving then return true end
+    remove_leaf(work, id)
+    work = normalize(work)
+    -- A lone tile has no neighbours to rearrange.
+    if #work.children == 0 then return true end
+
+    local edges = {
+        { ax = "h", delta = -1, distance = x - area.x, extent = area.w },
+        { ax = "h", delta =  1, distance = area.x + area.w - x, extent = area.w },
+        { ax = "v", delta = -1, distance = y - area.y, extent = area.h },
+        { ax = "v", delta =  1, distance = area.y + area.h - y, extent = area.h },
+    }
+    local edge
+    for _, candidate in ipairs(edges) do
+        if candidate.distance <= math.min(48, candidate.extent * 0.08)
+            and (not edge or candidate.distance < edge.distance) then edge = candidate end
+    end
+    if edge then
+        -- A perpendicular band splits the workspace equally with the remainder.
+        local ws, total = weights(work.children)
+        moving.weight = work.orient == edge.ax and total / #ws or 1
+        place_at_edge(work, edge, moving)
+    else
+        local anchor, anchor_box, nearest
+        local function visit(node, box)
+            if is_leaf(node) then
+                local dx = math.max(box.x - x, 0, x - box.x - box.w)
+                local dy = math.max(box.y - y, 0, y - box.y - box.h)
+                local distance = dx * dx + dy * dy
+                if not nearest or distance < nearest then
+                    anchor, anchor_box, nearest = node, box, distance
+                end
+                return
+            end
+            local rects = slice(ctx, box, node.orient, node.children)
+            for i, child in ipairs(node.children) do visit(child, rects[i]) end
+        end
+        visit(work, area)
+        local ax, delta = drop_side(anchor_box, x, y)
+        local parent = parent_of(work, anchor)
+        if parent.orient ~= ax then
+            -- Preserve the anchor's share of its old parent, then split that
+            -- share evenly. Unequal old weights must not leak into the new pair.
+            local weight = anchor.weight
+            anchor.weight, moving.weight = 1, 1
+            insert_beside(work, anchor, ax, delta, moving).weight = weight
+        else
+            -- Shares are relative to a parent; borrowing the anchor's share
+            -- prevents an old nested resize dominating its new container.
+            moving.weight = anchor.weight
+            insert_beside(work, anchor, ax, delta, moving)
+        end
+    end
+    work = normalize(work)
+    local current, result = canon(root), canon(work)
+    if result ~= current then
+        local hist = state.history[key] or {}
+        if #hist > 0 and hist[#hist].result ~= current then hist = {} end
+        hist[#hist + 1] = { tree = copy(root), result = result }
+        if #hist > MAX_HISTORY then table.remove(hist, 1) end
+        state.history[key] = hist
+        state.trees[key] = work
+    end
+    return true
+end
+
 -- The pixel extent every node on the chain from root to `leaf` occupies, so a
 -- resize expressed in pixels can be turned into one expressed in weight. Same
 -- arithmetic slice() does, minus the gaps Hyprland insets afterwards — near
@@ -1268,6 +1360,8 @@ local function dispatch(ctx, msg)
         return cmd_restore(root, key)
     elseif command == "resize" then
         return cmd_resize(root, ctx, args)
+    elseif command == "drop" then
+        return cmd_drop(root, key, ctx, args)
     elseif command == "untab" then
         return cmd_untab(root, key, ctx, args)
     elseif command == "enter" then
@@ -1278,7 +1372,7 @@ local function dispatch(ctx, msg)
         return cmd_toggleorient(root, ctx)
     end
     return "nary: expected 'move <l|r|u|d>', 'undo', 'hold', 'restore', " ..
-           "'resize <dx> <dy>', 'untab <l|r|u|d>', 'enter <l|r|u|d> <space>', " ..
+           "'resize <dx> <dy>', 'drop <window> <x> <y>', 'untab <l|r|u|d>', 'enter <l|r|u|d> <space>', " ..
            "'explode <window> <columns>' or 'toggleorient'"
 end
 

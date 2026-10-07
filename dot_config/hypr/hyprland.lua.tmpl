@@ -12,6 +12,8 @@
 -- stateful module graph fresh before constructing new handlers; otherwise a
 -- chezmoi apply + `hyprctl reload` rereads this file but executes the old code.
 for _, module in ipairs({
+    "nary",
+    "window_drag",
     "theme",
     "app_switcher",
     "display_mirror",
@@ -228,6 +230,8 @@ hl.config({
         disable_autoreload = true,
     },
 
+    -- A click stays a click; native dragging picks up after five logical pixels.
+    binds = { drag_threshold = 5 },
     input = {
         kb_layout                   = "us",
         follow_mouse                = 0,
@@ -250,6 +254,9 @@ hl.config({
 
     -- Native tabbed groups (replaces hy3 tabs)
     group = {
+        -- Body drops rearrange tiles; dropping onto the tab strip can still
+        -- join a native group explicitly.
+        drag_into_group = 0,
         col = {
             border_active   = theme.active_gradient(),
             border_inactive = theme.rgba(theme.colors.border, "aa"),
@@ -618,7 +625,7 @@ hl.bind("Next",  page_key_action("Next",  "Down"), { repeating = true })
 -- Mouse move/resize. `mouse = true` is inert in 0.55.4's Lua path (upstream's
 -- own example config passes it); the drag behaviour comes from the mouse:NNN
 -- key plus the drag/resize dispatchers.
-hl.bind("SUPER + mouse:272", hl.dsp.window.drag(),   { mouse = true })
+require("window_drag").new(hl, "SUPER")
 hl.bind("SUPER + mouse:273", hl.dsp.window.resize(), { mouse = true })
 
 -- Flip the focused window's container between rows and columns.

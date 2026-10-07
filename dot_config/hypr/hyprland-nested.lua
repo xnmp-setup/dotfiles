@@ -70,9 +70,12 @@ hl.config({
     decoration = { rounding = 3 },
     animations = { enabled = false }, -- instant redraws make the slot ladder easier to read
     input      = { kb_layout = "us", follow_mouse = 1 },
+    binds      = { drag_threshold = 5 },
+    group      = { drag_into_group = 0 },
 })
 
 local mainMod = "ALT"
+require("window_drag").new(hl, mainMod)
 
 -- Spawn windows to play with. Each gets a distinct title so you can tell which
 -- one you are moving.
