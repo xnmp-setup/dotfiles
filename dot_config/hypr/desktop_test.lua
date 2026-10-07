@@ -86,6 +86,7 @@ end
 local function fake_runtime(spec)
     spec = spec or {}
     local active = spec.active
+    local top = active
     local windows = spec.windows or {}
     local normal_workspace = spec.workspace or { id = 1, name = "1" }
     local callbacks, timers, dispatches, executions, configs, monitors = {}, {}, {}, {}, {}, {}
@@ -118,6 +119,7 @@ local function fake_runtime(spec)
             },
             layout = command("layout"),
             window = {
+                alter_zorder = command("zorder"),
                 center = command("center"),
                 float = command("float"),
                 move = command("move"),
@@ -241,6 +243,16 @@ local function fake_runtime(spec)
             for _, member in ipairs(affected(args.window)) do
                 member.floating = args.action == "on"
             end
+        elseif value.kind == "resize" and args.window then
+            for _, member in ipairs(affected(args.window)) do
+                member.size = { x = args.x, y = args.y }
+            end
+        elseif value.kind == "move" and args.window and args.x and args.y then
+            for _, member in ipairs(affected(args.window)) do
+                member.at = { x = args.x, y = args.y }
+            end
+        elseif value.kind == "zorder" and args.mode == "top" then
+            top = args.window
         elseif value.kind == "toggle_special" then
             local workspace = special_named(args)
             local shown_on = showing(workspace)
@@ -301,6 +313,7 @@ local function fake_runtime(spec)
 
     local control = {
         active = function() return active end,
+        top = function() return top end,
         binding = function(key) return bindings[key] end,
         configs = configs,
         dispatches = dispatches,
@@ -1071,6 +1084,91 @@ end
 --------------------------------------------------------------------------------
 -- Application switching
 --------------------------------------------------------------------------------
+
+do
+    local ws = { id = 1 }
+    local editor, browser = window("select-editor", "editor", ws, 0), window("select-browser", "browser", ws, 1)
+    local dialog = window("select-dialog", "dialog", ws, 2)
+    dialog.floating = true
+    local windows = { editor, browser, dialog }
+    local hl, control = fake_runtime({ active = editor, windows = windows, workspace = ws })
+    local untiled = untiled_modes.new(hl)
+    local expose = exposes.new(hl, { untiled = untiled })
+    untiled.toggle()
+    editor.at, editor.size = { x = 200, y = 250 }, { x = 800, y = 500 }
+    browser.at, browser.size = { x = 220, y = 270 }, { x = 900, y = 600 }
+
+    check("F1 opens selection for untiled windows without tab groups", expose.toggle())
+    check("selection retiles both ordinary windows", not editor.floating and not browser.floating)
+    check("selection preserves the workspace's untiled preference", untiled.is_active(ws))
+    check("selection leaves a pre-existing floating dialog alone", dialog.floating)
+    -- The overview's tiled geometry must not overwrite either floating box.
+    editor.at, editor.size = { x = 0, y = 0 }, { x = 500, y = 800 }
+    browser.at, browser.size = { x = 500, y = 0 }, { x = 500, y = 800 }
+    local opened = window("select-new", "terminal", ws, 3)
+    windows[#windows + 1] = opened
+    control.emit("window.open", opened)
+    check("windows opened during selection remain tiled", not opened.floating)
+    check("selecting a pane completes the overview", expose.select_target(browser))
+    check("selection returns all ordinary windows to untiled mode", editor.floating and browser.floating and opened.floating)
+    equal("selection restores editor floating x", editor.at.x, 200)
+    equal("selection restores editor floating width", editor.size.x, 800)
+    equal("selection restores browser floating y", browser.at.y, 270)
+    equal("selection restores browser floating height", browser.size.y, 600)
+    equal("selection focuses the chosen window", control.active(), browser)
+    equal("selection places the chosen window in front", control.top(), browser)
+    check("selection releases its click capture", control.binding("mouse:272") == nil)
+
+    check("a second F1 selection can open", expose.toggle())
+    control.run_timer(120)
+    control.set_active(editor)
+    control.emit("window.active", editor)
+    check("an old selection timer cannot arm a new overview", expose.is_active())
+    control.run_timer(120)
+    control.emit("window.active", editor)
+    check("keyboard focus also completes untiled selection", not expose.is_active() and editor.floating)
+    equal("keyboard selection raises its chosen window", control.top(), editor)
+    check("repeated F1 still opens selection", expose.toggle())
+    check("F1 again cancels selection and restores untiled mode", expose.toggle() and editor.floating)
+
+    untiled.toggle()
+    check("Cmd-F1 still turns the workspace's untiled mode off", not untiled.is_active(ws) and not editor.floating)
+end
+
+do
+    local ws = { id = 1 }
+    local editor = window("removed-selection", "editor", ws, 0)
+    local hl, control = fake_runtime({ active = editor, windows = { editor }, workspace = ws })
+    local untiled = untiled_modes.new(hl)
+    untiled.toggle()
+    local resume = untiled.begin_selection()
+    check("a lone untiled window supports selection", resume ~= nil and not editor.floating)
+    control.emit("workspace.removed", ws)
+    check("closing the workspace invalidates selection resumption", not resume())
+    check("selection cannot recreate a removed mode", not untiled.is_active(ws))
+end
+
+do
+    local ws, other = { id = 1 }, { id = 2 }
+    local editor = window("moved-selection", "editor", ws, 0)
+    local neighbour = window("selection-neighbour", "editor", other, 1)
+    local hl, control = fake_runtime({ active = editor, windows = { editor, neighbour }, workspace = ws })
+    local photographed
+    local untiled = untiled_modes.new(hl, { hold_layout = function(id) photographed = id end })
+    untiled.toggle()
+    local resume = untiled.begin_selection()
+    control.set_active_monitor({ id = 2, active_workspace = other })
+    local before = #control.dispatches
+    check("selection can resume its source after monitor focus changes", resume())
+    check("resumption floats only its own workspace", editor.floating and not neighbour.floating)
+    equal("resumption photographs its source workspace", photographed, ws.id)
+    local photographed_other = false
+    for i = before + 1, #control.dispatches do
+        if control.dispatches[i].kind == "layout" and control.dispatches[i].args == "hold" then photographed_other = true end
+    end
+    check("resumption cannot snapshot another monitor's layout", not photographed_other)
+    check("selection resumption is spent only once", not resume())
+end
 
 do
     local ws1, ws2 = { id = 1 }, { id = 2 }

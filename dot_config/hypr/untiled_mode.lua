@@ -23,7 +23,8 @@ local function on_workspace(window, id)
     return window and window.workspace and window.workspace.id == id
 end
 
-function M.new(hl)
+function M.new(hl, options)
+    options = options or {}
     -- modes[id].owned contains only windows changed from tiled to floating by
     -- this mode. pending_tile covers one of those windows temporarily parked
     -- on a special workspace when its home mode is switched off.
@@ -66,7 +67,7 @@ function M.new(hl)
 
     local function float_for(mode, window)
         local id = window_id(window)
-        if not (id and window and window.mapped and not window.floating) then
+        if mode.suspended or not (id and window and window.mapped and not window.floating) then
             return false
         end
 
@@ -95,12 +96,13 @@ function M.new(hl)
         if not mode then return false end
         modes[id] = nil
 
+        local owned = {}
         for _, window in ipairs(hl.get_windows() or {}) do
             local identity = window_id(window)
             if identity and mode.owned[identity] then
                 if workspace_id(window.workspace) then
-                    remember(id, identity, window)
-                    tile(window)
+                    if not mode.suspended then remember(id, identity, window) end
+                    owned[#owned + 1] = window
                 else
                     -- Tiling a window on a special workspace can pull it back
                     -- into the ordinary workspace. Defer until it returns.
@@ -108,13 +110,16 @@ function M.new(hl)
                 end
             end
         end
+        -- Capture every box before tiling a grouped member updates its peers.
+        for _, window in ipairs(owned) do tile(window) end
 
         if restore_layout then hl.dispatch(hl.dsp.layout("restore")) end
         return true
     end
 
-    local function enable(id)
-        local mode = { owned = {} }
+    local function enable(id, mode)
+        mode = mode or { owned = {} }
+        mode.suspended = false
         modes[id] = mode
 
         -- nary restores this photograph only when the set of windows is still
@@ -136,7 +141,13 @@ function M.new(hl)
             end
         end
 
-        hl.dispatch(hl.dsp.layout("hold"))
+        -- Selection may finish after focus crossed to another workspace.
+        -- Photograph the source directly when the layout adapter supports it.
+        if options.hold_layout then
+            options.hold_layout(id)
+        elseif workspace_id(visible_workspace()) == id then
+            hl.dispatch(hl.dsp.layout("hold"))
+        end
         for _, window in ipairs(to_float) do
             hl.dispatch(hl.dsp.window.float({ action = "on", window = window }))
         end
@@ -162,6 +173,30 @@ function M.new(hl)
         return enable(id)
     end
 
+    -- Suspend the opt-out while exposé lays out selectable panes. Ownership
+    -- stays attached to this mode, and the returned continuation can resume
+    -- only that exact workspace/mode, even if focus changes or it is removed.
+    local function begin_selection()
+        local id = workspace_id(visible_workspace())
+        local mode = id and modes[id]
+        if not mode or mode.suspended then return nil end
+        local owned = {}
+        for _, window in ipairs(hl.get_windows() or {}) do
+            local identity = window_id(window)
+            if identity and on_workspace(window, id) and window.mapped and mode.owned[identity] then
+                remember(id, identity, window)
+                owned[#owned + 1] = window
+            end
+        end
+        mode.suspended = true
+        for _, window in ipairs(owned) do tile(window) end
+        hl.dispatch(hl.dsp.layout("restore"))
+        return function()
+            if modes[id] ~= mode or not mode.suspended then return false end
+            return enable(id, mode)
+        end
+    end
+
     hl.on("window.open", function(window)
         local id = workspace_id(window and window.workspace)
         local mode = id and modes[id]
@@ -173,7 +208,7 @@ function M.new(hl)
         if not identity then return end
 
         local old_id, old_mode = owner_of(identity)
-        if old_mode then remember(old_id, identity, window) end
+        if old_mode and not old_mode.suspended then remember(old_id, identity, window) end
         local destination_id = workspace_id(destination or (window and window.workspace))
         if not destination_id then
             -- Special workspaces are overlays, not a change in ownership.
@@ -190,6 +225,7 @@ function M.new(hl)
             elseif not old_mode then
                 float_for(destination_mode, window)
             end
+            if destination_mode.suspended and destination_mode.owned[identity] then tile(window) end
             return
         end
 
@@ -218,6 +254,7 @@ function M.new(hl)
 
     return {
         toggle = toggle,
+        begin_selection = begin_selection,
         is_active = function(workspace)
             local id = type(workspace) == "number" and workspace
                 or workspace_id(workspace or visible_workspace())

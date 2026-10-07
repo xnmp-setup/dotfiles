@@ -444,8 +444,12 @@ hl.window_rule({ name = "imv-size",   match = { class = "^imv$" }, size = "75% 7
 hl.window_rule({ name = "thunar-dialog-float",  match = { class = "[Tt]hunar", title = "negative:.*[Tt]hunar.*" }, float = true })
 hl.window_rule({ name = "thunar-dialog-center", match = { class = "[Tt]hunar", title = "negative:.*[Tt]hunar.*" }, center = true })
 
+local untiled = require("untiled_mode").new(hl, {
+    hold_layout = function(id) return nary.hold_space(nary.space(id)) end,
+})
 local expose = exposes.new(hl, {
     dissolve_lone_groups = group_actions.dissolve_lone_groups,
+    untiled = untiled,
 })
 
 local app_switcher = app_switchers.new(hl, window_actions, {
@@ -469,8 +473,6 @@ terminal_groups.new(hl, {
         return session.is_restoring() or startup_pairing.is_waiting(window)
     end,
 })
-
-local untiled = require("untiled_mode").new(hl)
 
 ---------------------
 ---- KEYBINDINGS ----
@@ -651,8 +653,9 @@ hl.bind("CTRL + SHIFT + Next",        hl.dsp.group.next())
 -- Unfold every tab strip on the workspace into panes; selecting a pane folds
 -- them back with that one showing.
 hl.bind("F1", expose.toggle)
--- Opt the visible ordinary workspace out of automatic tiling. Plain F1 keeps
--- its exposé meaning, including for floating tab groups in this mode.
+-- Opt the visible ordinary workspace out of automatic tiling. Plain F1 tiles
+-- it temporarily for selection, then restores floating boxes with the chosen
+-- window in front.
 hl.bind(mainMod .. " + F1", function()
     -- Never snapshot or restore nary's temporary exploded tree. Finish an
     -- in-progress exposé first, then change the workspace's tiling mode.

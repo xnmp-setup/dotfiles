@@ -1063,5 +1063,22 @@ do
     check("a closed or absent tile cannot move another window", box_of(boxes, "1"), "0,0 500x400")
 end
 
+do
+    local original = C("v", L("1"), C("h", L("2"), L("3")))
+    nary.state.trees[KEY] = original
+    local ctx, boxes = geometry({ "1", "2", "3" }, "1")
+    nary.recalculate(ctx)
+    check("a background workspace can be photographed without focus", nary.hold_space(KEY), true)
+    nary.dispatch(ctx_for(C("h", L("7"), L("8")), "7", 2), "hold")
+    -- Re-arrivals after floating rebuild a flat row until restore is requested.
+    nary.state.trees[KEY] = nil
+    nary.recalculate(ctx)
+    nary.dispatch(ctx, "restore")
+    nary.recalculate(ctx)
+    check("a background photograph restores its own tiled arrangement", box_of(boxes, "1"), "0,0 1000x200")
+    check("background restore keeps its lower split", box_of(boxes, "3"), "500,200 500x200")
+    check("photographing an unknown workspace is a safe no-op", nary.hold_space("ws:absent"), false)
+end
+
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)

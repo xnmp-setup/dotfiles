@@ -1408,6 +1408,12 @@ local M = {
     canon       = canon,
     dispatch    = dispatch,
     space       = space_of,
+    -- Photograph a background workspace without changing compositor focus.
+    hold_space  = function(key)
+        local root = state.trees[key]
+        if not root then return false end
+        return cmd_hold(root, key)
+    end,
     -- Ends every undo trail. Wired to nothing today; see its definition.
     end_move    = end_move,
     shape       = function(key)

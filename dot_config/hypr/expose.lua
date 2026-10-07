@@ -1,4 +1,5 @@
--- expose.lua — temporarily unfold grouped tabs into selectable panes.
+-- expose.lua — temporarily tile untiled workspaces and unfold grouped tabs
+-- into selectable panes, then restore their mode with the chosen window raised.
 
 local window_model = require("window_model")
 
@@ -127,10 +128,11 @@ function M.new(hl, options)
     end
 
     local function unfold()
-        local groups = tabbed_groups()
-        if #groups == 0 then return false end
-
         busy = true
+        local resume = options.untiled and options.untiled.begin_selection()
+        local groups = tabbed_groups()
+        if #groups == 0 and not resume then busy = false; return false end
+
         for _, group in ipairs(groups) do
             local size = group.anchor.size
             group.cols = M.grid_columns(
@@ -166,8 +168,9 @@ function M.new(hl, options)
         end
         busy = false
 
-        exposed, armed = groups, false
-        hl.timer(function() armed = (exposed ~= nil) end, {
+        local view = { groups = groups, resume = resume }
+        exposed, armed = view, false
+        hl.timer(function() if exposed == view then armed = true end end, {
             timeout = 120,
             type = "oneshot",
         })
@@ -180,7 +183,8 @@ function M.new(hl, options)
 
         selected = selected or hl.get_active_window()
         local selected_id = window_model.id(selected)
-        local groups = exposed
+        local view = exposed
+        local groups = view.groups
         exposed, armed = nil, false
         hl.unbind(select_button)
 
@@ -219,11 +223,15 @@ function M.new(hl, options)
             end
         end
 
+        dissolve_lone_groups()
+        local resumed = view.resume and view.resume()
         if selected and selected.mapped then
             hl.dispatch(hl.dsp.focus({ window = selected }))
+            if resumed then
+                hl.dispatch(hl.dsp.window.alter_zorder({ mode = "top", window = selected }))
+            end
         end
         busy = false
-        dissolve_lone_groups()
         return true
     end
 
