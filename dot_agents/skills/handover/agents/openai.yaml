@@ -1,0 +1,4 @@
+interface:
+  display_name: "Handover"
+  short_description: "Commit WIP, update the issue, and prepare the next agent"
+  default_prompt: "Use $handover to commit all WIP, update the active GitHub issue with remaining work, and write a comprehensive handover for the next agent."
