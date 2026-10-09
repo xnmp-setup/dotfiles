@@ -2,5 +2,8 @@
 .config/hypr/theme-colors.lua
 .claude/scripts/__pycache__
 local_extensions
+# Repository helpers and tests run from the source directory, not ~/scripts.
+scripts
+scripts/**
 # Everything else in .local/bin lands on PATH; a test is not a command.
 .local/bin/*_test.sh
