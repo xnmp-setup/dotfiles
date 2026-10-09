@@ -57,6 +57,14 @@
         }
     },
 
+    // Close the window when the focused pane has no tabs.
+    {
+        "context": "EmptyPane",
+        "bindings": {
+            "ctrl-w": "workspace::CloseWindow"
+        }
+    },
+
     // ── Editor (fires when an editor buffer is focused) ─────────────────────
     {
         "context": "Editor",
