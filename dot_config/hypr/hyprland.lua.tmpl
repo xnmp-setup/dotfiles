@@ -425,10 +425,6 @@ end)
 ----------------------
 -- match strings are full-match regexes; prefix with "negative:" to invert.
 
-hl.window_rule({ name = "litexl-float",  match = { class = "com.lite_xl.LiteXL" }, float = true })
-hl.window_rule({ name = "litexl-size",   match = { class = "com.lite_xl.LiteXL" }, size = "25% 65%" })
-hl.window_rule({ name = "litexl-center", match = { class = "com.lite_xl.LiteXL" }, center = true })
-
 hl.window_rule({ name = "obsidian-opacity",  match = { class = "(obsidian|md[.]obsidian[.]Obsidian)" }, opacity = theme.window_opacity(0.91) })
 hl.window_rule({ name = "code-opacity",      match = { class = "^code$" },                  opacity = theme.window_opacity(0.93) })
 hl.window_rule({ name = "chrome-opacity",    match = { class = "^google-chrome$" },         opacity = theme.window_opacity(0.93) })
@@ -692,6 +688,11 @@ hl.bind("F10", app_switcher.toggle({
     classes = { ["dev.zed.Zed"] = true, ["dev.zed.Zed-Dev"] = true },
     launch = "for z in zeditor zed; do command -v $z >/dev/null 2>&1 && exec $z --new; done",
 }))
+hl.bind("F11", app_switcher.toggle({
+    name = "lite-xl",
+    classes = { ["com.lite_xl.LiteXL"] = true },
+    launch = "lite-xl",
+}))
 
 ---------------------
 ---- SCRATCHPADS ----
@@ -721,15 +722,8 @@ scratchpad.define("ghostty-drop", {
     respect_reserved = true,
     isolate = true,
 })
-scratchpad.define("lite-xl", {
-    class = "com.lite_xl.LiteXL",
-    cmd   = "lite-xl",
-    w     = 900, h = 600,
-})
-
 hl.bind("F8",  function() scratchpad.toggle("chrome-drop") end)
 hl.bind("F9",  function() scratchpad.toggle("ghostty-drop") end)
-hl.bind("F11", function() scratchpad.toggle("lite-xl") end)
 
 -- Vicinae (Super+SPACE) gets the same treatment, without being a scratchpad: its
 -- server owns the window's lifetime, mapping one on toggle and destroying it on

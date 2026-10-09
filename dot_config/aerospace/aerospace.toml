@@ -200,10 +200,6 @@ if.app-id = 'com.mitchellh.ghostty'
 run = 'layout floating'
 
 [[on-window-detected]]
-if.app-id = 'com.lite-xl'
-run = 'layout floating'
-
-[[on-window-detected]]
 if.app-id = 'company.thebrowser.Browser'
 run = 'layout floating'
 
