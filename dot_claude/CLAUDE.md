@@ -33,3 +33,4 @@
 
 ## Misc
 - When testing whether hooks work, don't pipe text to the shell scripts. Instead run actual commands that would trigger the hooks.
+- When giving the user file paths to open, use absolute paths (not `~/...`) or `file:///` links for long ones. Ghostty ctrl+click does not match paths broken by tilde/strikethrough rendering or line wrapping.
