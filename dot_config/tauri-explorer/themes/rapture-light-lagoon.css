@@ -1,0 +1,62 @@
+/** Rapture Light Lagoon — ice-blue surfaces, ocean-slate ink, and cyan-teal accents. */
+[data-theme="rapture-light-lagoon"] {
+  color-scheme: light;
+  --theme-name: "Rapture Light Lagoon";
+  --theme-description: "Ice-blue Lagoon surfaces with cyan-teal accents";
+  --theme-order: 26;
+  --accent: #14758f;
+  --accent-light: #126a83;
+  --accent-dark: #105f78;
+  --text-primary: #223d50;
+  --text-secondary: #526f80;
+  --text-tertiary: #526f80;
+  --text-on-accent: #f0f9fd;
+  --background-solid: #f0f9fd;
+  --background-mica: #f0f9fd;
+  --background-acrylic: #f0f9fd;
+  --background-card: #e0f1f8;
+  --background-card-secondary: #d4eaf4;
+  /* Opaque surfaces for compositor tabs and native greeter controls. */
+  --desktop-surface: #e0f1f8;
+  --desktop-border: #bfddeb;
+  /* Saturated compositor focus, separate from quieter application accents. */
+  --desktop-focus: #007fc4;
+  --desktop-focus-secondary: #005ca8;
+  --desktop-focus-width: 3;
+  --miller-bg: #e0f1f8;
+  --content-bg: #f0f9fd;
+  --surface-stroke: rgba(191, 221, 235, 0.7);
+  --surface-stroke-flyout: rgba(191, 221, 235, 0.85);
+  --divider: rgba(191, 221, 235, 0.55);
+  --control-fill: rgba(20, 117, 143, 0.06);
+  --control-fill-secondary: rgba(20, 117, 143, 0.1);
+  --control-fill-tertiary: rgba(20, 117, 143, 0.04);
+  --control-fill-disabled: rgba(20, 117, 143, 0.025);
+  --subtle-fill: transparent;
+  --subtle-fill-secondary: rgba(20, 117, 143, 0.1);
+  --subtle-fill-tertiary: rgba(20, 117, 143, 0.05);
+  --control-stroke: rgba(191, 221, 235, 0.8);
+  --control-stroke-secondary: rgba(191, 221, 235, 0.55);
+  --address-bar-bg: rgba(20, 117, 143, 0.06);
+  --address-bar-stroke: rgba(191, 221, 235, 0.75);
+  --address-bar-highlight: rgba(20, 117, 143, 0.03);
+  --address-bar-bg-hover: rgba(20, 117, 143, 0.1);
+  --address-bar-stroke-hover: rgba(82, 111, 128, 0.8);
+  --focus-stroke-outer: #14758f;
+  --focus-stroke-inner: #f0f9fd;
+  --system-critical: #b45343;
+  --system-success: #187c70;
+  --system-caution: #8b691e;
+  --shadow-flyout: 0 8px 24px rgba(34, 61, 80, 0.16), 0 2px 8px rgba(34, 61, 80, 0.1);
+  --shadow-dialog: 0 32px 64px rgba(34, 61, 80, 0.2), 0 4px 24px rgba(34, 61, 80, 0.12);
+  --shadow-tooltip: 0 4px 12px rgba(34, 61, 80, 0.14);
+  --shadow-card: 0 1px 4px rgba(34, 61, 80, 0.1), 0 0 1px rgba(34, 61, 80, 0.08);
+  --shadow-subtle: 0 1px 2px rgba(34, 61, 80, 0.08);
+  --mica-overlay: linear-gradient(170deg, rgba(20, 117, 143, 0.025), transparent 45%, rgba(24, 124, 112, 0.02));
+  --sidebar-opacity: 1;
+  --toolbar-opacity: 1;
+  --content-opacity: 1;
+  --titlebar-opacity: 1;
+  --statusbar-opacity: 1;
+  --icon-folder: #14758f;
+}

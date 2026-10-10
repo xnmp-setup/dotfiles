@@ -118,6 +118,8 @@ local function focused_fill(locked)
     return tab_fill({
         bottom = theme.tab_tint(locked and 0.14 or 0),
         top    = theme.tab_tint(locked and 0.26 or 0.10),
+        edge   = theme.colors.focus,
+        edge_px = theme.colors.focus_border_size or 2,
     }, nil, false)
 end
 
@@ -167,7 +169,7 @@ hl.config({
     general = {
         gaps_in     = 5,
         gaps_out    = 10,
-        border_size = 2,
+        border_size = theme.colors.focus_border_size or 2,
 
         -- Accent gradient from the active theme (see theme.lua).
         col = {

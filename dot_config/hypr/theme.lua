@@ -50,11 +50,15 @@ function M.rgba(hex, alpha)
     return ("rgba(%s%s)"):format(hex, alpha or "ff")
 end
 
---- The two-stop gradient used for anything focused.
+--- The two-stop gradient used for focused window and group borders.
+--- Themes can strengthen compositor focus independently of app accents.
 --- @param angle number|nil
 function M.active_gradient(angle)
     return {
-        colors = { M.rgba(M.colors.accent), M.rgba(M.colors.accent_light) },
+        colors = {
+            M.rgba(M.colors.focus or M.colors.accent),
+            M.rgba(M.colors.focus_secondary or M.colors.accent_light),
+        },
         angle  = angle or 45,
     }
 end

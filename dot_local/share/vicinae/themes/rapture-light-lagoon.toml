@@ -1,0 +1,29 @@
+[meta]
+version = 1
+name = "Rapture Light Lagoon"
+description = "Ice-blue Lagoon surfaces with cyan-teal accents"
+variant = "light"
+
+[colors.core]
+background = "#f0f9fd"
+foreground = "#223d50"
+secondary_background = "#e0f1f8"
+border = "#bfddeb"
+accent = "#14758f"
+
+[colors.accents]
+blue = "#3768ac"
+green = "#187c70"
+magenta = "#af3e79"
+orange = "#8b691e"
+purple = "#af3e79"
+red = "#b45343"
+yellow = "#8b691e"
+cyan = "#14758f"
+
+[colors.list.item.selection]
+background = { name = "#c7e9f4", opacity = 0.9 }
+secondary_background = "#d4eaf4"
+
+[colors.list.item.hover]
+background = { name = "#bfddeb", opacity = 0.45 }

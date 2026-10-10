@@ -9,10 +9,12 @@ declare -A theme_wallpapers=(
   [gruvbox]="gruvbox_forest-4.png"
   [cosmic-dusk]="planet_with_sunrise.png"
   [rapture]="river_4k.png"
+  [rapture-light-lagoon]="rapture-light-lagoon-tropical-reef.png"
   [nord]="wp10368836-mac-os-yosemite-wallpapers.jpg"
   [ayu-mirage]="stephen-leonardi-eSNjFDbw_i4-unsplash.jpg"
   [horizon-dark]="starry-sky-desert-rocks.png"
   [catppuccin-mocha]="yosemite-valley-winter.jpg"
+  [catppuccin-lavender]="catppuccin-latte-alpine-morning-3440x1440.png"
   [kanagawa]="omarchy-kanagawa.jpg"
   [tokyo-night]="omarchy-tokyo-night.webp"
   [hackerman]="omarchy-hackerman.jpg"
@@ -39,6 +41,8 @@ declare -A theme_titles=(
 # target files have been applied would leave several applications pointing at
 # names they cannot resolve.
 declare -A locally_managed_desktop_themes=(
+  [rapture-light-lagoon]=1
+  [catppuccin-lavender]=1
   [kanagawa]=1
   [tokyo-night]=1
   [hackerman]=1
@@ -111,9 +115,8 @@ desktop_theme_missing_assets() {
   fi
 
   if [[ -f "$HOME/.config/zed/settings.json" ]]; then
-    path="$HOME/.config/zed/themes/tokyo-night.json"
-    [[ "$slug" == tokyo-night ]] \
-      || path="$HOME/.config/zed/themes/omarchy-extra.json"
+    path="$HOME/.config/zed/themes/$slug.json"
+    [[ -f "$path" ]] || path="$HOME/.config/zed/themes/omarchy-extra.json"
     if [[ ! -f "$path" ]] || ! grep -Fq "\"name\": \"$title\"" "$path"; then
       printf 'Zed: %s\n' "$path"
     fi

@@ -1,0 +1,29 @@
+[meta]
+version = 1
+name = "Catppuccin Lavender"
+description = "Custom light Mocha: near-white lavender and faint mint panels"
+variant = "light"
+
+[colors.core]
+background = "#f8f8fb"
+foreground = "#484453"
+secondary_background = "#f0f4f3"
+border = "#d5d1df"
+accent = "#756681"
+
+[colors.accents]
+blue = "#4962a0"
+green = "#497045"
+magenta = "#756681"
+orange = "#965837"
+purple = "#756681"
+red = "#a64a66"
+yellow = "#865e22"
+cyan = "#327179"
+
+[colors.list.item.selection]
+background = { name = "#e9e7f0", opacity = 0.9 }
+secondary_background = "#eef0f5"
+
+[colors.list.item.hover]
+background = { name = "#d5d1df", opacity = 0.45 }

@@ -1,0 +1,84 @@
+{
+  "manifest_version": 3,
+  "name": "Catppuccin Lavender",
+  "version": "1.0.0",
+  "description": "Omarchy's Catppuccin Lavender theme",
+  "theme": {
+    "colors": {
+      "frame": [
+        238, 240, 245
+      ],
+      "frame_inactive": [
+        240, 244, 243
+      ],
+      "frame_incognito": [
+        233, 231, 240
+      ],
+      "frame_incognito_inactive": [
+        213, 209, 223
+      ],
+      "toolbar": [
+        248, 248, 251,
+        0.98
+      ],
+      "background_tab": [
+        240, 244, 243,
+        0.96
+      ],
+      "tab_text": [
+        72, 68, 83
+      ],
+      "tab_background_text": [
+        101, 97, 110
+      ],
+      "bookmark_text": [
+        72, 68, 83
+      ],
+      "ntp_background": [
+        248, 248, 251
+      ],
+      "ntp_text": [
+        72, 68, 83
+      ],
+      "ntp_link": [
+        117, 102, 129
+      ],
+      "ntp_header": [
+        238, 240, 245
+      ],
+      "omnibox_background": [
+        240, 244, 243
+      ],
+      "omnibox_text": [
+        72, 68, 83
+      ],
+      "toolbar_button_icon": [
+        101, 97, 110
+      ],
+      "button_background": [
+        117, 102, 129
+      ]
+    },
+    "tints": {
+      "buttons": [
+        -1,
+        -1,
+        -1
+      ],
+      "frame_incognito": [
+        -1,
+        0.05,
+        0.75
+      ],
+      "frame_incognito_inactive": [
+        -1,
+        0.05,
+        0.7
+      ]
+    },
+    "properties": {
+      "ntp_background_alignment": "center",
+      "ntp_background_repeat": "no-repeat"
+    }
+  }
+}

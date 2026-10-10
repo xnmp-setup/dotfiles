@@ -7,7 +7,9 @@
   "engines": {
     "vscode": "^1.60.0"
   },
-  "categories": ["Themes"],
+  "categories": [
+    "Themes"
+  ],
   "contributes": {
     "themes": [
       {
@@ -79,6 +81,16 @@
         "label": "Sunset",
         "uiTheme": "vs-dark",
         "path": "./themes/sunset-color-theme.json"
+      },
+      {
+        "label": "Catppuccin Lavender",
+        "uiTheme": "vs",
+        "path": "./themes/catppuccin-lavender-color-theme.json"
+      },
+      {
+        "label": "Rapture Light Lagoon",
+        "uiTheme": "vs",
+        "path": "./themes/rapture-light-lagoon-color-theme.json"
       }
     ]
   },

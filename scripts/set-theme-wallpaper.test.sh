@@ -91,7 +91,7 @@ grep -Fq -- '--background-secondary-alt: #2a2a37;' \
 # entries that leave individual applications on the previous theme.
 omarchy_themes=(
   kanagawa tokyo-night hackerman ethereal flexoki-light ayu-light osaka-jade artzen
-  infernium-dark mapquest sakura sunset
+  infernium-dark mapquest sakura sunset catppuccin-lavender rapture-light-lagoon
 )
 for omarchy_slug in "${omarchy_themes[@]}"; do
   omarchy_title=${theme_titles[$omarchy_slug]:-}
@@ -188,6 +188,8 @@ mkdir -p "$test_root/.config/hypr" \
   "$test_root/google-chrome/extensions" \
   "$test_root/bin"
 touch "$test_root/Pictures/Wallpaper/planet_with_sunrise.png"
+touch "$test_root/Pictures/Wallpaper/rapture-light-lagoon-tropical-reef.png"
+touch "$test_root/Pictures/Wallpaper/catppuccin-latte-alpine-morning-3440x1440.png"
 touch "$test_root/Pictures/Wallpaper/custom.photo.jpg"
 touch "$test_root/Pictures/Wallpaper/omarchy-kanagawa.jpg"
 touch "$test_root/Pictures/Wallpaper/omarchy-tokyo-night.webp"
@@ -505,6 +507,8 @@ assert_contains "$test_root/hyprctl.log" "hyprpaper wallpaper , $default_path, f
 # Each requested theme switches the observable desktop state, uses its own
 # wallpaper and palette, and classifies every light theme correctly.
 omarchy_cases=(
+  'rapture-light-lagoon|Rapture Light Lagoon|light|rapture-light-lagoon-tropical-reef.png|#14758f|#f0f9fd|#223d50|#c7e9f4'
+  'catppuccin-lavender|Catppuccin Lavender|light|catppuccin-latte-alpine-morning-3440x1440.png|#756681|#f8f8fb|#484453|#e9e7f0'
   'kanagawa|Kanagawa|dark|omarchy-kanagawa.jpg|#7e9cd8|#1f1f28|#dcd7ba|#363646'
   'tokyo-night|Tokyo Night|dark|omarchy-tokyo-night.webp|#7aa2f7|#1a1b26|#a9b1d6|#292e42'
   'hackerman|Hackerman|dark|omarchy-hackerman.jpg|#82fb9c|#0b0c16|#ddf7ff|#1f253a'
@@ -562,8 +566,8 @@ for omarchy_case in "${omarchy_cases[@]}"; do
   fi
   # Reload the real theme module against each generated file: light -> dark
   # transitions must restore the configured application opacity.
-  lua - "$repo_root" "$test_root" "$omarchy_mode" <<'LUA'
-local repo, root, mode = arg[1], arg[2], arg[3]
+  lua - "$repo_root" "$test_root" "$omarchy_mode" "$omarchy_slug" <<'LUA'
+local repo, root, mode, slug = arg[1], arg[2], arg[3], arg[4]
 package.path = root .. '/.config/hypr/?.lua;' .. repo .. '/dot_config/hypr/?.lua;' .. package.path
 -- Simulate the previous session's cached modules, then execute the actual
 -- config reload prelude before requiring the newly generated palette.
@@ -575,11 +579,31 @@ config:close()
 assert(load(prelude))()
 local theme = require 'theme'
 assert(theme.window_opacity(0.93) == (mode == 'light' and '0.94 0.94' or '0.93 0.93'))
+local focused = {
+  ['rapture-light-lagoon'] = { '007fc4', '005ca8' },
+  ['catppuccin-lavender'] = { '8554ce', 'b452a3' },
+}
+local gradient = theme.active_gradient()
+if focused[slug] then
+  assert(theme.colors.focus_border_size == 3, 'focused window outline must be 3px')
+  assert(gradient.colors[1] == theme.rgba(focused[slug][1]))
+  assert(gradient.colors[2] == theme.rgba(focused[slug][2]))
+  local tab = theme.tab_fill({
+    bottom = theme.tab_tint(),
+    edge = theme.colors.focus,
+    edge_px = theme.colors.focus_border_size,
+  }, nil, 36, 8)
+  assert(tab.colors[#tab.colors] == gradient.colors[1], 'focused tab must carry the same focus color')
+else
+  assert(theme.colors.focus == nil, 'legacy theme must retain its existing focus rendering')
+  assert(gradient.colors[1] == theme.rgba(theme.colors.accent))
+  assert(gradient.colors[2] == theme.rgba(theme.colors.accent_light))
+end
 LUA
 
   zed_theme="$repo_root/dot_config/zed/themes/omarchy-extra.json"
-  [[ "$omarchy_slug" == tokyo-night ]] \
-    && zed_theme="$repo_root/dot_config/zed/themes/tokyo-night.json"
+  [[ -f "$repo_root/dot_config/zed/themes/$omarchy_slug.json" ]] \
+    && zed_theme="$repo_root/dot_config/zed/themes/$omarchy_slug.json"
   jq -e --arg title "$omarchy_title" \
     --arg background "${omarchy_background}ff" \
     --arg foreground "${omarchy_foreground}ff" \
@@ -643,7 +667,7 @@ fi
 cmp -s "$test_root/before-ambiguous.conf" "$test_root/.config/hypr/hyprpaper.conf" \
   || fail "an ambiguous theme prefix partially changed the Hyprpaper config"
 assert_contains "$test_root/ambiguous.out" \
-  "Theme prefix 'c' is ambiguous: catppuccin-mocha, cosmic-dusk"
+  "Theme prefix 'c' is ambiguous: catppuccin-lavender, catppuccin-mocha, cosmic-dusk"
 
 run_set_theme cosmic-dusk --wallpaper custom.photo > "$test_root/override.out"
 override_path="$test_root/Pictures/Wallpaper/custom.photo.jpg"
