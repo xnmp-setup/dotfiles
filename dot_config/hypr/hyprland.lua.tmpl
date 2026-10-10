@@ -666,7 +666,7 @@ end)
 hl.bind("F3", app_switcher.toggle(default_terminal))
 hl.bind("F4", app_switcher.toggle({
     name = "obsidian",
-    classes = { obsidian = true },
+    classes = { obsidian = true, ["md.obsidian.Obsidian"] = true },
     launch = "obsidian",
     new_window = "obsidian eval 'code=app.workspace.openPopoutLeaf()'",
     cycle_windows = true,

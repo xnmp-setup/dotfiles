@@ -1249,6 +1249,50 @@ do
         #control.executions, 0)
 end
 
+-- Exercise the actual F4 definition: Obsidian's Wayland app ID differs from
+-- its legacy WM_CLASS. Either backend, including a mixed set, must cycle
+-- existing vaults instead of executing the launcher and opening the picker.
+do
+    local config = assert(io.open((arg[0]:match("^(.*)/") or ".") .. "/hyprland.lua.tmpl"))
+    local binding = assert(config:read("*a"):match('hl%.bind(%("F4".-%b()%))'))
+    config:close()
+
+    for _, classes in ipairs({
+        { "obsidian", "obsidian" },
+        { "md.obsidian.Obsidian", "md.obsidian.Obsidian" },
+        { "obsidian", "md.obsidian.Obsidian" },
+    }) do
+        local ws = { id = 1 }
+        local terminal = window("terminal", "com.mitchellh.ghostty", ws, 0)
+        local personal = window("personal", classes[1], ws, 1)
+        local technical = window("technical", classes[2], ws, 2)
+        group(terminal, personal, technical)
+        local hl, control = fake_runtime({
+            active = terminal,
+            windows = { terminal, personal, technical },
+            workspace = ws,
+        })
+        local toggle
+        assert(load("hl.bind" .. binding, "F4 binding", "t", {
+            hl = { bind = function(_, callback) toggle = callback end },
+            app_switcher = app_switcher.new(hl, window_actions.new(hl)),
+        }))()
+
+        local label = table.concat(classes, "/")
+        toggle()
+        equal("F4 selects an existing vault: " .. label, control.active(), personal)
+        personal.focus_history_id, terminal.focus_history_id = 0, 1
+        toggle()
+        equal("F4 cycles to the other vault: " .. label, control.active(), technical)
+        technical.focus_history_id, personal.focus_history_id = 0, 1
+        terminal.focus_history_id = 2
+        toggle()
+        equal("F4 returns after cycling vaults: " .. label, control.active(), terminal)
+        equal("F4 never launches a picker for existing vaults: " .. label,
+            #control.executions, 0)
+    end
+end
+
 -- The reported sequence: from the terminal, obsidian's key and back, then
 -- chrome's key and back. Each "and back" has to land on the terminal.
 do
