@@ -1,0 +1,10 @@
+[Unit]
+Description=Persistent native Codex voice terminal
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/codex-global-voice serve
+KillMode=control-group
+TimeoutStopSec=10
+UMask=0077
+Environment=CODEX_VOICE_WORKSPACE=%h/.local/share/chezmoi

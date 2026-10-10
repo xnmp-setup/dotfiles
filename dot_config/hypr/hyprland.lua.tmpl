@@ -646,6 +646,9 @@ hl.bind(mainMod .. " + ALT + Next",   hl.dsp.group.next())
 hl.bind("CTRL + SHIFT + Prior",       hl.dsp.group.prev())
 hl.bind("CTRL + SHIFT + Next",        hl.dsp.group.next())
 
+-- Global voice uses its own persistent Codex thread, independent of focused apps.
+hl.bind("SUPER + SHIFT + V", hl.dsp.exec_cmd("~/.local/bin/codex-global-voice toggle"))
+
 -- Unfold every tab strip on the workspace into panes; selecting a pane folds
 -- them back with that one showing.
 hl.bind("F1", expose.toggle)

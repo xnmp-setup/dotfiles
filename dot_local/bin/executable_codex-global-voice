@@ -1,0 +1,367 @@
+#!/usr/bin/env python3
+"""Toggle native Codex voice in one private, persistent background TUI.
+
+The CLI owns audio transport. This helper only owns its terminal and lifecycle;
+it never sends keystrokes to an existing terminal or changes authentication.
+"""
+from __future__ import annotations
+
+import argparse
+import contextlib
+import fcntl
+import json
+import os
+from pathlib import Path
+import pty
+import re
+import select
+import shutil
+import signal
+import socket
+import struct
+import subprocess
+import termios
+import threading
+import time
+import uuid
+from typing import Callable
+
+VOICE_KEY = b"\x1b[19~"  # F8, explicitly mapped for this TUI invocation only.
+ANSI = re.compile(r"\x1b\[[0-9;?<>]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")
+
+
+def owned_capture(objects: list, owner_pid: int, parents: dict[int, int]) -> bool:
+    """Only a running native capture descending from our TUI confirms voice."""
+    def props(item):
+        info = item.get("info", {}) if isinstance(item, dict) else {}
+        value = info.get("props", {}) if isinstance(info, dict) else {}
+        return value if isinstance(value, dict) else {}
+
+    clients = {str(item.get("id")): props(item) for item in objects
+               if isinstance(item, dict) and item.get("type") == "PipeWire:Interface:Client"}
+    for item in objects:
+        if not isinstance(item, dict) or item.get("type") != "PipeWire:Interface:Node":
+            continue
+        info = item.get("info")
+        if not isinstance(info, dict):
+            continue
+        properties = props(item)
+        if properties.get("media.class") != "Stream/Input/Audio" or info.get("state") != "running":
+            continue
+        merged = {**clients.get(str(properties.get("client.id")), {}), **properties}
+        if merged.get("application.process.binary") != "codex-voice-host":
+            continue
+        try:
+            current = int(merged.get("application.process.id"))
+        except (TypeError, ValueError):
+            continue
+        seen = set()
+        while current not in seen and current > 1:
+            if current == owner_pid:
+                return True
+            seen.add(current)
+            current = parents.get(current, 0)
+    return False
+
+
+def microphone_active(owner_pid: int) -> bool:
+    result = subprocess.run(["pw-dump"], capture_output=True, text=True, timeout=2, check=True)
+    objects = json.loads(result.stdout)
+    if not isinstance(objects, list):
+        raise RuntimeError("PipeWire returned an invalid object inventory")
+    parents = {}
+    for entry in Path("/proc").iterdir():
+        if entry.name.isdecimal():
+            try:
+                parents[int(entry.name)] = int((entry / "stat").read_text().rsplit(")", 1)[-1].split()[1])
+            except (OSError, UnicodeError, ValueError, IndexError):
+                continue
+    return owned_capture(objects, owner_pid, parents)
+
+
+def tui_command(binary: str, workspace: Path, thread_id: str) -> list[str]:
+    return [binary, "--no-alt-screen", "-C", str(workspace), "-c",
+            "check_for_update_on_startup=false", "-c",
+            'tui.keymap.chat.toggle_voice="f8"', "resume", thread_id]
+
+
+def codex_binary() -> str:
+    found = shutil.which("codex")
+    if found:
+        return found
+    # systemd's PATH does not include nvm. Prefer its newest installed CLI.
+    candidates = list((Path.home() / ".nvm/versions/node").glob("v*/bin/codex"))
+    if candidates:
+        return str(max(candidates, key=lambda p: tuple(int(x) for x in p.parents[1].name[1:].split("."))))
+    raise RuntimeError("Codex CLI is not installed or available in PATH")
+
+
+def persist_thread(path: Path, thread_id: str) -> str:
+    thread_id = str(uuid.UUID(thread_id))
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    temporary = path.with_suffix(".tmp")
+    descriptor = os.open(temporary, os.O_CREAT | os.O_TRUNC | os.O_WRONLY, 0o600)
+    with os.fdopen(descriptor, "w") as stream:
+        stream.write(thread_id + "\n")
+    temporary.replace(path)
+    return thread_id
+
+
+def create_thread(binary: str, workspace: Path) -> str:
+    process = subprocess.Popen([binary, "app-server", "--listen", "stdio://"],
+                               stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                               stderr=subprocess.DEVNULL)
+    buffer = b""
+
+    def call(identifier: int, method: str, params: dict) -> dict:
+        nonlocal buffer
+        assert process.stdin is not None and process.stdout is not None
+        process.stdin.write((json.dumps({"id": identifier, "method": method, "params": params}) + "\n").encode())
+        process.stdin.flush()
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            while b"\n" in buffer:
+                line, buffer = buffer.split(b"\n", 1)
+                reply = json.loads(line)
+                if reply.get("id") == identifier:
+                    if "error" in reply:
+                        raise RuntimeError(str(reply["error"].get("message", "Codex rejected request")))
+                    return reply["result"]
+            if select.select([process.stdout], [], [], .2)[0]:
+                chunk = os.read(process.stdout.fileno(), 65536)
+                if not chunk:
+                    raise RuntimeError("Codex app server exited during thread creation")
+                buffer += chunk
+        raise TimeoutError("Codex thread creation timed out")
+
+    try:
+        call(1, "initialize", {"clientInfo": {"name": "codex_global_voice", "title": "Codex global voice", "version": "1"}})
+        assert process.stdin is not None
+        process.stdin.write(b'{"method":"initialized"}\n')
+        process.stdin.flush()
+        thread_id = call(2, "thread/start", {"cwd": str(workspace)})["thread"]["id"]
+        # Naming is cosmetic. Keep the created ID even if that request fails,
+        # so a later shortcut cannot create another thread just to name it.
+        with contextlib.suppress(RuntimeError, TimeoutError, OSError):
+            call(3, "thread/name/set", {"threadId": thread_id, "name": "Global voice"})
+        return thread_id
+    finally:
+        process.terminate()
+        try:
+            process.wait(5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+
+
+class NativeTerminal:
+    def __init__(self, command: list[str], voice_active: Callable[[], bool] | None = None):
+        self.master, slave = pty.openpty()
+        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 160, 0, 0))
+        try:
+            self.process = subprocess.Popen(command, stdin=slave, stdout=slave, stderr=slave,
+                                            env={**os.environ, "TERM": "xterm-256color"}, start_new_session=True)
+        finally:
+            os.close(slave)
+        self.condition = threading.Condition()
+        self.text = ""
+        self.voice_active = voice_active or (lambda: microphone_active(self.process.pid))
+        self.cancelled = threading.Event()
+        self.ready = False
+        self.reader = threading.Thread(target=self.read, daemon=True)
+        self.reader.start()
+
+    def read(self):
+        try:
+            while True:
+                chunk = os.read(self.master, 65536)
+                if not chunk:
+                    break
+                # Answer terminal capability probes; no terminal screen is stored.
+                if b"\x1b[6n" in chunk:
+                    os.write(self.master, b"\x1b[1;1R")
+                if b"\x1b[c" in chunk:
+                    os.write(self.master, b"\x1b[?1;2c")
+                with self.condition:
+                    self.text = (self.text + ANSI.sub("", chunk.decode(errors="replace")))[-65536:]
+                    self.ready = self.ready or bool(re.search(r"Context [0-9.]+% used", self.text))
+                    self.condition.notify_all()
+        except OSError:
+            pass
+        finally:
+            with self.condition:
+                self.condition.notify_all()
+
+    def toggle(self) -> dict:
+        with self.condition:
+            if not self.condition.wait_for(lambda: self.ready or self.cancelled.is_set() or self.process.poll() is not None, timeout=30):
+                raise TimeoutError("Codex is awaiting setup or its terminal failed to become ready")
+            if self.cancelled.is_set():
+                raise RuntimeError("Background Codex service is stopping")
+            if self.process.poll() is not None:
+                raise RuntimeError("Background Codex terminal exited")
+            desired = not self.voice_active()
+            os.write(self.master, VOICE_KEY)
+        deadline = time.monotonic() + 20
+        while not self.cancelled.is_set():
+            if self.process.poll() is not None:
+                raise RuntimeError("Background Codex terminal exited while toggling voice")
+            if self.voice_active() == desired:
+                return {"voice": "on" if desired else "off", "pid": self.process.pid}
+            if time.monotonic() >= deadline:
+                raise TimeoutError("Native voice toggle was not confirmed; inspect the background terminal before retrying")
+            self.cancelled.wait(.15)
+        raise RuntimeError("Background Codex service is stopping")
+
+    def close(self):
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(self.process.pid, signal.SIGTERM)
+        try:
+            self.process.wait(5)
+        except subprocess.TimeoutExpired:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(self.process.pid, signal.SIGKILL)
+            self.process.wait()
+        os.close(self.master)
+        self.reader.join(timeout=1)
+
+
+def paths() -> tuple[Path, Path]:
+    runtime = Path(os.environ.get("CODEX_VOICE_RUNTIME_DIR", os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))) / "codex-global-voice"
+    state = Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local/state"))) / "codex-global-voice/thread-id"
+    return runtime / "control.sock", state
+
+
+def serve():
+    control, state = paths()
+    control.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    lock = open(control.parent / "service.lock", "a")
+    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    workspace = Path(os.environ.get("CODEX_VOICE_WORKSPACE", str(Path.home() / ".local/share/chezmoi"))).resolve()
+    binary = codex_binary()
+    thread_id = str(uuid.UUID(state.read_text().strip())) if state.exists() else persist_thread(state, create_thread(binary, workspace))
+    terminal = NativeTerminal(tui_command(binary, workspace, thread_id))
+    stopped = threading.Event()
+    def stop(*_):
+        stopped.set()
+        terminal.cancelled.set()
+        with terminal.condition:
+            terminal.condition.notify_all()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(sig, stop)
+    control.unlink(missing_ok=True)
+    server = socket.socket(socket.AF_UNIX)
+    try:
+        server.bind(str(control))
+        os.chmod(control, 0o600)
+        server.listen(8)
+        server.settimeout(.5)
+        while not stopped.is_set() and terminal.process.poll() is None:
+            try:
+                connection, _ = server.accept()
+            except TimeoutError:
+                continue
+            with connection:
+                connection.settimeout(2)
+                try:
+                    data = b""
+                    while b"\n" not in data and len(data) < 1024:
+                        chunk = connection.recv(1024 - len(data))
+                        if not chunk:
+                            break
+                        data += chunk
+                    request = data.decode().strip()
+                    if request == "toggle":
+                        reply = terminal.toggle()
+                    elif request == "status":
+                        reply = {"voice": "on" if terminal.voice_active() else "off", "ready": terminal.ready, "pid": terminal.process.pid}
+                    elif request == "inspect":
+                        reply = {"terminal": terminal.text[-12000:]}
+                    else:
+                        raise ValueError("Expected toggle, status, or inspect")
+                    reply["threadId"] = thread_id
+                except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
+                    reply = {"error": str(error)}
+                with contextlib.suppress(OSError):
+                    connection.sendall((json.dumps(reply) + "\n").encode())
+    finally:
+        server.close()
+        control.unlink(missing_ok=True)
+        terminal.close()
+        lock.close()
+
+
+def request(command: str) -> dict:
+    control, _ = paths()
+    started = False
+    deadline = time.monotonic() + 40
+    while True:
+        connection = socket.socket(socket.AF_UNIX)
+        try:
+            connection.connect(str(control))
+            break
+        except (FileNotFoundError, ConnectionRefusedError):
+            connection.close()
+            if not started:
+                subprocess.run(["systemctl", "--user", "start", "codex-global-voice.service"], check=True)
+                started = True
+            elif subprocess.run(["systemctl", "--user", "is-failed", "--quiet", "codex-global-voice.service"],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+                raise RuntimeError("Background Codex service failed or is attached interactively; check systemctl --user status codex-global-voice")
+            if time.monotonic() >= deadline:
+                raise TimeoutError("Background Codex service did not start; check systemctl --user status codex-global-voice")
+            time.sleep(.1)
+    with connection:
+        connection.settimeout(55)
+        connection.sendall((command + "\n").encode())
+        data = b""
+        while b"\n" not in data:
+            chunk = connection.recv(65536)
+            if not chunk:
+                raise RuntimeError("Background Codex service disconnected")
+            data += chunk
+        return json.loads(data)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("command", choices=["toggle", "status", "inspect", "serve", "adopt", "attach"])
+    parser.add_argument("thread_id", nargs="?")
+    args = parser.parse_args()
+    try:
+        if args.command == "serve":
+            serve()
+            return
+        if args.command == "adopt":
+            _, state = paths()
+            if state.exists():
+                raise RuntimeError("Thread already configured; refusing to replace it")
+            print(persist_thread(state, args.thread_id or ""))
+            return
+        if args.command == "attach":
+            if not os.isatty(0):
+                raise RuntimeError("Run codex-global-voice attach in a terminal to resolve setup or approval prompts")
+            _, state = paths()
+            thread_id = str(uuid.UUID(state.read_text().strip()))
+            subprocess.run(["systemctl", "--user", "stop", "codex-global-voice.service"], check=True)
+            workspace = Path(os.environ.get("CODEX_VOICE_WORKSPACE", str(Path.home() / ".local/share/chezmoi"))).resolve()
+            # Release background voice ownership before attaching to this same thread.
+            control, _ = paths()
+            control.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            with open(control.parent / "service.lock", "a") as ownership:
+                fcntl.flock(ownership, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                raise SystemExit(subprocess.call(tui_command(codex_binary(), workspace, thread_id)))
+        reply = request(args.command)
+        print(json.dumps(reply))
+        if "error" in reply:
+            raise RuntimeError(reply["error"])
+        if args.command == "toggle" and shutil.which("notify-send"):
+            subprocess.run(["notify-send", "Codex global voice", "Voice " + reply["voice"]], check=False)
+    except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
+        if args.command != "serve" and shutil.which("notify-send"):
+            subprocess.run(["notify-send", "-u", "critical", "Codex global voice", str(error)], check=False)
+        parser.exit(1, f"codex-global-voice: {error}\n")
+
+
+if __name__ == "__main__":
+    main()
