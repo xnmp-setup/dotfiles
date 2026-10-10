@@ -7,6 +7,7 @@ import sys
 import tempfile
 import socket
 import threading
+import tomllib
 import unittest
 from unittest.mock import patch
 
@@ -41,11 +42,46 @@ class GlobalVoiceTests(unittest.TestCase):
             voice.persist_thread(state, identifier)
             self.assertEqual(state.read_text().strip(), identifier)
             self.assertEqual(state.stat().st_mode & 0o777, 0o600)
-            command = voice.tui_command("/bin/codex", Path(directory), state.read_text().strip())
+            with patch.object(voice, "persona_arguments", return_value=[]):
+                command = voice.tui_command("/bin/codex", Path(directory), state.read_text().strip())
             self.assertEqual(command[-2:], ["resume", identifier])
             with self.assertRaises(ValueError):
                 voice.persist_thread(state, "--last")
             self.assertEqual(state.read_text().strip(), identifier)
+
+    def test_voice_launch_sets_base_persona_with_a_quoted_path(self):
+        with tempfile.TemporaryDirectory(prefix='voice home "quoted"') as directory:
+            home = Path(directory)
+            persona = home / ".codex/global-voice"
+            persona.mkdir(parents=True)
+            (persona / "SOUL.md").write_text('Have opinions.\nJust help. 🌱\n')
+            (persona / "VOICE.md").write_text('Delegate execution to the backend.\n')
+            with patch.object(voice.Path, "home", return_value=home):
+                command = voice.tui_command("/bin/codex", Path("/tmp/inbox"), "thread-id")
+        overrides = [tomllib.loads(command[index + 1])
+                     for index, argument in enumerate(command) if argument == "-c"]
+        config = {key: value for override in overrides for key, value in override.items()}
+        self.assertEqual(config["model_instructions_file"], str(home / ".codex/global-voice/SOUL.md"))
+        self.assertEqual(config["experimental_realtime_ws_backend_prompt"],
+                         'Have opinions.\nJust help. 🌱\n\nDelegate execution to the backend.')
+        self.assertEqual(command[-2:], ["resume", "thread-id"])
+
+    def test_missing_or_empty_persona_prevents_launch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            persona = home / ".codex/global-voice"
+            persona.mkdir(parents=True)
+            with patch.object(voice.Path, "home", return_value=home):
+                with self.assertRaises(FileNotFoundError):
+                    voice.tui_command("/bin/codex", Path("/tmp/inbox"), "thread-id")
+                (persona / "SOUL.md").write_text('  \n')
+                (persona / "VOICE.md").write_text('Delegate execution.')
+                with self.assertRaises(RuntimeError):
+                    voice.tui_command("/bin/codex", Path("/tmp/inbox"), "thread-id")
+                (persona / "SOUL.md").write_text('Have opinions.')
+                (persona / "VOICE.md").write_text('  \n')
+                with self.assertRaises(RuntimeError):
+                    voice.tui_command("/bin/codex", Path("/tmp/inbox"), "thread-id")
 
     def test_malformed_audio_inventory_and_process_ids_fail_closed(self):
         for malformed in (None, [], "bad", 12):

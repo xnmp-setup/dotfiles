@@ -79,11 +79,24 @@ def microphone_active(owner_pid: int) -> bool:
     return owned_capture(objects, owner_pid, parents)
 
 
+def persona_arguments() -> list[str]:
+    directory = Path.home() / ".codex/global-voice"
+    soul_path = directory / "SOUL.md"
+    soul = soul_path.read_text().strip()
+    protocol = (directory / "VOICE.md").read_text().strip()
+    if not soul or not protocol:
+        raise RuntimeError("Global voice persona and voice protocol must not be empty")
+    return ["-c", "model_instructions_file=" + json.dumps(str(soul_path), ensure_ascii=False),
+            "-c", "experimental_realtime_ws_backend_prompt="
+            + json.dumps(soul + "\n\n" + protocol, ensure_ascii=False)]
+
+
 def tui_command(binary: str, workspace: Path, thread_id: str) -> list[str]:
     return [binary, "--no-alt-screen", "-C", str(workspace), "-c",
             "check_for_update_on_startup=false", "-c", 'service_tier="fast"',
             "-c", "features.fast_mode=true", "-c",
-            'tui.keymap.chat.toggle_voice="f8"', "resume", thread_id]
+            'tui.keymap.chat.toggle_voice="f8"', *persona_arguments(),
+            "resume", thread_id]
 
 
 def codex_binary() -> str:
@@ -109,7 +122,7 @@ def persist_thread(path: Path, thread_id: str) -> str:
 
 
 def create_thread(binary: str, workspace: Path) -> str:
-    process = subprocess.Popen([binary, "app-server", "--listen", "stdio://"],
+    process = subprocess.Popen([binary, *persona_arguments(), "app-server", "--listen", "stdio://"],
                                stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                stderr=subprocess.DEVNULL)
     buffer = b""
@@ -238,7 +251,7 @@ def serve():
     control.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     lock = open(control.parent / "service.lock", "a")
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    workspace = Path(os.environ.get("CODEX_VOICE_WORKSPACE", str(Path.home() / ".local/share/chezmoi"))).resolve()
+    workspace = Path(os.environ.get("CODEX_VOICE_WORKSPACE", str(Path.home() / "Documents/Inbox"))).resolve()
     binary = codex_binary()
     thread_id = str(uuid.UUID(state.read_text().strip())) if state.exists() else persist_thread(state, create_thread(binary, workspace))
     terminal = NativeTerminal(tui_command(binary, workspace, thread_id))
@@ -345,7 +358,7 @@ def main():
             _, state = paths()
             thread_id = str(uuid.UUID(state.read_text().strip()))
             subprocess.run(["systemctl", "--user", "stop", "codex-global-voice.service"], check=True)
-            workspace = Path(os.environ.get("CODEX_VOICE_WORKSPACE", str(Path.home() / ".local/share/chezmoi"))).resolve()
+            workspace = Path(os.environ.get("CODEX_VOICE_WORKSPACE", str(Path.home() / "Documents/Inbox"))).resolve()
             # Release background voice ownership before attaching to this same thread.
             control, _ = paths()
             control.parent.mkdir(mode=0o700, parents=True, exist_ok=True)

@@ -5,10 +5,22 @@ Codex voice in its dedicated **Global voice** thread. The background TUI and
 thread are reused. The thread ID lives in
 `~/.local/state/codex-global-voice/thread-id`; do not use `resume --last` here.
 
-The service uses `~/.local/share/chezmoi` as its workspace. Override
+The service uses `~/Documents/Inbox` as its workspace. Override
 `CODEX_VOICE_WORKSPACE` in a systemd service override to choose another workspace.
 Codex's existing authentication, model, audio device, and approval configuration
 remain in effect. This TUI enables Fast mode; only its voice key is remapped to F8.
+
+`~/.codex/global-voice/SOUL.md` supplies this session's base instructions via
+`model_instructions_file`, replacing Codex's built-in coding-agent persona.
+The helper sets this override for thread creation, background resume, and
+interactive attach. Other Codex launches keep their existing base instructions.
+Native spoken replies use a separate prompt. The helper injects the same persona
+there through `experimental_realtime_ws_backend_prompt`, followed by the native
+handoff protocol in `~/.codex/global-voice/VOICE.md` (pinned to Codex 0.162.0).
+Keep that protocol compatible when upgrading Codex.
+`~/Documents/Inbox/AGENTS.md` adds context for finding relevant personal materials.
+Apply these files and the helper with chezmoi, then restart the service after
+editing them so Codex reloads the instructions.
 
 Commands:
 

@@ -26,3 +26,7 @@
 # directory; the legacy root entrypoint made Windows load a split layout and
 # caused theme persistence to edit the wrong wezterm_appearance.lua.
 .wezterm.lua
+
+# The voice persona is now loaded as Codex's base instructions from its own
+# configuration directory, rather than read from the personal-materials inbox.
+Documents/Inbox/SOUL.md
