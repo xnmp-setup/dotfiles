@@ -8,7 +8,7 @@ thread are reused. The thread ID lives in
 The service uses `~/.local/share/chezmoi` as its workspace. Override
 `CODEX_VOICE_WORKSPACE` in a systemd service override to choose another workspace.
 Codex's existing authentication, model, audio device, and approval configuration
-remain in effect. Only this TUI's voice key is remapped to F8.
+remain in effect. This TUI enables Fast mode; only its voice key is remapped to F8.
 
 Commands:
 

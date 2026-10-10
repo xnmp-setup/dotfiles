@@ -81,7 +81,8 @@ def microphone_active(owner_pid: int) -> bool:
 
 def tui_command(binary: str, workspace: Path, thread_id: str) -> list[str]:
     return [binary, "--no-alt-screen", "-C", str(workspace), "-c",
-            "check_for_update_on_startup=false", "-c",
+            "check_for_update_on_startup=false", "-c", 'service_tier="fast"',
+            "-c", "features.fast_mode=true", "-c",
             'tui.keymap.chat.toggle_voice="f8"', "resume", thread_id]
 
 
