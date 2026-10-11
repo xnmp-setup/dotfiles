@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+# Toggle a region screen recording.
+#
+#   screen-record toggle   first call: pick a region, start recording
+#                          next call:  stop and copy the video to the clipboard
+#   screen-record status   prints "recording <start-epoch>" and exits 0 while
+#                          recording, otherwise prints nothing and exits 1
+#
+# The clipboard carries the file as a text/uri-list, so it pastes as an
+# attachment into apps and file managers. The file itself stays in
+# $SCREEN_RECORD_DIR (default ~/.cache/screen-record) because the clipboard
+# only references it; recordings older than a day are pruned on the next start.
+#
+# Wayland only. Needs `slurp` (region picker), one recorder (`wf-recorder` or
+# `wl-screenrec`) and `wl-copy` (wl-clipboard), which are outside this repo
+# (pacman / nixpkgs). A missing recorder or picker is reported in a
+# notification and nothing is recorded; a missing wl-copy still keeps the file
+# and says where it is.
+set -uo pipefail
+
+dir=${SCREEN_RECORD_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/screen-record}
+state=${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/screen-record
+pidfile=$state/pid
+filefile=$state/file
+startfile=$state/started
+logfile=$state/log
+
+notify() {
+  local urgency=normal
+  [[ ${2:-} == critical ]] && urgency=critical
+  if command -v notify-send >/dev/null 2>&1; then
+    notify-send -u "$urgency" -a screen-record "Screen recording" "$1" || true
+  fi
+  echo "screen-record: $1" >&2
+}
+
+# A pid is "ours" only while it is still a recorder; a recycled pid is not.
+recording_pid() {
+  local pid comm
+  [[ -r $pidfile ]] || return 1
+  pid=$(<"$pidfile")
+  [[ $pid =~ ^[0-9]+$ ]] || return 1
+  comm=$(<"/proc/$pid/comm") 2>/dev/null || return 1
+  case $comm in wf-recorder | wl-screenrec) echo "$pid" ;; *) return 1 ;; esac
+}
+
+# Percent-encode a path into a file:// URI (RFC 8089).
+file_uri() {
+  local LC_ALL=C path=$1 out= i c # bytes, so multibyte names encode as UTF-8
+  for ((i = 0; i < ${#path}; i++)); do
+    c=${path:i:1}
+    case $c in
+      [A-Za-z0-9/._~-]) out+=$c ;;
+      *) out+=$(printf '%%%02X' "'$c") ;;
+    esac
+  done
+  printf 'file://%s' "$out"
+}
+
+copy_to_clipboard() {
+  command -v wl-copy >/dev/null 2>&1 || return 1
+  printf '%s\r\n' "$(file_uri "$1")" | wl-copy --type text/uri-list
+}
+
+stop() {
+  local pid=$1 file i
+  file=$(<"$filefile")
+  kill -INT "$pid" 2>/dev/null
+  # The recorder finalises the container on SIGINT; the file is unplayable
+  # until it has exited, so wait for it rather than reporting early.
+  for ((i = 0; i < 100; i++)); do
+    kill -0 "$pid" 2>/dev/null || break
+    sleep 0.1
+  done
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -KILL "$pid" 2>/dev/null
+    notify "Recorder did not stop cleanly; ${file##*/} may be damaged" critical
+  elif copy_to_clipboard "$file"; then
+    notify "Copied ${file##*/} to the clipboard"
+  else
+    notify "Saved $file (wl-copy unavailable, not on the clipboard)" critical
+  fi
+  rm -f "$pidfile" "$startfile"
+}
+
+start() {
+  local recorder tool missing=() geometry file pid
+  [[ $(uname -s) == Linux && -n ${WAYLAND_DISPLAY:-} ]] \
+    || { notify "Needs a Wayland session" critical; return 1; }
+  command -v slurp >/dev/null 2>&1 || missing+=(slurp)
+  for tool in wf-recorder wl-screenrec; do
+    command -v "$tool" >/dev/null 2>&1 && { recorder=$tool; break; }
+  done
+  [[ -n ${recorder:-} ]] || missing+=(wf-recorder)
+  if ((${#missing[@]})); then
+    notify "Not installed: ${missing[*]}" critical
+    return 1
+  fi
+
+  # Cancelling the selection (Esc) is not an error worth a notification.
+  geometry=$(slurp) || return 0
+  [[ -n $geometry ]] || return 0
+
+  mkdir -p "$dir" "$state" || { notify "Cannot create $dir" critical; return 1; }
+  chmod 700 "$state" 2>/dev/null
+  find "$dir" -maxdepth 1 -name '*.mp4' -mtime +0 -delete 2>/dev/null
+  file="$dir/$(date +%Y-%m-%d_%H-%M-%S).mp4"
+  # Detached: it must outlive this call, which returns as soon as it is running.
+  # Job control matters: a plain background job of a non-interactive shell starts
+  # with SIGINT ignored, and SIGINT is how the recorder is told to finalise.
+  set -m
+  "$recorder" -g "$geometry" -f "$file" >"$logfile" 2>&1 </dev/null &
+  pid=$!
+  set +m
+  disown "$pid" 2>/dev/null
+  sleep 0.5
+  if ! kill -0 "$pid" 2>/dev/null; then
+    notify "Recorder failed to start: $(tail -n 1 "$logfile")" critical
+    return 1
+  fi
+  echo "$pid" >"$pidfile"
+  echo "$file" >"$filefile"
+  date +%s >"$startfile"
+  notify "Recording… press the shortcut again to stop"
+}
+
+case ${1:-toggle} in
+  toggle)
+    if pid=$(recording_pid); then stop "$pid"; else start; fi
+    ;;
+  status)
+    recording_pid >/dev/null || exit 1
+    echo "recording $(<"$startfile")"
+    ;;
+  *)
+    echo "usage: screen-record toggle|status" >&2
+    exit 2
+    ;;
+esac

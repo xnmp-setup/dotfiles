@@ -502,6 +502,10 @@ hl.bind(mainMod .. " + E",         hl.dsp.exec_cmd("~/.config/hypr/open-explorer
 -- focus on slurp's dead exclusive-grab layer after region selection: the window
 -- still looks focused but keys go nowhere until focus is cycled away and back.
 hl.bind(mainMod .. " + SHIFT + S", hl.dsp.exec_cmd("hyprshot -m region --clipboard-only; hyprctl dispatch focuscurrentorlast; hyprctl dispatch focuscurrentorlast"))
+-- Region screen recording: first press picks the area and starts, second stops
+-- and copies the video to the clipboard (status bar shows REC meanwhile). Needs
+-- slurp + wf-recorder (or wl-screenrec) + wl-copy; without them it only notifies.
+hl.bind(mainMod .. " + SHIFT + D", hl.dsp.exec_cmd("~/.local/bin/screen-record toggle"))
 hl.bind("CTRL + SHIFT + C",        hl.dsp.exec_cmd("~/Repos/obsidian-capture/hotkey/capture-linux.sh"))
 hl.bind("CTRL + ALT + U",          hl.dsp.exec_cmd("qs -c statusbar ipc call bar toggle"))
 hl.bind("ALT + F2",                hl.dsp.exec_cmd("qs -c statusbar ipc call bar renameCurrentWorkspace"))
