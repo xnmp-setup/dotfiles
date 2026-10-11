@@ -93,6 +93,10 @@ keybind = ctrl+t=new_tab
 # Subtle theme-colored flash on the new line when you press Enter.
 # (Additive glow on one row only — does not distort/sample fresh output,
 # so it won't make output appear late like the earlier radial version did.)
-custom-shader = /home/chong/.config/ghostty/shaders/command-line-flash.glsl
-custom-shader = /home/chong/.config/ghostty/shaders/agent-aurora.glsl
+custom-shader = {{ .chezmoi.homeDir }}/.config/ghostty/shaders/command-line-flash.glsl
+# Faint whole-window flash with a stronger edge glow on every Enter: at the
+# zsh prompt (zle-line-finish) and on Claude/Codex prompt submit (hooks), all
+# driven through ~/.local/bin/ghostty-pulse.
+custom-shader = {{ .chezmoi.homeDir }}/.config/ghostty/shaders/window-flash.glsl
+custom-shader = {{ .chezmoi.homeDir }}/.config/ghostty/shaders/agent-aurora.glsl
 custom-shader-animation = true

@@ -1,0 +1,136 @@
+#!/usr/bin/env zsh
+# ghostty-pulse — play the Enter flash envelope on a Ghostty terminal.
+#
+# Palette entry 254 is a private per-surface channel read by
+# command-line-flash.glsl and window-flash.glsl: red/green (#17e7) identify the
+# pulse protocol and blue carries the eased brightness. One envelope is ~320 ms
+# of OSC 4 writes, then OSC 104 restores the entry. While it plays, text drawn
+# in xterm color 254 takes the pulse color; nothing in this repo uses 254.
+#
+# Usage:
+#   ghostty-pulse TTY     play on TTY in the foreground (the caller detaches);
+#                         used by ghostty-command-pulse.zsh on every Enter
+#   ghostty-pulse --hook  Claude Code / Codex UserPromptSubmit hook: plays on
+#                         $GHOSTTY_AGENT_TTY, which the Ghostty agent wrapper
+#                         (ghostty-agent-integration.zsh) exports, then drains
+#                         the payload. A silent no-op outside that wrapper.
+#
+# The hook flashes only when the agent that fired it is the foreground job of
+# that terminal. Agents started from inside an agent (claude -p or codex exec
+# from a Bash tool, which runs in its own session) inherit the variable but are
+# never the terminal's foreground job, so they cannot flash their parent's
+# window; neither can a stray daemon holding a stale, reused pts path.
+#
+# One envelope plays per terminal. Each run claims the terminal in an owner
+# file; a run stops early only when another run verifiably owns it, and every
+# other exit path restores the entry, so the window can never stay tinted.
+
+zmodload zsh/zselect 2>/dev/null || exit 0
+
+# Writing to the terminal from a background job must not stop this process
+# when the user has `stty tostop` set.
+trap '' TTOU
+
+typeset -r MARKER='#17e7'
+typeset -ra FADE=(
+  ff ff ff ff ff fe fb f6 f0 e8 df d4 c9 bd b0 a3
+  95 87 78 6a 5c 4f 42 36 2b 20 17 0f 09 04 01 00
+)
+typeset -ra SHELLS=(sh bash dash zsh ksh)
+
+# A private, per-user directory: XDG_RUNTIME_DIR where it exists (systemd),
+# else a 0700 directory under TMPDIR (per-user on macOS) or /tmp, refused if
+# it is a symlink or owned by someone else.
+owner_dir() {
+  if [[ -n ${XDG_RUNTIME_DIR-} && -d $XDG_RUNTIME_DIR && -O $XDG_RUNTIME_DIR ]]; then
+    print -r -- "${XDG_RUNTIME_DIR%/}"
+    return 0
+  fi
+  local dir="${${TMPDIR:-/tmp}%/}/ghostty-pulse-$UID"
+  mkdir -m 700 -- "$dir" 2>/dev/null
+  [[ -d $dir && ! -L $dir && -O $dir ]] || return 1
+  print -r -- "$dir"
+}
+
+# True only when the owner file names a different run.
+superseded() {
+  local owner
+  IFS= read -r owner < "$1" 2>/dev/null && [[ -n $owner && $owner != $$ ]]
+}
+
+play() {
+  local tty=$1 fd amplitude dir owner_file restore=1
+  dir=$(owner_dir) || return 0
+  owner_file="$dir/ghostty-pulse.${tty//[^A-Za-z0-9]/_}"
+
+  { exec {fd}>>"$tty" } 2>/dev/null || return 0
+
+  # Atomic claim: a concurrent run never reads a half-written owner.
+  if ! { print -r -- $$ >| "$owner_file.$$" && mv -f -- "$owner_file.$$" "$owner_file" } 2>/dev/null
+  then
+    rm -f -- "$owner_file.$$" 2>/dev/null
+    return 0
+  fi
+
+  {
+    trap 'return 0' INT TERM HUP
+    print -rnu $fd -- $'\e]4;254;'"$MARKER"$'ff\e\\'
+    for amplitude in $FADE; do
+      zselect -t 1 2>/dev/null
+      if superseded "$owner_file"; then
+        restore=0
+        return 0
+      fi
+      print -rnu $fd -- $'\e]4;254;'"$MARKER$amplitude"$'\e\\'
+    done
+  } always {
+    # The owner file is left in place: removing it could race a newer run's
+    # claim. A newer owner restores the entry itself when it finishes.
+    (( restore )) && ! superseded "$owner_file" \
+      && print -rnu $fd -- $'\e]104;254\e\\' 2>/dev/null
+  }
+  return 0
+}
+
+# True when PID (or the process it runs under, skipping shells that only
+# launched the hook) is in the foreground process group of TTY.
+agent_in_foreground() {
+  local pid=$1 tty=${2#/dev/} comm hops
+  for hops in 1 2 3; do
+    comm=$(ps -o comm= -p "$pid" 2>/dev/null) || return 1
+    comm=${${comm## #}:t}
+    (( ${SHELLS[(Ie)${comm#-}]} )) || break
+    pid=$(ps -o ppid= -p "$pid" 2>/dev/null) || return 1
+    pid=${pid// /}
+  done
+  local -a fields
+  fields=(${=$(ps -o pgid=,tpgid=,tty= -p "$pid" 2>/dev/null)})
+  (( $#fields == 3 )) || return 1
+  # Linux ps prints "pts/7"; macOS prints "ttys007" or "s007".
+  [[ ${fields[1]} == ${fields[2]} && ${fields[3]#tty} == ${tty#tty} ]]
+}
+
+case ${1-} in
+  --hook)
+    if [[ -n ${GHOSTTY_AGENT_TTY-} ]]; then
+      # A separate process, so its $$ (the ownership token) is its own and
+      # the foreground check never delays the agent.
+      zsh -f -- "$0" --agent "$PPID" "$GHOSTTY_AGENT_TTY" </dev/null >/dev/null 2>&1 &!
+    fi
+    # Drain the hook payload so the agent never blocks writing a large prompt.
+    command cat >/dev/null 2>&1
+    exit 0
+    ;;
+  --agent)
+    (( $# == 3 )) || exit 2
+    agent_in_foreground "$2" "$3" && play "$3"
+    exit 0
+    ;;
+  ''|-*)
+    print -u2 "usage: ${0:t} TTY | --hook"
+    exit 2
+    ;;
+  *)
+    play "$1"
+    ;;
+esac

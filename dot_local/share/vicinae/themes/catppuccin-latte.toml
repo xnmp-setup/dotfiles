@@ -1,0 +1,29 @@
+[meta]
+version = 1
+name = "Catppuccin Latte"
+description = "Official Catppuccin Latte palette"
+variant = "light"
+
+[colors.core]
+background = "#eff1f5"
+foreground = "#4c4f69"
+secondary_background = "#e6e9ef"
+border = "#bcc0cc"
+accent = "#8839ef"
+
+[colors.accents]
+blue = "#1e66f5"
+green = "#40a02b"
+magenta = "#8839ef"
+orange = "#fe640b"
+purple = "#8839ef"
+red = "#d20f39"
+yellow = "#df8e1d"
+cyan = "#179299"
+
+[colors.list.item.selection]
+background = { name = "#ccd0da", opacity = 0.9 }
+secondary_background = "#dce0e8"
+
+[colors.list.item.hover]
+background = { name = "#bcc0cc", opacity = 0.45 }

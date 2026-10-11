@@ -33,4 +33,7 @@
 
 ## Misc
 - When testing whether hooks work, don't pipe text to the shell scripts. Instead run actual commands that would trigger the hooks.
+- Headed browser windows you launch for automation (Playwright, Puppeteer, screenshot or capture scripts, and any subagent's) must not appear on the user's screen; they're using the computer meanwhile. Pass this on to subagents that drive browsers.
+  - Under Hyprland (`$HYPRLAND_INSTANCE_SIGNATURE` set), launch Chrome with `--class=pw-capture` and add a runtime rule sending that class to a silent special workspace. The config is Lua, so `hyprctl keyword` is refused; use `hyprctl eval 'hl.window_rule({ name = "pw-capture", match = { class = "^pw-capture$" }, workspace = "special:pw-capture silent" })'`. The rule matches only that class, never the user's own browser, and is gone on the next Hyprland reload, so re-add it per session. WebGL keeps rendering in the hidden window.
+  - Elsewhere, prefer headless. If headed is required, use `xvfb-run` where it exists (note: software GL only), and otherwise ask before opening visible windows.
 - When giving the user file paths to open, use absolute paths (not `~/...`) or `file:///` links for long ones. Ghostty ctrl+click does not match paths broken by tilde/strikethrough rendering or line wrapping.

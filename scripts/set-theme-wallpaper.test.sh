@@ -189,11 +189,11 @@ mkdir -p "$test_root/.config/hypr" \
   "$test_root/bin"
 touch "$test_root/Pictures/Wallpaper/planet_with_sunrise.png"
 touch "$test_root/Pictures/Wallpaper/rapture-light-lagoon-tropical-reef.png"
-touch "$test_root/Pictures/Wallpaper/catppuccin-latte-alpine-morning-3440x1440.png"
 touch "$test_root/Pictures/Wallpaper/custom.photo.jpg"
 touch "$test_root/Pictures/Wallpaper/omarchy-kanagawa.jpg"
-touch "$test_root/Pictures/Wallpaper/omarchy-tokyo-night.webp"
-touch "$test_root/Pictures/Wallpaper/omarchy-hackerman.jpg"
+touch "$test_root/Pictures/Wallpaper/tokyo-night-cyberpunk-megastructure-3440x1440.png"
+touch "$test_root/Pictures/Wallpaper/catppuccin-latte-alpine-morning-3440x1440.png"
+touch "$test_root/Pictures/Wallpaper/hackerman-phosphor-rift-3440x1440.png"
 touch "$test_root/Pictures/Wallpaper/omarchy-ethereal.webp"
 touch "$test_root/Pictures/Wallpaper/marek-piwnicki-rwcONvax9qE-unsplash.jpg"
 touch "$test_root/Pictures/Wallpaper/haifoss-waterfall-iceland.png"
@@ -387,7 +387,7 @@ mv "$test_root/.local/share/chrome-themes/hackerman" \
   "$test_root/hackerman-chrome.missing"
 missing_assets=$(HOME="$test_root" PATH="$test_root/browser-bin" \
   desktop_theme_missing_assets hackerman Hackerman \
-  "$test_root/Pictures/Wallpaper/omarchy-hackerman.jpg")
+  "$test_root/Pictures/Wallpaper/hackerman-phosphor-rift-3440x1440.png")
 grep -Fq 'Chrome:' <<<"$missing_assets" \
   || fail "preflight ignored a Vivaldi installation without theme assets"
 mv "$test_root/hackerman-chrome.missing" \
@@ -508,12 +508,12 @@ assert_contains "$test_root/hyprctl.log" "hyprpaper wallpaper , $default_path, f
 # wallpaper and palette, and classifies every light theme correctly.
 omarchy_cases=(
   'rapture-light-lagoon|Rapture Light Lagoon|light|rapture-light-lagoon-tropical-reef.png|#14758f|#f0f9fd|#223d50|#c7e9f4'
-  'catppuccin-lavender|Catppuccin Lavender|light|catppuccin-latte-alpine-morning-3440x1440.png|#756681|#f8f8fb|#484453|#e9e7f0'
   'kanagawa|Kanagawa|dark|omarchy-kanagawa.jpg|#7e9cd8|#1f1f28|#dcd7ba|#363646'
-  'tokyo-night|Tokyo Night|dark|omarchy-tokyo-night.webp|#7aa2f7|#1a1b26|#a9b1d6|#292e42'
-  'hackerman|Hackerman|dark|omarchy-hackerman.jpg|#82fb9c|#0b0c16|#ddf7ff|#1f253a'
+  'tokyo-night|Tokyo Night|dark|tokyo-night-cyberpunk-megastructure-3440x1440.png|#7aa2f7|#1a1b26|#a9b1d6|#292e42'
+  'hackerman|Hackerman|dark|hackerman-phosphor-rift-3440x1440.png|#82fb9c|#0b0c16|#ddf7ff|#1f253a'
   'ethereal|Ethereal|dark|omarchy-ethereal.webp|#7d82d9|#060b1e|#ffcead|#252e56'
   'flexoki-light|Flexoki Light|light|marek-piwnicki-rwcONvax9qE-unsplash.jpg|#205ea6|#fffcf0|#100f0f|#cecdc3'
+  'catppuccin-lavender|Catppuccin Lavender|light|catppuccin-latte-alpine-morning-3440x1440.png|#756681|#f8f8fb|#484453|#e9e7f0'
   'ayu-light|Ayu Light|light|haifoss-waterfall-iceland.png|#1b82cc|#f8f9fa|#474c52|#c4d7f2'
   'osaka-jade|Osaka Jade|dark|omarchy-osaka-jade.webp|#509475|#111c18|#c1c497|#32473b'
   'artzen|Artzen|dark|omarchy-artzen.png|#da7a6f|#181c1f|#fdf9f8|#3b2b2c'
@@ -615,6 +615,7 @@ LUA
     ' "$zed_theme" >/dev/null \
     || fail "Zed palette drifted from Omarchy: $omarchy_slug"
 
+
   obsidian_theme="$repo_root/Vaults/Technical Vault/dot_obsidian/themes/$omarchy_title/theme.css"
   assert_contains "$obsidian_theme" "--background-primary: $omarchy_background"
   assert_contains "$obsidian_theme" "--text-normal: $omarchy_foreground"
@@ -667,7 +668,7 @@ fi
 cmp -s "$test_root/before-ambiguous.conf" "$test_root/.config/hypr/hyprpaper.conf" \
   || fail "an ambiguous theme prefix partially changed the Hyprpaper config"
 assert_contains "$test_root/ambiguous.out" \
-  "Theme prefix 'c' is ambiguous: catppuccin-lavender, catppuccin-mocha, cosmic-dusk"
+  "Theme prefix 'c' is ambiguous: catppuccin-latte, catppuccin-lavender, catppuccin-mocha, cosmic-dusk"
 
 run_set_theme cosmic-dusk --wallpaper custom.photo > "$test_root/override.out"
 override_path="$test_root/Pictures/Wallpaper/custom.photo.jpg"

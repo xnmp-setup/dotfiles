@@ -4,6 +4,7 @@
     "UserPromptSubmit": [
       {
         "hooks": [
+          { "type": "command", "command": "~/.local/bin/ghostty-pulse --hook" },
           { "type": "command", "command": "~/.local/bin/wezterm-agent-status working" },
           { "type": "command", "command": "~/.local/bin/agent-notify record codex" }
         ]

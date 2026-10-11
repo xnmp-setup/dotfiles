@@ -8,16 +8,17 @@ declare -A theme_wallpapers=(
   [everforest-dark-medium]="autumn-river-everforest-gruvbox.jpg"
   [gruvbox]="gruvbox_forest-4.png"
   [cosmic-dusk]="planet_with_sunrise.png"
-  [rapture]="river_4k.png"
+  [rapture]="lagoon-fantasy-flux-3-3440x1440.png"
   [rapture-light-lagoon]="rapture-light-lagoon-tropical-reef.png"
   [nord]="wp10368836-mac-os-yosemite-wallpapers.jpg"
   [ayu-mirage]="stephen-leonardi-eSNjFDbw_i4-unsplash.jpg"
   [horizon-dark]="starry-sky-desert-rocks.png"
-  [catppuccin-mocha]="yosemite-valley-winter.jpg"
+  [catppuccin-mocha]="yosemite-valley-winter-camera-original-3440x1440.png"
   [catppuccin-lavender]="catppuccin-latte-alpine-morning-3440x1440.png"
+  [catppuccin-latte]="catppuccin-latte-alpine-morning-3440x1440.png"
   [kanagawa]="omarchy-kanagawa.jpg"
-  [tokyo-night]="omarchy-tokyo-night.webp"
-  [hackerman]="omarchy-hackerman.jpg"
+  [tokyo-night]="tokyo-night-cyberpunk-megastructure-3440x1440.png"
+  [hackerman]="hackerman-phosphor-rift-3440x1440.png"
   [ethereal]="omarchy-ethereal.webp"
   [flexoki-light]="marek-piwnicki-rwcONvax9qE-unsplash.jpg"
   [ayu-light]="haifoss-waterfall-iceland.png"
@@ -43,6 +44,7 @@ declare -A theme_titles=(
 declare -A locally_managed_desktop_themes=(
   [rapture-light-lagoon]=1
   [catppuccin-lavender]=1
+  [catppuccin-latte]=1
   [kanagawa]=1
   [tokyo-night]=1
   [hackerman]=1
@@ -116,7 +118,11 @@ desktop_theme_missing_assets() {
 
   if [[ -f "$HOME/.config/zed/settings.json" ]]; then
     path="$HOME/.config/zed/themes/$slug.json"
-    [[ -f "$path" ]] || path="$HOME/.config/zed/themes/omarchy-extra.json"
+    if [[ "$slug" == catppuccin-latte ]]; then
+      path="$HOME/.config/zed/themes/catppuccin-mocha.json"
+    elif [[ ! -f "$path" ]]; then
+      path="$HOME/.config/zed/themes/omarchy-extra.json"
+    fi
     if [[ ! -f "$path" ]] || ! grep -Fq "\"name\": \"$title\"" "$path"; then
       printf 'Zed: %s\n' "$path"
     fi

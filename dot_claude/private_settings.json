@@ -1,5 +1,6 @@
 {
   "respectGitignore": false,
+  "remoteControlAtStartup": false,
   "cleanupPeriodDays": 365,
   "env": {
     "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "40",
@@ -41,6 +42,10 @@
     "UserPromptSubmit": [
       {
         "hooks": [
+          {
+            "type": "command",
+            "command": "~/.local/bin/ghostty-pulse --hook"
+          },
           {
             "type": "command",
             "command": "~/.local/bin/wezterm-agent-status working"

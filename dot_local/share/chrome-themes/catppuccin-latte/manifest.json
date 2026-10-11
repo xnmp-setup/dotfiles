@@ -1,0 +1,118 @@
+{
+  "manifest_version": 3,
+  "name": "Catppuccin Latte",
+  "version": "1.0.0",
+  "description": "Omarchy's Catppuccin Latte theme",
+  "theme": {
+    "colors": {
+      "frame": [
+        220,
+        224,
+        232
+      ],
+      "frame_inactive": [
+        230,
+        233,
+        239
+      ],
+      "frame_incognito": [
+        204,
+        208,
+        218
+      ],
+      "frame_incognito_inactive": [
+        188,
+        192,
+        204
+      ],
+      "toolbar": [
+        239,
+        241,
+        245,
+        0.98
+      ],
+      "background_tab": [
+        230,
+        233,
+        239,
+        0.96
+      ],
+      "tab_text": [
+        76,
+        79,
+        105
+      ],
+      "tab_background_text": [
+        92,
+        95,
+        119
+      ],
+      "bookmark_text": [
+        76,
+        79,
+        105
+      ],
+      "ntp_background": [
+        239,
+        241,
+        245
+      ],
+      "ntp_text": [
+        76,
+        79,
+        105
+      ],
+      "ntp_link": [
+        136,
+        57,
+        239
+      ],
+      "ntp_header": [
+        220,
+        224,
+        232
+      ],
+      "omnibox_background": [
+        230,
+        233,
+        239
+      ],
+      "omnibox_text": [
+        76,
+        79,
+        105
+      ],
+      "toolbar_button_icon": [
+        92,
+        95,
+        119
+      ],
+      "button_background": [
+        136,
+        57,
+        239
+      ]
+    },
+    "tints": {
+      "buttons": [
+        -1,
+        -1,
+        -1
+      ],
+      "frame_incognito": [
+        -1,
+        0.05,
+        0.75
+      ],
+      "frame_incognito_inactive": [
+        -1,
+        0.05,
+        0.7
+      ]
+    },
+    "properties": {
+      "ntp_background_alignment": "center",
+      "ntp_background_repeat": "no-repeat"
+    }
+  }
+}

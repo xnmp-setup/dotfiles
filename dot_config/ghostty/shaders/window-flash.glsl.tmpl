@@ -1,0 +1,65 @@
+// window-flash.glsl — brief whole-window flash on Enter
+//
+// Reads the same palette-254 pulse channel as command-line-flash.glsl, played
+// by ~/.local/bin/ghostty-pulse (see that script for the protocol) on every
+// Enter at the zsh prompt and on Claude/Codex prompt submit. Without it the
+// channel never carries the marker and this shader is a no-op.
+//
+// The flash is a faint uniform wash plus a stronger glow hugging the window
+// edges, so the frame "blinks" without obscuring text. It uses "over"
+// compositing rather than screen blending, so it reads on light themes as well
+// as dark ones.
+//
+// Its color is the desktop theme's accent (--accent in the theme's
+// tauri-explorer stylesheet, the same source as the Hyprland borders). chezmoi
+// writes THEME_ACCENT from the current theme, and set-theme.sh rewrites that
+// line on a theme switch before reloading Ghostty. A negative accent means the
+// theme has none, and the terminal theme's ANSI blue is used instead.
+{{- $desktopTheme := includeTemplate "current-theme.json.tmpl" . | fromJson }}
+{{- $cssName := printf "%s.css" $desktopTheme.slug }}
+{{- $accent := "" }}
+{{- range (list (joinPath .chezmoi.homeDir ".config/tauri-explorer/themes" $cssName) (joinPath .chezmoi.sourceDir "dot_config/tauri-explorer/themes" $cssName)) }}
+{{-   if and (not $accent) (stat .) }}
+{{-     $accent = include . | regexFind `--accent:\s*#[0-9a-fA-F]{6}` | regexFind "[0-9a-fA-F]{6}" | lower }}
+{{-   end }}
+{{- end }}
+
+const vec2 PULSE_MARKER = vec2(23.0, 231.0) / 255.0;
+const float SIGNAL_TOLERANCE = 0.5 / 255.0;
+{{ if $accent }}
+const vec3 THEME_ACCENT = vec3(0x{{ substr 0 2 $accent }}, 0x{{ substr 2 4 $accent }}, 0x{{ substr 4 6 $accent }}) / 255.0;
+{{- else }}
+const vec3 THEME_ACCENT = vec3(-1.0);
+{{- end }}
+
+// ---- tunables --------------------------------------------------------------
+const int   FALLBACK_INDEX = 4;     // ANSI entry used when the theme has no accent
+const float WASH           = 0.03;  // whole-window tint at peak
+const float EDGE           = 0.14;  // extra tint at the window edge at peak
+const float EDGE_WIDTH     = 26.0;  // pixels for the edge glow to fall off
+const float SNAP           = 1.6;   // >1 shortens the tail of the envelope
+// ---------------------------------------------------------------------------
+
+float pulseMarkerMatch(vec2 actual) {
+    vec2 delta = abs(actual - PULSE_MARKER);
+    return 1.0 - step(SIGNAL_TOLERANCE, max(delta.x, delta.y));
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 uv = fragCoord / iResolution.xy;
+    vec4 color = texture2D(iChannel0, uv);
+
+    vec3 pulseSignal = iPalette[254];
+    float envelope = pulseMarkerMatch(pulseSignal.rg)
+        * pow(pulseSignal.b, SNAP)
+        * float(iFocus > 0);
+
+    vec2 toEdge = min(fragCoord, iResolution.xy - fragCoord);
+    float edgeGlow = exp(-min(toEdge.x, toEdge.y) / EDGE_WIDTH);
+
+    float alpha = envelope * (WASH + EDGE * edgeGlow);
+    vec3 flashColor = THEME_ACCENT.r < 0.0 ? iPalette[FALLBACK_INDEX] : THEME_ACCENT;
+
+    color.rgb = mix(color.rgb, flashColor, clamp(alpha, 0.0, 1.0));
+    fragColor = color;
+}

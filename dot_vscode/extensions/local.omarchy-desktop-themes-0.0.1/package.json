@@ -83,6 +83,11 @@
         "path": "./themes/sunset-color-theme.json"
       },
       {
+        "label": "Catppuccin Latte",
+        "uiTheme": "vs",
+        "path": "./themes/catppuccin-latte-color-theme.json"
+      },
+      {
         "label": "Catppuccin Lavender",
         "uiTheme": "vs",
         "path": "./themes/catppuccin-lavender-color-theme.json"

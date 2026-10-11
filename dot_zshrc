@@ -780,14 +780,21 @@ set-theme() {
 # Deliberately shadows Orbiton's `o` binary (~/go/bin/o); run it by full path.
 if (( ! $+functions[o] )) && ! alias o >/dev/null 2>&1; then
   function o {
+    local opener
     if command -v open >/dev/null 2>&1; then
-      command open "$@"
+      opener=open
     elif command -v xdg-open >/dev/null 2>&1; then
-      command xdg-open "$@"
+      opener=xdg-open
     else
       echo "Neither open nor xdg-open is available." >&2
       return 1
     fi
+    # Hide failed Mesa renderer probes; retain all other diagnostics.
+    command "$opener" "$@" 2> >(awk '
+      /^(MESA-EGL: warning: )?pci id for fd [0-9]+: [[:xdigit:]]+:[[:xdigit:]]+, driver \(null\)$/ { next }
+      /^MESA-EGL: warning: (egl: failed to create dri2 screen|DRI2: failed to create screen)$/ { next }
+      { print; fflush() }
+    ' >&2)
   }
 fi
 

@@ -1,0 +1,11 @@
+#!/bin/sh
+# Local packaged build of ytmdesktop upstream PR #1828, commit 1fd978a.
+# https://github.com/ytmdesktop/ytmdesktop/pull/1828
+# This restores startup with YouTube's new miniplayer; the system package
+# remains available as a fallback until an official release includes the fix.
+set -eu
+fixed_app="${XDG_DATA_HOME:-$HOME/.local/share}/ytmdesktop-miniplayer/youtube-music-desktop-app"
+if [ -x "$fixed_app" ]; then
+    exec "$fixed_app" "$@"
+fi
+exec /usr/bin/youtube-music-desktop-app "$@"

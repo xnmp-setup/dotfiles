@@ -23,7 +23,11 @@ Options:
   -s SANDBOX    read-only | workspace-write | danger-full-access
                 (default: read-only). Governs what Codex may touch locally.
   -C DIR        working root for the agent (default: $PWD)
-  -t SECONDS    wall-clock timeout (default: 900)
+  -t SECONDS    hard wall-clock ceiling (default: 7200)
+  -i SECONDS    idle timeout: kill when the transcript has not grown for this
+                long (default: 1200). Codex logs a shell command only when it
+                finishes, so this must exceed the longest command it runs
+                (e.g. a full test suite).
   -w            enable live web search (Codex's native web_search tool)
   -f            full output: stream the whole transcript instead of only the
                 final message
@@ -60,18 +64,20 @@ model=""
 effort=""
 sandbox="read-only"
 workdir="$PWD"
-timeout_s=900
+timeout_s=7200
+idle_s=1200
 full=0
 search=0
 logfile=""
 
-while getopts ":m:e:s:C:t:l:wfh" opt; do
+while getopts ":m:e:s:C:t:i:l:wfh" opt; do
   case "$opt" in
     m) model="$OPTARG" ;;
     e) effort="$OPTARG" ;;
     s) sandbox="$OPTARG" ;;
     C) workdir="$OPTARG" ;;
     t) timeout_s="$OPTARG" ;;
+    i) idle_s="$OPTARG" ;;
     l) logfile="$OPTARG" ;;
     w) search=1 ;;
     f) full=1 ;;
@@ -135,12 +141,57 @@ trap 'rm -f "$last_msg"' EXIT
 : >"$logfile"
 echo "codex transcript: $logfile" >&2
 
-status=0
-timeout "${timeout_s}" "$codex_bin" "${args[@]}" -o "$last_msg" -- "$prompt" \
-  </dev/null >"$logfile" 2>&1 || status=$?
+# Watchdog in plain bash rather than GNU `timeout`, which macOS lacks. A
+# wall-clock cap alone killed productive runs mid-way through their final test
+# suite, so the primary guard is idleness (no transcript growth); the hard
+# ceiling only backstops a run that keeps logging without finishing.
+# Codex starts each shell command in its own session, so a process-group kill
+# misses them; walk the tree instead (pgrep -P works on Linux and macOS).
+descendants() {
+  local child
+  for child in $(pgrep -P "$1" 2>/dev/null); do
+    descendants "$child"
+    echo "$child"
+  done
+}
+kill_tree() {
+  local pids
+  pids="$(descendants "$codex_pid") $codex_pid"
+  kill -TERM $pids 2>/dev/null || true
+  for _ in 1 2 3 4 5 6; do kill -0 "$codex_pid" 2>/dev/null || break; sleep 5; done
+  kill -KILL $pids 2>/dev/null || true
+}
 
-if [ "$status" -eq 124 ]; then
-  echo "error: codex timed out after ${timeout_s}s" >&2
+"$codex_bin" "${args[@]}" -o "$last_msg" -- "$prompt" </dev/null >"$logfile" 2>&1 &
+codex_pid=$!
+
+started=$SECONDS
+last_growth=$SECONDS
+last_size=0
+reason=""
+while kill -0 "$codex_pid" 2>/dev/null; do
+  sleep 5
+  size=$(wc -c <"$logfile" 2>/dev/null | tr -d ' ')
+  if [ "${size:-0}" != "$last_size" ]; then
+    last_size=${size:-0}
+    last_growth=$SECONDS
+  fi
+  if [ $((SECONDS - started)) -ge "$timeout_s" ]; then
+    reason="hit the ${timeout_s}s hard ceiling"
+  elif [ $((SECONDS - last_growth)) -ge "$idle_s" ]; then
+    reason="was idle (no transcript output) for ${idle_s}s"
+  fi
+  if [ -n "$reason" ]; then
+    kill_tree
+    break
+  fi
+done
+
+status=0
+wait "$codex_pid" || status=$?
+
+if [ -n "$reason" ]; then
+  echo "error: codex $reason" >&2
   tail -n 40 "$logfile" >&2
   exit 124
 fi

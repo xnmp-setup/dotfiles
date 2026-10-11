@@ -1,101 +1,50 @@
-# Drive command-line-flash.glsl from an explicit, fixed-duration preexec event.
-# Palette entry 254 is a private per-surface channel: red/green identify the
-# pulse protocol and blue carries its eased brightness. The entry is restored
-# after exactly 320 ms, so instant commands and long-running commands receive
-# the same animation while editor navigation remains unrelated.
+# Flash the Ghostty window on every Enter at the prompt.
+#
+# ~/.local/bin/ghostty-pulse plays a fixed ~320 ms envelope on palette entry
+# 254, read by command-line-flash.glsl and window-flash.glsl; see that script
+# for the protocol. Claude Code and Codex trigger the same pulse from their
+# UserPromptSubmit hooks, since keys typed into a TUI never reach zsh.
+#
+# zle-line-finish runs whenever accept-line ends the line: commands, empty
+# lines and PS2 continuation lines alike, but not Ctrl-C or Ctrl-D. Because
+# the envelope has its own timing, command duration and output cannot shorten
+# or extend it. Without ghostty-pulse installed the hook does nothing.
 
-if (( ! ${+__GHOSTTY_COMMAND_PULSE_MARKER} )); then
-  typeset -gr __GHOSTTY_COMMAND_PULSE_MARKER='#17e7'
-fi
-if (( ! ${+__GHOSTTY_COMMAND_PULSE_FADE} )); then
-  typeset -gra __GHOSTTY_COMMAND_PULSE_FADE=(
-    ff ff ff ff ff fe fb f6 f0 e8 df d4 c9 bd b0 a3
-    95 87 78 6a 5c 4f 42 36 2b 20 17 0f 09 04 01 00
-  )
-fi
-if (( ! ${+__GHOSTTY_COMMAND_PULSE_PID} )); then
-  typeset -gi __GHOSTTY_COMMAND_PULSE_PID=0
-fi
+typeset -g __GHOSTTY_COMMAND_PULSE_BIN=$HOME/.local/bin/ghostty-pulse
 
-zmodload zsh/zselect
+autoload -Uz add-zle-hook-widget
+
+__ghostty_command_pulse_line_finish() {
+  [[ -n $TTY && -x $__GHOSTTY_COMMAND_PULSE_BIN ]] || return 0
+  "$__GHOSTTY_COMMAND_PULSE_BIN" "$TTY" </dev/null >/dev/null 2>&1 &!
+}
+zle -N __ghostty_command_pulse_line_finish
 
 __ghostty_command_pulse_write() {
-  emulate -L zsh
-
-  local sequence=$1
   if (( ${+_ghostty_fd} )); then
-    print -rnu "$_ghostty_fd" -- "$sequence"
+    print -rnu "$_ghostty_fd" -- "$1"
   else
-    print -rn -- "$sequence"
+    print -rn -- "$1"
   fi
-}
-
-__ghostty_command_pulse_reset_channel() {
-  emulate -L zsh
-  __ghostty_command_pulse_write $'\e]104;254\e\\'
-}
-
-__ghostty_command_pulse_stop_worker() {
-  emulate -L zsh
-
-  (( __GHOSTTY_COMMAND_PULSE_PID > 0 )) || return 0
-  kill "$__GHOSTTY_COMMAND_PULSE_PID" 2>/dev/null
-
-  # The worker is disowned to prevent interactive job notices, so zsh cannot
-  # wait(1) for it. Confirm termination before a replacement starts; this keeps
-  # an older envelope from writing over a newer command's pulse.
-  local attempt
-  for attempt in {1..10}; do
-    kill -0 "$__GHOSTTY_COMMAND_PULSE_PID" 2>/dev/null || break
-    zselect -t 1 >/dev/null 2>&1
-  done
-  __GHOSTTY_COMMAND_PULSE_PID=0
-}
-
-__ghostty_command_pulse_preexec() {
-  emulate -L zsh
-
-  # A repeated submission restarts the complete envelope without allowing an
-  # older worker to truncate the newer pulse.
-  __ghostty_command_pulse_stop_worker
-  __ghostty_command_pulse_write \
-    $'\e]4;254;'"$__GHOSTTY_COMMAND_PULSE_MARKER"$'ff\e\\'
-
-  (
-    emulate -L zsh
-    local amplitude
-    for amplitude in "$__GHOSTTY_COMMAND_PULSE_FADE[@]"; do
-      zselect -t 1 >/dev/null 2>&1
-      __ghostty_command_pulse_write \
-        $'\e]4;254;'"$__GHOSTTY_COMMAND_PULSE_MARKER$amplitude"$'\e\\'
-    done
-    __ghostty_command_pulse_reset_channel
-  ) &!
-  __GHOSTTY_COMMAND_PULSE_PID=$!
 }
 
 __ghostty_command_pulse_precmd() {
   emulate -L zsh
 
-  # Ghostty and other plugins append hooks during deferred initialization.
-  # Keep the semantic event writer last without coupling it to prompt rendering.
-  typeset -ga preexec_functions
-  preexec_functions=(
-    ${preexec_functions:#__ghostty_command_pulse_preexec}
-    __ghostty_command_pulse_preexec
-  )
+  # .zshrc runs `zle -N zle-line-finish` after this file is sourced, which
+  # replaces add-zle-hook-widget's dispatcher. Registering from precmd runs
+  # after all of .zshrc (and after any re-source of it); add-zle-hook-widget
+  # reinstalls a clobbered dispatcher, keeps the widget it found as the first
+  # hook, and ignores a duplicate registration.
+  add-zle-hook-widget zle-line-finish __ghostty_command_pulse_line_finish
 
-  # The old protocol used OSC 12 cursor colors. Always return the shell cursor
-  # to the active theme; the palette channel above now carries all pulse state.
+  # The previous protocol used OSC 12 cursor colors. Always return the shell
+  # cursor to the active theme in case a session still carries one.
   __ghostty_command_pulse_write $'\e]112\e\\'
 }
 
-# Re-sourcing is safe: stop an in-flight worker, clear its private channel, and
-# replace rather than duplicate hooks.
-__ghostty_command_pulse_stop_worker
-__ghostty_command_pulse_reset_channel
-__ghostty_command_pulse_write $'\e]112\e\\'
+# Re-sourcing is safe: drop the old preexec trigger and any stale channel
+# value, and replace rather than duplicate hooks.
 add-zsh-hook -d preexec __ghostty_command_pulse_preexec 2>/dev/null
-add-zsh-hook -d precmd __ghostty_command_pulse_precmd 2>/dev/null
-add-zsh-hook preexec __ghostty_command_pulse_preexec
+__ghostty_command_pulse_write $'\e]104;254\e\\'
 add-zsh-hook precmd __ghostty_command_pulse_precmd

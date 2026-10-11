@@ -172,7 +172,10 @@ __ghostty_run_agent() {
 
   local GHOSTTY_AGENT_STATE_DIR=$state_dir
   local GHOSTTY_AGENT_STATE=
-  export GHOSTTY_AGENT_STATE_DIR GHOSTTY_AGENT_STATE
+  # The pane's terminal device, for hooks that write to it directly
+  # (ghostty-pulse --hook). Claude's hooks have no controlling terminal.
+  local GHOSTTY_AGENT_TTY=$TTY
+  export GHOSTTY_AGENT_STATE_DIR GHOSTTY_AGENT_STATE GHOSTTY_AGENT_TTY
 
   local agent_kind=$executable
   local title

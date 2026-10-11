@@ -27,7 +27,8 @@ Options:
   level.
 - `-s SANDBOX` — `read-only` (default), `workspace-write`, `danger-full-access`.
 - `-C DIR` — working root. Default `$PWD`; pass the repo root explicitly when it matters.
-- `-t SECONDS` — timeout, default 900.
+- `-t SECONDS` — hard wall-clock ceiling, default 7200.
+- `-i SECONDS` — idle timeout (kill when the transcript stops growing), default 1200. Codex logs a shell command only when it finishes, so keep it above the longest command (e.g. a full test suite).
 - `-w` — enable live web search. Off by default; required for any task needing
   current information from the internet.
 - `-l FILE` — transcript log path. Default: `$TMPDIR/codex-run-<pid>.log`.
