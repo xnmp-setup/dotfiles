@@ -8,6 +8,3 @@ KillMode=control-group
 TimeoutStopSec=10
 UMask=0077
 Environment=CODEX_VOICE_WORKSPACE=%h/Documents/Inbox
-Environment=CODEX_VOICE_WAKE=1
-Restart=on-failure
-RestartSec=3

@@ -45,10 +45,7 @@ After applying the helper and unit with chezmoi, run
 `~/.local/bin/codex-global-voice toggle` in Hyprland. No enable-at-login step is
 required; the service starts on the first toggle.
 
-## Local wake phrase
-
-The optional local wake detector now uses a private app-server shared by the
-native TUI and the session-scoped controller. Manual-on remains continuous.
-Wake-origin conversations return off after 15 seconds of inactivity only when
-work and speech are idle; the hardware microphone settings are untouched.
-See [setup, privacy, live verification and rollback](codex-global-wake.md).
+Cmd/Super+Shift+V uses this same toggle command. If a headed Global voice
+owner is active, the socket targets it. If no owner is running, the command
+starts the headless service. A starting attached owner is waited for rather
+than launching a duplicate. There is no wake detector or automatic idle shutoff.
