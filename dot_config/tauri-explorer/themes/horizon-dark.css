@@ -5,7 +5,7 @@
  * All background values are opaque hex (no alpha) per operational rules.
  *
  * Key palette:
- *   bg: #1c1e26   panel: #232530   surface: #2e303e   border: #2e303e
+ *   bg: #1c1e26   panel: #1e2029   surface: #232530   border: #2e303e
  *   accent: #e95678   spectrum: red #e95678, orange #fab795, yellow #fab795, aqua #59e1e3, blue #26bbd9, purple #ee64ac
  */
 
@@ -31,10 +31,10 @@
   /* Background colors - dim/main/selection, opaque hex */
   --background-solid: #1c1e26;
   --background-mica: #1c1e26;
-  --background-acrylic: #202230;
-  --background-card: #232530;
-  --background-card-secondary: #2e303e;
-  --miller-bg: #20222d;
+  --background-acrylic: #1e2029;
+  --background-card: #1e2029;
+  --background-card-secondary: #232530;
+  --miller-bg: #1c1e26;
   --content-bg: #1c1e26;
 
   /* Surface/border colors - horizon border */
@@ -80,15 +80,8 @@
   --shadow-card: 0 1px 4px rgba(12, 13, 17, 0.35), 0 0 1px rgba(12, 13, 17, 0.25), 0 0 8px rgba(233, 86, 120, 0.03);
   --shadow-subtle: 0 1px 2px rgba(12, 13, 17, 0.25);
 
-  /* Mica overlay - rose/cyan wash */
-  --mica-overlay: linear-gradient(
-    170deg,
-    rgba(233, 86, 120, 0.03) 0%,
-    rgba(38, 187, 217, 0.03) 25%,
-    transparent 45%,
-    rgba(250, 183, 149, 0.02) 80%,
-    transparent 100%
-  );
+  /* Keep backgrounds aligned with the flat Horizon surfaces in other apps. */
+  --mica-overlay: none;
 
   /* Per-section opacity */
   --sidebar-opacity: 1;
