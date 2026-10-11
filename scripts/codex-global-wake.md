@@ -85,3 +85,21 @@ installed private runtime unless `CODEX_VOICE_WAKE=0` is explicitly set.
 The Silero model is distributed under the accompanying upstream license and
 verified against the checksum in `speech_detector.py`. Whisper weights, cache
 and venv are runtime artifacts and are not committed to the dotfiles repository.
+
+## Latency follow-up (2026-10-12)
+
+Wake turns now begin when the realtime backend acknowledges startup, overlapping
+request processing with the remaining WebRTC/device handshake. The callback
+submits once; an uncertain acknowledgement is never retried. No dormant
+conversation audio is sent to keep a remote session warm.
+
+The dedicated voice thread defaults to medium reasoning for faster interaction.
+`CODEX_VOICE_REASONING_EFFORT=high` restores the previous reasoning budget.
+This is a quality/latency tradeoff and changes the dedicated thread's subsequent
+turn setting; other threads are unaffected.
+
+Content-free wake-stage logs report realtime readiness, backend start/completion,
+voice readiness and first speech. One short live test spoke at 5.6 seconds after
+the recognized wake instruction (plus local endpointing/ASR time); this is a
+single observation, not a response-time guarantee. Backend work began at1.3s
+and voice devices were ready at2.1s. Automatic sleep followed the spoken reply.

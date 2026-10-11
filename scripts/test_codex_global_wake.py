@@ -7,6 +7,18 @@ from unittest.mock import patch
 from wake_runtime import WakeState, Activity, instruction, meter, TerminalMeter, Rpc
 
 class Tests(unittest.TestCase):
+    def test_startup_readiness_is_thread_scoped_and_reset_between_wakes(self):
+        a=Activity('ours')
+        a.event({'method':'thread/realtime/started','params':{'threadId':'other','realtimeSessionId':'foreign'}})
+        self.assertFalse(a.realtime_ready.is_set())
+        a.state.mode='wake'
+        a.event({'method':'thread/realtime/started','params':{'threadId':'ours','realtimeSessionId':'current'}})
+        self.assertTrue(a.realtime_ready.is_set())
+        a.event({'method':'thread/realtime/error','params':{'threadId':'ours'}})
+        self.assertFalse(a.state.can_sleep(1e10))
+        a.reset()
+        self.assertFalse(a.realtime_ready.is_set())
+
     def test_unknown_never_sleeps(self):
         s=WakeState();s.mode='wake';s.last_input=0
         self.assertFalse(s.can_sleep(100))

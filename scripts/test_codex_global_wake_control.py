@@ -23,7 +23,14 @@ class Terminal:
         self.ready=True;self.cancelled=threading.Event();self.on=False
         self.meter_state=None;self.meter_time=0;self.text=''
     def voice_active(self):return self.on
-    def toggle(self):self.on=not self.on;return {'voice':'on' if self.on else 'off','pid':self.process.pid}
+    def toggle(self,on_start=None):
+        desired=not self.on
+        if desired and on_start:
+            tid=next(p['threadId'] for m,p in Rpc.instance.calls if m=='thread/resume')
+            Rpc.instance.events.put({'method':'thread/realtime/started','params':{'threadId':tid,'realtimeSessionId':'test'}})
+            on_start()
+        self.on=desired
+        return {'voice':'on' if self.on else 'off','pid':self.process.pid}
     def refresh_meter(self):pass
     def close(self):self.process.terminate()
 
@@ -32,6 +39,7 @@ class Rpc:
     def __init__(self,*_):Rpc.instance=self;self.calls=[];self.events=Queue();self.closed=False
     def call(self,method,params):
         self.calls.append((method,params))
+        if method=='turn/start': self.submitted_before_capture=not Terminal.instance.on
         return {'turn': {'id': 'work-1'}} if method == 'turn/start' else {}
     def close(self):self.closed=True
 
@@ -59,7 +67,9 @@ class Test(unittest.TestCase):
                     self.assertFalse(send({'command':'wake','text':'duplicate'})['accepted'])
                     calls=[x for x in Rpc.instance.calls if x[0]=='turn/start']
                     self.assertEqual(len(calls),1)
+                    self.assertTrue(Rpc.instance.submitted_before_capture)
                     self.assertEqual(calls[0][1]['threadId'],tid)
+                    self.assertEqual(calls[0][1]['effort'],'medium')
                     self.assertIn('<input>!Please say hello</input>',calls[0][1]['input'][0]['text'])
                     self.assertEqual(calls[0][1]['input'][0]['text_elements'],[])
                     self.assertEqual(send('status')['wakeState']['turns'],1)

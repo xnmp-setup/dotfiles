@@ -23,11 +23,18 @@ class WakeState:
         self.healthy = False
         self.last_input = time.monotonic()
         self.session_id = None
+        self.wake_started = None
+        self.reported_stages = set()
 
     def can_sleep(self, now):
         return (self.mode == 'wake' and self.healthy and not self.pending and
                 not self.turns and not self.items and not self.playing and
                 now - self.last_input >= 15)
+
+    def report_stage(self, stage):
+        if self.wake_started is not None and stage not in self.reported_stages:
+            self.reported_stages.add(stage)
+            print(f"wake-stage stage={stage} ms={round((time.monotonic()-self.wake_started)*1000)}", flush=True)
 
     def activity(self):
         self.last_input = time.monotonic()
@@ -118,12 +125,14 @@ class Activity:
         self.active_turns = set()
         self.finished_turns = set()
         self.finished_order = deque(maxlen=4096)
+        self.realtime_ready = threading.Event()
         self.reset()
 
     def reset(self):
         # Native work ownership outlives listening mode changes. In particular,
         # manual off/on must not make an already running job invisible.
         with self.lock:
+            self.realtime_ready.clear()
             self.state = WakeState()
             self.state.turns = self.active_turns
             self.state.finished_turns = self.finished_turns
@@ -140,14 +149,18 @@ class Activity:
         p = event.get('params', {})
         if p.get('threadId') != self.thread_id:
             return
+        method = event.get('method')
+        if method == 'thread/realtime/started':
+            self.realtime_ready.set()
         with self.lock:
-            method = event.get('method')
             if method == 'turn/started':
+                self.state.report_stage('backend_started')
                 if p['turn']['id'] not in self.finished_turns:
                     self.active_turns.add(p['turn']['id'])
                 self.state.pending.discard('request')
                 return
             if method == 'turn/completed':
+                self.state.report_stage('backend_completed')
                 self.finish(p['turn']['id'])
                 self.state.activity()
                 return
@@ -172,6 +185,7 @@ class Activity:
                     self.state.activity()
                 elif item.get('role') == 'assistant':
                     if method.endswith('/started'):
+                        self.state.report_stage('speech_started')
                         self.state.items.add(item['id'])
                     else:
                         self.state.items.discard(item['id'])
