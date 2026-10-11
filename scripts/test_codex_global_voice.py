@@ -163,6 +163,41 @@ while True:
                 self.assertFalse(thread.is_alive())
             self.assertEqual(requests, [["systemctl", "--user", "start", "codex-global-voice.service"]])
 
+    def test_attached_terminal_is_proxied_and_still_toggleable_from_the_socket(self):
+        """Headed session: typing reaches the TUI, output reaches the real
+        terminal, and a toggle presses the voice key inside the same TUI."""
+        import pty, subprocess, select, time, json, textwrap
+        harness = textwrap.dedent(f"""
+            import importlib.machinery, importlib.util, json, sys
+            loader = importlib.machinery.SourceFileLoader("v", {str(HELPER)!r})
+            spec = importlib.util.spec_from_loader(loader.name, loader)
+            v = importlib.util.module_from_spec(spec); loader.exec_module(v)
+            states = iter([False, True])
+            t = v.NativeTerminal(["/bin/cat"], voice_active=lambda: next(states), interactive=True)
+            t.ready = True
+            reply = t.toggle()
+            sys.stdout.write("REPLY" + json.dumps(reply) + "\\n"); sys.stdout.flush()
+            import time; time.sleep(.5); t.close()
+        """)
+        outer, inner = pty.openpty()
+        process = subprocess.Popen([sys.executable, "-c", harness], stdin=inner, stdout=inner,
+                                   stderr=subprocess.PIPE, start_new_session=True)
+        os.close(inner)
+        os.write(outer, b"hello\n")
+        seen = b""
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline and not (b"hello" in seen and b"[19~" in seen and b"REPLY" in seen):
+            if select.select([outer], [], [], .2)[0]:
+                try:
+                    seen += os.read(outer, 4096)
+                except OSError:
+                    break
+        process.wait(10)
+        os.close(outer)
+        self.assertIn(b"hello", seen)
+        self.assertIn(b"[19~", seen)
+        self.assertIn(b'"voice": "on"', seen)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -341,6 +341,9 @@ alias cx="codex"
 alias cxl="codex --model gpt-6-luna -c 'model_reasoning_effort=\"high\"'"
 alias cxr="codex resume"
 alias cxc="codex resume --last"
+# Headed global voice session; Super+Shift+V then toggles voice inside it.
+alias v="codex-global-voice attach"
+alias voice="codex-global-voice attach"
 alias cc-dsp='docker sandbox run claude . --dangerously-skip-permissions'
 alias m="micro"
 alias cc-box='~/Repos/claude-docker-base/run_cc-box.sh'

@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""Toggle native Codex voice in one private, persistent background TUI.
+"""Toggle native Codex voice in one private, persistent TUI.
 
 The CLI owns audio transport. This helper only owns its terminal and lifecycle;
-it never sends keystrokes to an existing terminal or changes authentication.
+it never sends keystrokes to a terminal it did not start or changes
+authentication. The TUI runs headless under the systemd service, or headed
+inside a terminal via `attach`; both answer the same control socket, so
+`toggle` reaches whichever one exists.
 """
 from __future__ import annotations
 
@@ -23,6 +26,7 @@ import subprocess
 import termios
 import threading
 import time
+import tty
 import uuid
 from typing import Callable
 
@@ -169,9 +173,14 @@ def create_thread(binary: str, workspace: Path) -> str:
 
 
 class NativeTerminal:
-    def __init__(self, command: list[str], voice_active: Callable[[], bool] | None = None):
+    def __init__(self, command: list[str], voice_active: Callable[[], bool] | None = None,
+                 interactive: bool = False):
+        # Interactive: this process's own terminal is the screen and keyboard,
+        # and the pty is a proxy so the control socket can still press the key.
+        self.interactive = interactive
+        self.saved_attributes = None
         self.master, slave = pty.openpty()
-        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 160, 0, 0))
+        fcntl.ioctl(slave, termios.TIOCSWINSZ, self.window_size())
         try:
             self.process = subprocess.Popen(command, stdin=slave, stdout=slave, stderr=slave,
                                             env={**os.environ, "TERM": "xterm-256color"}, start_new_session=True)
@@ -184,6 +193,31 @@ class NativeTerminal:
         self.ready = False
         self.reader = threading.Thread(target=self.read, daemon=True)
         self.reader.start()
+        if interactive:
+            self.saved_attributes = termios.tcgetattr(0)
+            tty.setraw(0)
+            threading.Thread(target=self.forward_input, daemon=True).start()
+
+    def window_size(self) -> bytes:
+        if self.interactive:
+            with contextlib.suppress(OSError):
+                return fcntl.ioctl(0, termios.TIOCGWINSZ, b"\0" * 8)
+        return struct.pack("HHHH", 40, 160, 0, 0)
+
+    def resize(self):
+        with contextlib.suppress(OSError):
+            fcntl.ioctl(self.master, termios.TIOCSWINSZ, self.window_size())
+
+    def forward_input(self):
+        try:
+            while not self.cancelled.is_set() and self.process.poll() is None:
+                if select.select([0], [], [], .2)[0]:
+                    data = os.read(0, 65536)
+                    if not data:
+                        return
+                    os.write(self.master, data)
+        except OSError:
+            pass
 
     def read(self):
         try:
@@ -191,11 +225,15 @@ class NativeTerminal:
                 chunk = os.read(self.master, 65536)
                 if not chunk:
                     break
-                # Answer terminal capability probes; no terminal screen is stored.
-                if b"\x1b[6n" in chunk:
-                    os.write(self.master, b"\x1b[1;1R")
-                if b"\x1b[c" in chunk:
-                    os.write(self.master, b"\x1b[?1;2c")
+                if self.interactive:
+                    # The real terminal answers capability probes via our input pump.
+                    os.write(1, chunk)
+                else:
+                    # Answer terminal capability probes; no terminal screen is stored.
+                    if b"\x1b[6n" in chunk:
+                        os.write(self.master, b"\x1b[1;1R")
+                    if b"\x1b[c" in chunk:
+                        os.write(self.master, b"\x1b[?1;2c")
                 with self.condition:
                     self.text = (self.text + ANSI.sub("", chunk.decode(errors="replace")))[-65536:]
                     self.ready = self.ready or bool(re.search(r"Context [0-9.]+% used", self.text))
@@ -228,6 +266,9 @@ class NativeTerminal:
         raise RuntimeError("Background Codex service is stopping")
 
     def close(self):
+        self.cancelled.set()
+        if self.saved_attributes is not None:
+            termios.tcsetattr(0, termios.TCSADRAIN, self.saved_attributes)
         with contextlib.suppress(ProcessLookupError):
             os.killpg(self.process.pid, signal.SIGTERM)
         try:
@@ -246,7 +287,7 @@ def paths() -> tuple[Path, Path]:
     return runtime / "control.sock", state
 
 
-def serve():
+def serve(interactive: bool = False):
     control, state = paths()
     control.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     lock = open(control.parent / "service.lock", "a")
@@ -254,15 +295,18 @@ def serve():
     workspace = Path(os.environ.get("CODEX_VOICE_WORKSPACE", str(Path.home() / "Documents/Inbox"))).resolve()
     binary = codex_binary()
     thread_id = str(uuid.UUID(state.read_text().strip())) if state.exists() else persist_thread(state, create_thread(binary, workspace))
-    terminal = NativeTerminal(tui_command(binary, workspace, thread_id))
+    terminal = NativeTerminal(tui_command(binary, workspace, thread_id), interactive=interactive)
     stopped = threading.Event()
     def stop(*_):
         stopped.set()
         terminal.cancelled.set()
         with terminal.condition:
             terminal.condition.notify_all()
-    for sig in (signal.SIGTERM, signal.SIGINT):
+    # SIGHUP: the terminal hosting an attached session was closed.
+    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
         signal.signal(sig, stop)
+    if interactive:
+        signal.signal(signal.SIGWINCH, lambda *_: terminal.resize())
     control.unlink(missing_ok=True)
     server = socket.socket(socket.AF_UNIX)
     try:
@@ -353,18 +397,14 @@ def main():
             print(persist_thread(state, args.thread_id or ""))
             return
         if args.command == "attach":
-            if not os.isatty(0):
-                raise RuntimeError("Run codex-global-voice attach in a terminal to resolve setup or approval prompts")
-            _, state = paths()
-            thread_id = str(uuid.UUID(state.read_text().strip()))
-            subprocess.run(["systemctl", "--user", "stop", "codex-global-voice.service"], check=True)
-            workspace = Path(os.environ.get("CODEX_VOICE_WORKSPACE", str(Path.home() / "Documents/Inbox"))).resolve()
-            # Release background voice ownership before attaching to this same thread.
-            control, _ = paths()
-            control.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-            with open(control.parent / "service.lock", "a") as ownership:
-                fcntl.flock(ownership, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                raise SystemExit(subprocess.call(tui_command(codex_binary(), workspace, thread_id)))
+            if not os.isatty(0) or not os.isatty(1):
+                raise RuntimeError("Run codex-global-voice attach in a terminal")
+            # Replace any headless session: both own the same thread and socket.
+            if shutil.which("systemctl"):
+                subprocess.run(["systemctl", "--user", "stop", "codex-global-voice.service"],
+                               check=False, stderr=subprocess.DEVNULL)
+            serve(interactive=True)
+            return
         reply = request(args.command)
         print(json.dumps(reply))
         if "error" in reply:
@@ -372,7 +412,7 @@ def main():
         if args.command == "toggle" and shutil.which("notify-send"):
             subprocess.run(["notify-send", "Codex global voice", "Voice " + reply["voice"]], check=False)
     except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
-        if args.command != "serve" and shutil.which("notify-send"):
+        if args.command not in ("serve", "attach") and shutil.which("notify-send"):
             subprocess.run(["notify-send", "-u", "critical", "Codex global voice", str(error)], check=False)
         parser.exit(1, f"codex-global-voice: {error}\n")
 

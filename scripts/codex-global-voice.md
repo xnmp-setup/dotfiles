@@ -13,7 +13,7 @@ remain in effect. This TUI enables Fast mode; only its voice key is remapped to 
 `~/.codex/global-voice/SOUL.md` supplies this session's base instructions via
 `model_instructions_file`, replacing Codex's built-in coding-agent persona.
 The helper sets this override for thread creation, background resume, and
-interactive attach. Other Codex launches keep their existing base instructions.
+headed attach. Other Codex launches keep their existing base instructions.
 Native spoken replies use a separate prompt. The helper injects the same persona
 there through `experimental_realtime_ws_backend_prompt`, followed by the native
 handoff protocol in `~/.codex/global-voice/VOICE.md` (pinned to Codex 0.162.0).
@@ -26,19 +26,21 @@ Commands:
 
 - `codex-global-voice status`: inspect microphone state and persistent thread ID.
 - `codex-global-voice inspect`: show recent terminal output to diagnose setup.
-- `codex-global-voice attach`: run from a terminal to stop the background service
-  and resume the exact same thread interactively for setup or approvals. Exit
-  Codex afterward; the next global toggle resumes the background terminal.
-  While attached, the hotkey cannot start a second background TUI.
+- `codex-global-voice attach`: run from any terminal (e.g. the F9 Ghostty
+  drop-down) to stop the background service and run the same thread headed in
+  that terminal. The TUI sits behind the same control socket, so Ctrl+Alt+V
+  toggles voice in the visible session instead of a hidden one. Quit Codex or
+  close the terminal to end it; the next toggle starts the headless service
+  again. Only one session owns the thread at a time.
 - `systemctl --user stop codex-global-voice`: stop the private terminal and voice.
 
 Errors and confirmed microphone transitions produce desktop notifications.
-The helper confirms only its own native capture streams. It never sends keys
-to another terminal, uses another active conversation, or implements its own
-voice service. The small recent terminal buffer stays in memory; audio is handled
+The helper confirms only its own native capture streams. It only presses keys
+in the TUI it started (headless or attached); it never sends keys to another
+terminal, uses another active conversation, or implements its own voice service. The small recent terminal buffer stays in memory; audio is handled
 entirely by the installed Codex CLI.
 
 After applying the helper and unit with chezmoi, run
-`systemctl --user daemon-reload`. Bind Command/Super+Shift+V to
+`systemctl --user daemon-reload`. Bind Ctrl+Alt+V and Command/Super+Shift+V to
 `~/.local/bin/codex-global-voice toggle` in Hyprland. No enable-at-login step is
 required; the service starts on the first toggle.
