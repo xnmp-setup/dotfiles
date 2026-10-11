@@ -44,3 +44,11 @@ After applying the helper and unit with chezmoi, run
 `systemctl --user daemon-reload`. Bind Ctrl+Alt+V and Command/Super+Shift+V to
 `~/.local/bin/codex-global-voice toggle` in Hyprland. No enable-at-login step is
 required; the service starts on the first toggle.
+
+## Local wake phrase
+
+The optional local wake detector now uses a private app-server shared by the
+native TUI and the session-scoped controller. Manual-on remains continuous.
+Wake-origin conversations return off after 15 seconds of inactivity only when
+work and speech are idle; the hardware microphone settings are untouched.
+See [setup, privacy, live verification and rollback](codex-global-wake.md).

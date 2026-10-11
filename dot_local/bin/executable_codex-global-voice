@@ -27,8 +27,18 @@ import termios
 import threading
 import time
 import tty
+import sys
 import uuid
 from typing import Callable
+
+WAKE_ENABLED = os.environ.get('CODEX_VOICE_WAKE') == '1'
+WAKE_LIB = Path.home() / '.local/share/codex-global-wake'
+if WAKE_ENABLED:
+    python = WAKE_LIB / 'venv/bin/python'
+    if Path(sys.executable).absolute() != python.absolute():
+        os.execv(str(python), [str(python), str(Path(__file__).absolute()), *sys.argv[1:]])
+    sys.path.insert(0, str(WAKE_LIB))
+    from wake_runtime import Activity, Rpc, WakeState, TerminalMeter
 
 VOICE_KEY = b"\x1b[19~"  # F8, explicitly mapped for this TUI invocation only.
 ANSI = re.compile(r"\x1b\[[0-9;?<>]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")
@@ -191,6 +201,10 @@ class NativeTerminal:
         self.voice_active = voice_active or (lambda: microphone_active(self.process.pid))
         self.cancelled = threading.Event()
         self.ready = False
+        self.meter_state = None
+        self.meter_time = 0.0
+        self.meter_columns = 160
+        self.meter_reader = TerminalMeter() if WAKE_ENABLED else None
         self.reader = threading.Thread(target=self.read, daemon=True)
         self.reader.start()
         if interactive:
@@ -207,6 +221,18 @@ class NativeTerminal:
     def resize(self):
         with contextlib.suppress(OSError):
             fcntl.ioctl(self.master, termios.TIOCSWINSZ, self.window_size())
+
+    def refresh_meter(self):
+        # Force a fresh repaint in this private, headless PTY only. Stable zero
+        # meters otherwise generate no terminal bytes. A stalled UI stays stale
+        # and consequently cannot authorize automatic sleep.
+        if not self.interactive:
+            self.meter_columns = 161 if self.meter_columns == 160 else 160
+            with contextlib.suppress(OSError):
+                fcntl.ioctl(self.master, termios.TIOCSWINSZ,
+                            struct.pack('HHHH', 40, self.meter_columns, 0, 0))
+                self.meter_reader.resize(self.meter_columns)
+                os.killpg(self.process.pid, signal.SIGWINCH)
 
     def forward_input(self):
         try:
@@ -237,6 +263,11 @@ class NativeTerminal:
                 with self.condition:
                     self.text = (self.text + ANSI.sub("", chunk.decode(errors="replace")))[-65536:]
                     self.ready = self.ready or bool(re.search(r"Context [0-9.]+% used", self.text))
+                    if WAKE_ENABLED:
+                        levels = self.meter_reader.feed(chunk)
+                        if levels is not None:
+                            self.meter_state = levels
+                            self.meter_time = time.monotonic()
                     self.condition.notify_all()
         except OSError:
             pass
@@ -295,7 +326,47 @@ def serve(interactive: bool = False):
     workspace = Path(os.environ.get("CODEX_VOICE_WORKSPACE", str(Path.home() / "Documents/Inbox"))).resolve()
     binary = codex_binary()
     thread_id = str(uuid.UUID(state.read_text().strip())) if state.exists() else persist_thread(state, create_thread(binary, workspace))
-    terminal = NativeTerminal(tui_command(binary, workspace, thread_id), interactive=interactive)
+    app_server = None
+    rpc = None
+    activity = None
+    command = tui_command(binary, workspace, thread_id)
+    if WAKE_ENABLED:
+        endpoint = control.parent / 'app-server.sock'
+        endpoint.unlink(missing_ok=True)
+        app_server = subprocess.Popen([binary, *persona_arguments(), 'app-server', '--listen',
+            'unix://' + str(endpoint)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        deadline = time.monotonic() + 20
+        while not endpoint.exists():
+            if app_server.poll() is not None or time.monotonic() >= deadline:
+                app_server.terminate()
+                app_server.wait()
+                raise RuntimeError('Private voice app-server did not start')
+            time.sleep(.1)
+        os.chmod(endpoint, 0o600)
+        command = command[:-2] + ['--remote', 'unix://' + str(endpoint), *command[-2:]]
+    terminal = NativeTerminal(command, interactive=interactive,
+        voice_active=(lambda: microphone_active(os.getpid())) if WAKE_ENABLED else None)
+    if WAKE_ENABLED:
+        try:
+            rpc = Rpc(endpoint)
+            # Rejoin this same running thread, never instantiate a second runtime.
+            with terminal.condition:
+                if not terminal.condition.wait_for(lambda: terminal.ready or terminal.process.poll() is not None, timeout=30):
+                    raise TimeoutError('Private remote TUI did not become ready; terminal tail: ' + terminal.text[-600:])
+            rpc.call('thread/resume', {'threadId': thread_id, 'excludeTurns': True})
+            activity = Activity(thread_id)
+            recent = rpc.call('thread/turns/list',
+                {'threadId': thread_id, 'limit': 50, 'itemsView': 'notLoaded'})
+            for turn in recent.get('data', []):
+                if turn.get('status') == 'inProgress':
+                    activity.active_turns.add(turn['id'])
+                else:
+                    activity.finish(turn['id'])
+        except Exception:
+            terminal.close()
+            if rpc: rpc.close()
+            app_server.terminate();app_server.wait()
+            raise
     stopped = threading.Event()
     def stop(*_):
         stopped.set()
@@ -307,6 +378,8 @@ def serve(interactive: bool = False):
         signal.signal(sig, stop)
     if interactive:
         signal.signal(signal.SIGWINCH, lambda *_: terminal.resize())
+    if activity:
+        threading.Thread(target=activity.consume,args=(rpc,stopped),daemon=True).start()
     control.unlink(missing_ok=True)
     server = socket.socket(socket.AF_UNIX)
     try:
@@ -315,6 +388,23 @@ def serve(interactive: bool = False):
         server.listen(8)
         server.settimeout(.5)
         while not stopped.is_set() and terminal.process.poll() is None:
+            if activity:
+                with activity.lock:
+                    state = activity.state
+                    if state.mode == 'wake' and time.monotonic() - terminal.meter_time > 1:
+                        terminal.refresh_meter()
+                    observed = terminal.meter_state
+                    fresh = time.monotonic() - terminal.meter_time < 3
+                    if fresh and observed and observed[1]: state.activity()
+                    sleep_due = (state.can_sleep(time.monotonic()) and not rpc.closed
+                                 and fresh and observed is not None and not observed[1])
+                    if sleep_due:
+                        try:
+                            if terminal.voice_active(): terminal.toggle()
+                            activity.reset()
+                            print('voice-control reason=auto_sleep origin=wake result=off', flush=True)
+                        except Exception:
+                            state.healthy = False
             try:
                 connection, _ = server.accept()
             except TimeoutError:
@@ -323,20 +413,77 @@ def serve(interactive: bool = False):
                 connection.settimeout(2)
                 try:
                     data = b""
-                    while b"\n" not in data and len(data) < 1024:
-                        chunk = connection.recv(1024 - len(data))
+                    while b"\n" not in data and len(data) < 16384:
+                        chunk = connection.recv(16384 - len(data))
                         if not chunk:
                             break
                         data += chunk
-                    request = data.decode().strip()
+                    if b'\n' not in data: raise ValueError('Unterminated or oversized control request')
+                    request = data.split(b'\n',1)[0].decode().strip()
+                    payload = json.loads(request) if request.startswith('{') else {}
+                    if payload and not isinstance(payload, dict): raise ValueError('Invalid request')
+                    request = payload.get('command',request)
                     if request == "toggle":
+                        peer = struct.unpack('3i', connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))[0]
+                        prior = activity.state.mode if activity else 'native'
                         reply = terminal.toggle()
+                        print(f'voice-control reason=toggle peer={peer} prior={prior} result={reply["voice"]}', flush=True)
+                        if activity:
+                            with activity.lock:
+                                activity.reset()
+                                activity.state.mode = 'manual' if reply['voice']=='on' else 'off'
+                    elif request == 'wake' and activity:
+                        text = payload.get('text','')
+                        if not isinstance(text,str) or len(text)>8192:
+                            raise ValueError('Invalid wake instruction')
+                        if terminal.voice_active():
+                            reply = {'voice':'on','accepted':False}
+                        else:
+                            with activity.lock:
+                                activity.reset()
+                                activity.state.mode = 'wake'
+                                activity.state.pending.add('startup')
+                                try:
+                                    reply = terminal.toggle()
+                                    activity.state.pending.discard('startup')
+                                    activity.state.healthy = not rpc.closed
+                                    if text:
+                                        activity.state.pending.add('request')
+                                        result = rpc.call('turn/start', {'threadId': thread_id,
+                                            'input': [{'type': 'text', 'text':
+                                                '<realtime_delegation>\n<input>' + text +
+                                                '</input>\n<transcript_delta>user: ' + text +
+                                                '</transcript_delta>\n<source>handoff</source>\n</realtime_delegation>',
+                                                'text_elements': []}]})
+                                        turn_id = result['turn']['id']
+                                        if turn_id not in activity.finished_turns:
+                                            activity.active_turns.add(turn_id)
+                                        activity.state.pending.discard('request')
+                                    activity.state.activity()
+                                    reply['accepted'] = True
+                                    print('voice-control reason=wake result=on', flush=True)
+                                except Exception:
+                                    # Do not retry potentially accepted text. Keep timeout disabled.
+                                    activity.state.healthy = False
+                                    raise
+                    elif request == 'activity' and activity:
+                        with activity.lock: activity.state.activity()
+                        reply = {'accepted':True}
                     elif request == "status":
                         reply = {"voice": "on" if terminal.voice_active() else "off", "ready": terminal.ready, "pid": terminal.process.pid}
                     elif request == "inspect":
                         reply = {"terminal": terminal.text[-12000:]}
                     else:
                         raise ValueError("Expected toggle, status, or inspect")
+                    reply['wakeReady'] = bool(activity and not rpc.closed)
+                    if activity:
+                        reply['origin'] = activity.state.mode
+                        reply['wakeState'] = {'healthy': activity.state.healthy,
+                            'pending': len(activity.state.pending), 'turns': len(activity.state.turns),
+                            'items': len(activity.state.items),
+                            'idleSeconds': round(time.monotonic()-activity.state.last_input,1),
+                            'meterAge': round(time.monotonic()-terminal.meter_time,1),
+                            'meter': terminal.meter_state}
                     reply["threadId"] = thread_id
                 except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
                     reply = {"error": str(error)}
@@ -346,6 +493,11 @@ def serve(interactive: bool = False):
         server.close()
         control.unlink(missing_ok=True)
         terminal.close()
+        if rpc: rpc.close()
+        if app_server:
+            app_server.terminate()
+            try: app_server.wait(5)
+            except subprocess.TimeoutExpired: app_server.kill();app_server.wait()
         lock.close()
 
 
@@ -360,10 +512,16 @@ def request(command: str) -> dict:
             break
         except (FileNotFoundError, ConnectionRefusedError):
             connection.close()
-            if not started:
+            owner_starting = False
+            lock_path = control.parent / 'service.lock'
+            if lock_path.exists():
+                with lock_path.open('a') as owner_lock:
+                    try: fcntl.flock(owner_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    except BlockingIOError: owner_starting = True
+            if not started and not owner_starting:
                 subprocess.run(["systemctl", "--user", "start", "codex-global-voice.service"], check=True)
                 started = True
-            elif subprocess.run(["systemctl", "--user", "is-failed", "--quiet", "codex-global-voice.service"],
+            elif started and not owner_starting and subprocess.run(["systemctl", "--user", "is-failed", "--quiet", "codex-global-voice.service"],
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
                 raise RuntimeError("Background Codex service failed or is attached interactively; check systemctl --user status codex-global-voice")
             if time.monotonic() >= deadline:
@@ -397,6 +555,10 @@ def main():
             print(persist_thread(state, args.thread_id or ""))
             return
         if args.command == "attach":
+            if not WAKE_ENABLED and os.environ.get('CODEX_VOICE_WAKE') is None and (WAKE_LIB/'venv/bin/python').exists():
+                os.execve(str(WAKE_LIB/'venv/bin/python'),
+                    [str(WAKE_LIB/'venv/bin/python'), str(Path(__file__).absolute()), *sys.argv[1:]],
+                    {**os.environ, 'CODEX_VOICE_WAKE':'1'})
             if not os.isatty(0) or not os.isatty(1):
                 raise RuntimeError("Run codex-global-voice attach in a terminal")
             # Replace any headless session: both own the same thread and socket.

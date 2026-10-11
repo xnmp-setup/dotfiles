@@ -2,6 +2,8 @@
 import importlib.machinery
 import importlib.util
 import os
+import fcntl
+import time
 from pathlib import Path
 import sys
 import tempfile
@@ -34,6 +36,25 @@ class GlobalVoiceTests(unittest.TestCase):
         self.assertFalse(voice.owned_capture([client, capture], 10, parents))
         capture["info"]["props"]["media.class"] = "Stream/Input/Audio"
         self.assertFalse(voice.owned_capture([client, capture, None], 10, {30: 20, 20: 30}))
+
+    def test_starting_attached_owner_is_waited_for_without_starting_a_duplicate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);control=root/'control.sock';state=root/'thread-id'
+            with (root/'service.lock').open('a') as lock:
+                fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                def reply():
+                    time.sleep(.15)
+                    with socket.socket(socket.AF_UNIX) as server:
+                        server.bind(str(control));server.listen(1)
+                        connection,_=server.accept()
+                        with connection:
+                            self.assertEqual(connection.recv(1024),b'status\n')
+                            connection.sendall(b'{"voice":"off","ready":true}\n')
+                worker=threading.Thread(target=reply);worker.start()
+                with patch.object(voice,'paths',return_value=(control,state)),patch.object(voice.subprocess,'run') as run:
+                    self.assertEqual(voice.request('status'),{'voice':'off','ready':True})
+                    run.assert_not_called()
+                worker.join(3);self.assertFalse(worker.is_alive())
 
     def test_thread_is_persisted_privately_and_resumed_by_exact_id(self):
         with tempfile.TemporaryDirectory() as directory:

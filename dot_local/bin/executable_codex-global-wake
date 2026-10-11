@@ -1,0 +1,160 @@
+#!/usr/bin/env python3
+"""Bounded local ASR wake detector. Ambient audio/text is never saved or uploaded."""
+import importlib.machinery
+import importlib.util
+import json
+import os
+from pathlib import Path
+import queue
+import re
+import select
+import signal
+import socket
+import subprocess
+import sys
+import sysconfig
+import threading
+import time
+
+# CUDA libraries live only in this private venv. Re-exec before loading native
+# libraries because the dynamic loader reads LD_LIBRARY_PATH at process start.
+if os.environ.get('CODEX_WAKE_LIBRARY_READY') != '1':
+    packages = Path(sysconfig.get_paths()['purelib'])
+    libraries = [packages / 'nvidia/cublas/lib', packages / 'nvidia/cudnn/lib']
+    if all(path.is_dir() for path in libraries):
+        path = ':'.join(str(p) for p in libraries)
+        previous = os.environ.get('LD_LIBRARY_PATH')
+        if previous: path += ':' + previous
+        os.execve(sys.executable, [sys.executable, *sys.argv],
+                  {**os.environ, 'LD_LIBRARY_PATH': path, 'CODEX_WAKE_LIBRARY_READY': '1'})
+
+END_SILENCE_FRAMES = 25  # Preserve ordinary pauses after the wake phrase.
+
+LIB = Path(os.environ.get('CODEX_WAKE_LIB',str(Path.home()/'.local/share/codex-global-wake')))
+sys.path.insert(0,str(LIB))
+from wake_runtime import instruction
+from speech_detector import SpeechDetector
+loader=importlib.machinery.SourceFileLoader('global_voice',str(Path.home()/'.local/bin/codex-global-voice'))
+spec=importlib.util.spec_from_loader(loader.name,loader)
+voice=importlib.util.module_from_spec(spec)
+loader.exec_module(voice)
+
+
+def request(message):
+    result=voice.request(json.dumps(message) if isinstance(message,dict) else message)
+    if 'error' in result: raise RuntimeError(result['error'])
+    return result
+
+
+def run():
+    import numpy as np
+    from faster_whisper import WhisperModel
+    import ctranslate2
+    device = 'cuda' if ctranslate2.get_cuda_device_count() else 'cpu'
+    def load(device):
+        result = WhisperModel(str(LIB/'model'), device=device,
+            compute_type='int8_float16' if device=='cuda' else 'int8',
+            cpu_threads=2,num_workers=1)
+        # Prime kernels before arming capture so the first request is warm too.
+        segments,_ = result.transcribe(np.zeros(16000,dtype=np.float32),language='en',
+            beam_size=3,condition_on_previous_text=False,initial_prompt='Names: Codex.',vad_filter=False)
+        list(segments)
+        return result
+    try: model = load(device)
+    except RuntimeError:
+        device = 'cpu';model = load(device)
+    print('Local wake recognizer loaded; device='+device,flush=True)
+    vad=SpeechDetector()
+    stop=threading.Event()
+    utterances=queue.Queue(maxsize=1)
+    enabled=threading.Event()
+    for sig in (signal.SIGINT,signal.SIGTERM): signal.signal(sig,lambda *_:stop.set())
+
+    def recognize():
+        while not stop.is_set():
+            try: pcm=utterances.get(timeout=.5)
+            except queue.Empty: continue
+            if not enabled.is_set(): continue
+            audio=np.frombuffer(pcm,dtype='<i2').astype(np.float32)/32768
+            started=time.monotonic()
+            segments,_=model.transcribe(audio,language='en',beam_size=3,
+                condition_on_previous_text=False,initial_prompt='Names: Codex.',vad_filter=False)
+            text=' '.join(segment.text for segment in segments)
+            remainder=instruction(text)
+            if os.environ.get('CODEX_WAKE_DIAGNOSTICS')=='1':
+                words=re.findall(r'[a-z]+',text.lower())
+                print('asr-complete wake='+str(remainder is not None)+' startsHey='+str(words[:1]==['hey'])+' containsCodex='+str('codex' in words)+' startsCodex='+str(words[:1]==['codex'])+' codec='+str('codec' in words)+' cortex='+str('cortex' in words)+' ms='+str(round((time.monotonic()-started)*1000)),flush=True)
+            if remainder is not None and enabled.is_set():
+                print('Wake matched; local recognition ms='+str(round((time.monotonic()-started)*1000)),flush=True)
+                try:
+                    reply=request({'command':'wake','text':remainder})
+                    if reply.get('voice')=='on': enabled.clear()
+                except Exception as error:
+                    print('Wake activation failed: '+type(error).__name__,file=sys.stderr,flush=True)
+
+    threading.Thread(target=recognize,daemon=True).start()
+    process=subprocess.Popen(['pw-record','--raw','--rate','16000','--channels','1',
+        '--format','s16','--latency','80ms','--properties',
+        'application.name=Codex-Local-Wake-Detector node.name=codex_local_wake_detector','-'],
+        stdout=subprocess.PIPE,stderr=subprocess.DEVNULL)
+    pending=bytearray();frames=[];preroll=[];silence=0;voiced=0
+    poll=0;activity=0;ready=False
+    def notify_ready():
+        address=os.environ.get('NOTIFY_SOCKET')
+        if address:
+            if address.startswith('@'): address='\0'+address[1:]
+            with socket.socket(socket.AF_UNIX,socket.SOCK_DGRAM) as status:
+                status.connect(address)
+                status.sendall(('READY=1\nSTATUS=Local wake capture ready ('+device+')').encode())
+        print('Local wake capture ready; device='+device,flush=True)
+    try:
+        while not stop.is_set():
+            now=time.monotonic()
+            if now-poll>=1:
+                poll=now
+                try:
+                    status=request('status')
+                    if not status.get('wakeReady'): raise RuntimeError('Wake runtime unavailable')
+                    if status['voice']=='off': enabled.set()
+                    else: enabled.clear()
+                except Exception:
+                    enabled.clear()
+            if not select.select([process.stdout],[],[],.2)[0]:
+                if process.poll() is not None: raise RuntimeError('Local capture stopped')
+                continue
+            data=os.read(process.stdout.fileno(),8192)
+            if not data: raise RuntimeError('Local capture ended')
+            pending.extend(data)
+            while len(pending)>=1024:
+                frame=bytes(pending[:1024]);del pending[:1024]
+                speech=vad.probability(frame)>=.6
+                if not ready:
+                    ready=True;notify_ready()
+                if speech and not enabled.is_set() and now-activity>=.5:
+                    activity=now
+                    try: request({'command':'activity'})
+                    except Exception: pass
+                if not enabled.is_set():
+                    frames=[];preroll=[];silence=voiced=0
+                    continue
+                if speech and not frames:
+                    frames=list(preroll)
+                if frames:
+                    frames.append(frame)
+                    voiced+=int(speech)
+                    silence=0 if speech else silence+1
+                    if silence>=END_SILENCE_FRAMES or len(frames)>=375:
+                        if os.environ.get('CODEX_WAKE_DIAGNOSTICS')=='1':
+                            print('utterance-end frames='+str(len(frames))+' voiced='+str(voiced)+' silence='+str(silence),flush=True)
+                        if voiced>=8 and silence>=END_SILENCE_FRAMES:
+                            try: utterances.put_nowait(b''.join(frames))
+                            except queue.Full: pass
+                        # Oversized uninterrupted utterances fail closed.
+                        frames=[];silence=voiced=0
+                preroll=(preroll+[frame])[-32:]
+    finally:
+        stop.set();process.terminate()
+        try: process.wait(timeout=3)
+        except subprocess.TimeoutExpired: process.kill();process.wait()
+
+if __name__=='__main__': run()
