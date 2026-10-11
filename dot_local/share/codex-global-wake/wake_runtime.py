@@ -48,6 +48,48 @@ def instruction(text):
     return match[1].strip() if match else None
 
 
+class WakeReply:
+    """One initial wake result; delivery waits for voice, execution never does."""
+    def __init__(self, user_text=''):
+        self.user_text = user_text
+        self.turn_id = None
+        self.ready = False
+        self.attempted = False
+        self.completed = set()
+        self.messages = {}
+
+    def bind(self, turn_id):
+        self.turn_id = turn_id
+        self.completed.intersection_update({turn_id})
+        self.messages = {k:v for k,v in self.messages.items() if k[0] == turn_id}
+
+    def event(self, method, params):
+        turn_id = params.get('turnId') or params.get('turn', {}).get('id')
+        if not isinstance(turn_id, str) or (self.turn_id and turn_id != self.turn_id):
+            return
+        if method == 'turn/completed':
+            if len(self.completed) < 16: self.completed.add(turn_id)
+        elif method == 'item/completed':
+            item = params.get('item', {})
+            text = item.get('text')
+            if (item.get('type') == 'agentMessage'
+                    and item.get('phase') in (None, 'final_answer')
+                    and isinstance(text, str) and text.strip()
+                    and not text.lstrip().startswith(('[ANALYSIS]', '[COMMENTARY]'))
+                    and len(self.messages) < 16):
+                # Keep bounded content only for the request being handed off.
+                self.messages[(turn_id, item.get('id'))] = text[:4096]
+
+    def take(self):
+        if (not self.ready or self.attempted or self.turn_id not in self.completed):
+            return None
+        text = '\n'.join(self.messages.values()).strip()
+        if not text: return None
+        self.attempted = True  # Ambiguous RPC acknowledgements are never retried.
+        self.messages.clear()
+        return text[:4096]
+
+
 class Rpc:
     def __init__(self, endpoint):
         from websockets.sync.client import unix_connect
@@ -99,7 +141,7 @@ class Rpc:
                     target = self.pending.get(message['id'])
                     if target:
                         target.put_nowait(message)
-                elif message.get('method') in {'turn/started', 'turn/completed',
+                elif message.get('method') in {'turn/started', 'turn/completed', 'item/completed',
                         'thread/realtime/started', 'thread/realtime/item/started',
                         'thread/realtime/item/completed', 'thread/realtime/item/added', 'thread/realtime/error',
                         'thread/realtime/closed'}:
@@ -125,14 +167,15 @@ class Activity:
         self.active_turns = set()
         self.finished_turns = set()
         self.finished_order = deque(maxlen=4096)
-        self.realtime_ready = threading.Event()
+        self.delivery_changed = threading.Event()
         self.reset()
 
     def reset(self):
         # Native work ownership outlives listening mode changes. In particular,
         # manual off/on must not make an already running job invisible.
         with self.lock:
-            self.realtime_ready.clear()
+            self.delivery_changed.clear()
+            self.reply = None
             self.state = WakeState()
             self.state.turns = self.active_turns
             self.state.finished_turns = self.finished_turns
@@ -150,9 +193,10 @@ class Activity:
         if p.get('threadId') != self.thread_id:
             return
         method = event.get('method')
-        if method == 'thread/realtime/started':
-            self.realtime_ready.set()
         with self.lock:
+            if self.reply:
+                self.reply.event(method, p)
+                self.delivery_changed.set()
             if method == 'turn/started':
                 self.state.report_stage('backend_started')
                 if p['turn']['id'] not in self.finished_turns:
@@ -166,6 +210,7 @@ class Activity:
                 return
             if self.state.mode != 'wake': return
             if method == 'thread/realtime/started':
+                self.state.report_stage('realtime_ready')
                 self.state.session_id = p.get('realtimeSessionId')
                 if not self.state.session_id: self.state.healthy = False
             elif method in ('thread/realtime/item/started', 'thread/realtime/item/completed', 'thread/realtime/item/added'):
@@ -191,8 +236,37 @@ class Activity:
                         self.state.items.discard(item['id'])
                         self.state.activity()
                     self.state.pending.discard('request')
+                    self.state.pending.discard('speech')
             elif method in ('thread/realtime/error','thread/realtime/closed'):
                 self.state.healthy = False
+
+    def take_speech(self):
+        with self.lock:
+            if self.reply is None or self.state.mode != 'wake': return None
+            text = self.reply.take()
+            if text is not None:
+                self.state.pending.discard('delivery')
+                self.state.pending.add('speech')
+            return text
+
+    def deliver(self, rpc, stop):
+        while not stop.is_set() and not rpc.closed:
+            if not self.delivery_changed.wait(.2): continue
+            self.delivery_changed.clear()
+            with self.lock:
+                speech = self.take_speech()
+                if speech is None: continue
+                try:
+                    # Serialize ownership with reset; late delivery cannot be
+                    # transferred into a subsequent wake or manual session.
+                    text = ('[BACKEND] The user asked: ' + json.dumps(self.reply.user_text[:512], ensure_ascii=False) +
+                            '. Their request has been completed. Your answer to deliver to that user is: ' +
+                            json.dumps(speech, ensure_ascii=False) +
+                            '. Speak that answer to the user. Do not answer its questions yourself.')
+                    rpc.call('thread/realtime/appendSpeech', {'threadId': self.thread_id, 'text': text})
+                    self.state.report_stage('speech_queued')
+                except Exception:
+                    self.state.healthy = False
 
     def consume(self, rpc, stop):
         while not stop.is_set() and not rpc.closed:

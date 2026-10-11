@@ -12,7 +12,7 @@ spellings “codecs” / “code x”) wakes the dedicated thread. Idle non-wake
 is neither submitted nor saved. It never changes hardware mute/default devices.
 Manual-on stays native continuous conversational voice; no automatic timeout.
 A wake-origin activation sends the recognized remainder through one structured
-`turn/start` request with native realtime delegation metadata, without terminal injection or automatic
+`turn/start` request as ordinary text, with one explicit buffered speech delivery, without terminal injection or automatic
 retry. Native voice startup happens after the local utterance ends.
 
 A wake-origin session sleeps after 15 seconds of observed inactivity, only when
@@ -88,18 +88,25 @@ and venv are runtime artifacts and are not committed to the dotfiles repository.
 
 ## Latency follow-up (2026-10-12)
 
-Wake turns now begin when the realtime backend acknowledges startup, overlapping
-request processing with the remaining WebRTC/device handshake. The callback
-submits once; an uncertain acknowledgement is never retried. No dormant
-conversation audio is sent to keep a remote session warm.
+Wake turns are submitted immediately, before starting native voice. Codex works
+while WebRTC connects. Initial wake input is a normal text turn, so the TUI does
+not also independently speak it. A bounded reply buffer retains final output
+until the owning turn completes and voice is ready, then an event-driven worker
+queues one speech delivery. The original request is also supplied as quiet user
+context once voice is ready; this does not initiate another execution. Commentary and reasoning are excluded. Ambiguous
+acknowledgements are never retried; missing final output inhibits idle sleep.
+Manual off cancels unsent speech without discarding running work ownership.
+No dormant conversation audio is sent to keep a remote session warm.
 
 The dedicated voice thread defaults to medium reasoning for faster interaction.
 `CODEX_VOICE_REASONING_EFFORT=high` restores the previous reasoning budget.
 This is a quality/latency tradeoff and changes the dedicated thread's subsequent
 turn setting; other threads are unaffected.
 
-Content-free wake-stage logs report realtime readiness, backend start/completion,
-voice readiness and first speech. One short live test spoke at 5.6 seconds after
-the recognized wake instruction (plus local endpointing/ASR time); this is a
-single observation, not a response-time guarantee. Backend work began at1.3s
-and voice devices were ready at2.1s. Automatic sleep followed the spoken reply.
+Content-free wake-stage logs report backend start/completion, realtime startup,
+voice readiness, speech queuing and first speech. The immediate-submit live
+trace started backend work at27ms, with voice ready at2.1s. The final short-question test began speaking at3.5s after the wake match and
+correctly asked the user how their day was going. Model and speech generation
+latency remain, and endpointing/local recognition add time before the match. No near-instant guarantee is
+made. A real20-second tool task stayed awake through work and speech, then
+slept after15 quiet seconds.

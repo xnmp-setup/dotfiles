@@ -38,7 +38,7 @@ if WAKE_ENABLED:
     if Path(sys.executable).absolute() != python.absolute():
         os.execv(str(python), [str(python), str(Path(__file__).absolute()), *sys.argv[1:]])
     sys.path.insert(0, str(WAKE_LIB))
-    from wake_runtime import Activity, Rpc, WakeState, TerminalMeter
+    from wake_runtime import Activity, Rpc, WakeState, TerminalMeter, WakeReply
 
 VOICE_KEY = b"\x1b[19~"  # F8, explicitly mapped for this TUI invocation only.
 ANSI = re.compile(r"\x1b\[[0-9;?<>]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")
@@ -275,7 +275,7 @@ class NativeTerminal:
             with self.condition:
                 self.condition.notify_all()
 
-    def toggle(self, on_start=None) -> dict:
+    def toggle(self) -> dict:
         with self.condition:
             if not self.condition.wait_for(lambda: self.ready or self.cancelled.is_set() or self.process.poll() is not None, timeout=30):
                 raise TimeoutError("Codex is awaiting setup or its terminal failed to become ready")
@@ -285,8 +285,6 @@ class NativeTerminal:
                 raise RuntimeError("Background Codex terminal exited")
             desired = not self.voice_active()
             os.write(self.master, VOICE_KEY)
-        if desired and on_start is not None:
-            on_start()
         deadline = time.monotonic() + 20
         while not self.cancelled.is_set():
             if self.process.poll() is not None:
@@ -382,6 +380,7 @@ def serve(interactive: bool = False):
         signal.signal(signal.SIGWINCH, lambda *_: terminal.resize())
     if activity:
         threading.Thread(target=activity.consume,args=(rpc,stopped),daemon=True).start()
+        threading.Thread(target=activity.deliver,args=(rpc,stopped),daemon=True).start()
     control.unlink(missing_ok=True)
     server = socket.socket(socket.AF_UNIX)
     try:
@@ -447,31 +446,32 @@ def serve(interactive: bool = False):
                                 activity.state.wake_started = time.monotonic()
                                 activity.state.healthy = not rpc.closed
                                 activity.state.pending.add('startup')
-                            def submit_instruction():
-                                # Backend-session readiness precedes WebRTC device
-                                # readiness. Start work during that remaining handshake.
-                                if not activity.realtime_ready.wait(20):
-                                    raise TimeoutError('Native realtime startup was not acknowledged')
-                                with activity.lock:
-                                    activity.state.report_stage('realtime_ready')
-                                    if not text: return
-                                    activity.state.pending.add('request')
-                                result = rpc.call('turn/start', {'threadId': thread_id,
-                                    'effort': os.environ.get('CODEX_VOICE_REASONING_EFFORT', 'medium'),
-                                    'input': [{'type': 'text', 'text':
-                                        '<realtime_delegation>\n<input>' + text +
-                                        '</input>\n<transcript_delta>user: ' + text +
-                                        '</transcript_delta>\n<source>handoff</source>\n</realtime_delegation>',
-                                        'text_elements': []}]})
-                                with activity.lock:
-                                    turn_id = result['turn']['id']
-                                    if turn_id not in activity.finished_turns:
-                                        activity.active_turns.add(turn_id)
-                                    activity.state.pending.discard('request')
                             try:
-                                reply = terminal.toggle(on_start=submit_instruction)
+                                if text:
+                                    with activity.lock:
+                                        activity.reply = WakeReply(text)
+                                        activity.state.pending.update({'request', 'delivery'})
+                                    # Submit before beginning voice transport. A normal
+                                    # text turn is explicitly voiced by our bounded queue,
+                                    # so the TUI cannot independently speak it twice.
+                                    result = rpc.call('turn/start', {'threadId': thread_id,
+                                        'effort': os.environ.get('CODEX_VOICE_REASONING_EFFORT', 'medium'),
+                                        'input': [{'type': 'text', 'text': text, 'text_elements': []}]})
+                                    with activity.lock:
+                                        turn_id = result['turn']['id']
+                                        activity.reply.bind(turn_id)
+                                        if turn_id not in activity.finished_turns:
+                                            activity.active_turns.add(turn_id)
+                                        activity.state.pending.discard('request')
+                                reply = terminal.toggle()
+                                if text:
+                                    rpc.call('thread/realtime/appendText', {'threadId': thread_id,
+                                        'role': 'user', 'text': '[USER] ' + text})
                                 with activity.lock:
                                     activity.state.pending.discard('startup')
+                                    if activity.reply:
+                                        activity.reply.ready = True
+                                        activity.delivery_changed.set()
                                     activity.state.report_stage('voice_ready')
                                     activity.state.activity()
                                 reply['accepted'] = True
