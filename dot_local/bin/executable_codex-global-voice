@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
-"""Toggle native Codex voice in one private, persistent TUI.
+"""Control one native Global voice session and share its terminal with visible clients.
 
-The CLI owns audio transport. This helper only owns its terminal and lifecycle;
-it never sends keystrokes to a terminal it did not start or changes
-authentication. The TUI runs headless under the systemd service, or headed
-inside a terminal via `attach`; both answer the same control socket, so
-`toggle` reaches whichever one exists.
+The Codex CLI owns voice and execution. Zellij keeps that same terminal alive
+headlessly; attaching a window does not resume a second Codex instance.
 """
 from __future__ import annotations
 
@@ -28,6 +25,7 @@ import threading
 import time
 import tty
 import uuid
+import sys
 from typing import Callable
 
 VOICE_KEY = b"\x1b[19~"  # F8, explicitly mapped for this TUI invocation only.
@@ -295,7 +293,15 @@ def serve(interactive: bool = False):
     workspace = Path(os.environ.get("CODEX_VOICE_WORKSPACE", str(Path.home() / "Documents/Inbox"))).resolve()
     binary = codex_binary()
     thread_id = str(uuid.UUID(state.read_text().strip())) if state.exists() else persist_thread(state, create_thread(binary, workspace))
-    terminal = NativeTerminal(tui_command(binary, workspace, thread_id), interactive=interactive)
+    library = Path(__file__).absolute().parents[1] / 'share/codex-global-voice'
+    shared = bool(shutil.which('zellij') and (library/'shared_terminal.py').exists())
+    if shared:
+        sys.path.insert(0, str(library))
+        from shared_terminal import SharedTerminal
+        terminal = SharedTerminal(tui_command(binary, workspace, thread_id), control.parent,
+                                  thread_id, microphone_active)
+    else:
+        terminal = NativeTerminal(tui_command(binary, workspace, thread_id), interactive=interactive)
     stopped = threading.Event()
     def stop(*_):
         stopped.set()
@@ -337,6 +343,7 @@ def serve(interactive: bool = False):
                         reply = {"terminal": terminal.text[-12000:]}
                     else:
                         raise ValueError("Expected toggle, status, or inspect")
+                    reply['shared'] = shared
                     reply["threadId"] = thread_id
                 except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
                     reply = {"error": str(error)}
@@ -389,7 +396,7 @@ def request(command: str) -> dict:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["toggle", "status", "inspect", "serve", "adopt", "attach"])
+    parser.add_argument("command", choices=["toggle", "status", "inspect", "serve", "adopt", "attach", "show"])
     parser.add_argument("thread_id", nargs="?")
     args = parser.parse_args()
     try:
@@ -402,14 +409,23 @@ def main():
                 raise RuntimeError("Thread already configured; refusing to replace it")
             print(persist_thread(state, args.thread_id or ""))
             return
-        if args.command == "attach":
-            if not os.isatty(0) or not os.isatty(1):
-                raise RuntimeError("Run codex-global-voice attach in a terminal")
-            # Replace any headless session: both own the same thread and socket.
-            if shutil.which("systemctl"):
-                subprocess.run(["systemctl", "--user", "stop", "codex-global-voice.service"],
-                               check=False, stderr=subprocess.DEVNULL)
-            serve(interactive=True)
+        if args.command in ('attach', 'show'):
+            if args.command == 'attach' and (not os.isatty(0) or not os.isatty(1)):
+                raise RuntimeError('Run codex-global-voice attach in a terminal')
+            reply = request('status')
+            if 'error' in reply: raise RuntimeError(reply['error'])
+            if not reply.get('shared'):
+                raise RuntimeError('Global voice is using the old terminal owner; restart the service once when idle')
+            library = Path(__file__).absolute().parents[1] / 'share/codex-global-voice'
+            sys.path.insert(0, str(library))
+            from shared_terminal import attach_command, zellij_environment
+            if args.command == 'attach':
+                command = attach_command(reply['threadId'])
+                os.execvpe(command[0], command, zellij_environment())
+            if not shutil.which('ghostty'): raise RuntimeError('Ghostty is not installed; run codex-global-voice attach in another terminal')
+            subprocess.Popen(['ghostty', '+new-window', '--title=Global voice', '-e',
+                str(Path(__file__).absolute()), 'attach'], start_new_session=True,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return
         reply = request(args.command)
         print(json.dumps(reply))

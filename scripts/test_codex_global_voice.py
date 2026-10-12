@@ -21,6 +21,21 @@ loader.exec_module(voice)
 
 
 class GlobalVoiceTests(unittest.TestCase):
+    def test_attach_joins_existing_session_without_stopping_or_resuming_codex(self):
+        identifier='01a12b0c-d541-7e81-9c03-f980d2975dba'
+        class ReplacedProcess(Exception): pass
+        with patch.object(sys,'argv',['codex-global-voice','attach']), \
+             patch.object(voice.os,'isatty',return_value=True), \
+             patch.object(voice,'request',return_value={'shared':True,'threadId':identifier}) as request, \
+             patch.object(voice.os,'execvpe',side_effect=ReplacedProcess) as execute, \
+             patch.object(voice.subprocess,'run') as run:
+            with self.assertRaises(ReplacedProcess):voice.main()
+            request.assert_called_once_with('status')
+            run.assert_not_called()
+            command=execute.call_args.args[1]
+            self.assertEqual(command[-2:],['attach','codex-global-voice-'+identifier])
+            self.assertNotIn('resume',command)
+
     def test_only_owned_running_capture_confirms_voice(self):
         client = {"id": 5, "type": "PipeWire:Interface:Client", "info": {"props": {
             "application.process.binary": "codex-voice-host", "application.process.id": 30}}}

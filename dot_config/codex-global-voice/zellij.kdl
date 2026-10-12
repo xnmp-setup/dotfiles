@@ -1,0 +1,25 @@
+default_mode "locked"
+pane_frames false
+session_serialization false
+show_release_notes false
+show_startup_tips false
+on_force_close "detach"
+mirror_session true
+scroll_buffer_size 100000
+keybinds clear-defaults=true {
+    locked {
+        bind "Ctrl g" { SwitchToMode "Normal"; }
+    }
+    normal {
+        bind "Ctrl g" { SwitchToMode "Locked"; }
+        bind "Ctrl d" { Detach; }
+        bind "Ctrl s" { SwitchToMode "Scroll"; }
+    }
+    scroll {
+        bind "PageUp" { PageScrollUp; }
+        bind "PageDown" { PageScrollDown; }
+        bind "Up" { ScrollUp; }
+        bind "Down" { ScrollDown; }
+        bind "Ctrl g" "Esc" { ScrollToBottom; SwitchToMode "Locked"; }
+    }
+}

@@ -1,51 +1,47 @@
 # Global Codex voice
 
-`codex-global-voice toggle` starts the user service on demand and toggles native
-Codex voice in its dedicated **Global voice** thread. The background TUI and
-thread are reused. The thread ID lives in
-`~/.local/state/codex-global-voice/thread-id`; do not use `resume --last` here.
+Cmd/Super+Shift+V (or Ctrl+Alt+V) toggles native voice in the dedicated Global
+voice thread. If no owner is running, the helper starts its user service
+headlessly. There is no wake detector or automatic idle shutoff.
 
-The service uses `~/Documents/Inbox` as its workspace. Override
-`CODEX_VOICE_WORKSPACE` in a systemd service override to choose another workspace.
-Codex's existing authentication, model, audio device, and approval configuration
-remain in effect. This TUI enables Fast mode; only its voice key is remapped to F8.
+Cmd/Super+Alt+V opens the **same live session** in a Ghostty window. It attaches
+to the existing Zellij terminal instead of resuming another Codex owner, so
+reports remain readable and running work and voice continue. Closing this
+window detaches the viewer; it does not stop the headless session.
 
-`~/.codex/global-voice/SOUL.md` supplies this session's base instructions via
-`model_instructions_file`, replacing Codex's built-in coding-agent persona.
-The helper sets this override for thread creation, background resume, and
-headed attach. Other Codex launches keep their existing base instructions.
-Native spoken replies use a separate prompt. The helper injects the same persona
-there through `experimental_realtime_ws_backend_prompt`, followed by the native
-handoff protocol in `~/.codex/global-voice/VOICE.md` (pinned to Codex 0.162.0).
-Keep that protocol compatible when upgrading Codex.
-`~/Documents/Inbox/AGENTS.md` adds context for finding relevant personal materials.
-Apply these files and the helper with chezmoi, then restart the service after
-editing them so Codex reloads the instructions.
+Inside the window, Alt+T opens Codex's transcript view. For Zellij scrollback,
+press Ctrl+G then Ctrl+S, use PageUp/PageDown, and press Escape to return to live
+output. Ctrl+G then Ctrl+D detaches. Other keys pass directly to Codex.
 
 Commands:
 
-- `codex-global-voice status`: inspect microphone state and persistent thread ID.
-- `codex-global-voice inspect`: show recent terminal output to diagnose setup.
-- `codex-global-voice attach`: run from any terminal (e.g. the F9 Ghostty
-  drop-down) to stop the background service and run the same thread headed in
-  that terminal. The TUI sits behind the same control socket, so Ctrl+Alt+V
-  toggles voice in the visible session instead of a hidden one. Quit Codex or
-  close the terminal to end it; the next toggle starts the headless service
-  again. Only one session owns the thread at a time.
-- `systemctl --user stop codex-global-voice`: stop the private terminal and voice.
+- `codex-global-voice toggle`: toggle voice, starting headlessly if needed.
+- `codex-global-voice show`: open the shared session in a Ghostty window.
+- `codex-global-voice attach`: attach the current terminal to that shared session.
+- `codex-global-voice status`: inspect voice, native owner PID and thread ID.
+- `codex-global-voice inspect`: inspect recent terminal output.
+- `systemctl --user stop codex-global-voice`: stop the native session and voice.
 
-Errors and confirmed microphone transitions produce desktop notifications.
-The helper confirms only its own native capture streams. It only presses keys
-in the TUI it started (headless or attached); it never sends keys to another
-terminal, uses another active conversation, or implements its own voice service. The small recent terminal buffer stays in memory; audio is handled
-entirely by the installed Codex CLI.
+The saved thread ID is `~/.local/state/codex-global-voice/thread-id`; do not use
+`resume --last`. Shared sessions use `codex-global-voice-<thread-id>`. A private
+PID/start-time record under `$XDG_RUNTIME_DIR/codex-global-voice/native.json`
+identifies the actual Codex pane for microphone ownership checks and prevents
+PID reuse from being mistaken for a live owner. The control socket and owner
+lock ensure shortcut invocations reuse the same runtime.
 
-After applying the helper and unit with chezmoi, run
-`systemctl --user daemon-reload`. Bind Ctrl+Alt+V and Command/Super+Shift+V to
-`~/.local/bin/codex-global-voice toggle` in Hyprland. No enable-at-login step is
-required; the service starts on the first toggle.
+The shared display requires Zellij (the installed 0.45.1 supports detached
+creation and pane-targeted keys) and the private configuration in
+`~/.config/codex-global-voice/zellij.kdl`. It retains 100,000 scrollback lines in
+memory without enabling session resurrection. If shared support is absent,
+legacy native toggling remains available, but `show` reports that the owner
+needs shared support. Install both the helper and its supporting files.
 
-Cmd/Super+Shift+V uses this same toggle command. If a headed Global voice
-owner is active, the socket targets it. If no owner is running, the command
-starts the headless service. A starting attached owner is waited for rather
-than launching a duplicate. There is no wake detector or automatic idle shutoff.
+`~/.codex/global-voice/SOUL.md` supplies the session's base instructions;
+`VOICE.md` supplies the native voice handoff protocol. Existing Codex
+configuration, authentication, audio devices and saved history are retained.
+Only the session's voice key is mapped to F8. No keys are sent to other apps.
+
+Apply the helper, supporting files and unit with chezmoi. Run
+`systemctl --user daemon-reload` after unit changes. When upgrading an old
+unshared owner, restart the service once while idle; future opening/closing of
+viewer windows does not require a restart. No enable-at-login step is needed.
