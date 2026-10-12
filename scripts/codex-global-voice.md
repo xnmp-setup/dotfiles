@@ -4,12 +4,12 @@ Cmd/Super+Shift+V (or Ctrl+Alt+V) toggles native voice in the dedicated Global
 voice thread. If no owner is running, the helper starts its user service
 headlessly. There is no wake detector or automatic idle shutoff.
 
-Cmd/Super+Alt+V opens the **same live session** in a Ghostty window. It attaches
+Run `cxv` in a zsh terminal to open the **same live session** interactively. It attaches
 to the existing Zellij terminal instead of resuming another Codex owner, so
 reports remain readable and running work and voice continue. Closing this
-window detaches the viewer; it does not stop the headless session.
+terminal detaches the viewer; it does not stop the headless session.
 
-Inside the window, Alt+T opens Codex's transcript view. For Zellij scrollback,
+Inside the attached terminal, Alt+T opens Codex's transcript view. For Zellij scrollback,
 press Ctrl+G then Ctrl+S, use PageUp/PageDown, and press Escape to return to live
 output. Ctrl+G then Ctrl+D detaches. Other keys pass directly to Codex.
 
