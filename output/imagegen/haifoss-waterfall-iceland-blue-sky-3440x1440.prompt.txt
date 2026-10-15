@@ -1,0 +1,8 @@
+Use case: lighting-weather
+Asset type: Ayu Light desktop wallpaper, ultrawide 3440x1440 PNG.
+Input image 1: edit target, the user's existing Haifoss waterfall Iceland wallpaper.
+Primary request: make the sky clearly more blue instead of the current white/grey washed-out overcast sky.
+Replace the blanket grey cloud cover with a predominantly clear natural blue daytime sky, a gentle richer blue overhead fading to a lighter blue at the horizon, with a few soft white clouds. Blue should visibly dominate the sky, including the central and left areas that are currently almost white. Keep realistic atmospheric perspective without a white blown-out sky.
+Preserve the original photographic style, viewpoint, recognizable canyon geography, waterfall on the right, smaller waterfall, winding river, mossy slopes, basalt cliffs, rock textures and natural green/brown palette. Keep the landscape as close to the original as possible; only make small lighting adjustments needed to harmonize with the bluer sky. Preserve the overall composition in an ultrawide framing with the right-hand waterfall and left-hand river valley both fully recognizable. Do not stretch the landscape.
+Natural landscape photograph, wide-angle lens, daylight exposure with protected sky highlights and realistic water motion.
+Avoid: dramatic sunset, grey overcast, white haze obscuring the blue sky, excessive saturation, cyan color cast on the land, changed terrain, extra waterfalls, buildings, people, text, logos or watermark.

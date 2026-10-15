@@ -196,7 +196,7 @@ touch "$test_root/Pictures/Wallpaper/catppuccin-latte-alpine-morning-3440x1440.p
 touch "$test_root/Pictures/Wallpaper/hackerman-phosphor-rift-3440x1440.png"
 touch "$test_root/Pictures/Wallpaper/omarchy-ethereal.webp"
 touch "$test_root/Pictures/Wallpaper/marek-piwnicki-rwcONvax9qE-unsplash.jpg"
-touch "$test_root/Pictures/Wallpaper/haifoss-waterfall-iceland.png"
+touch "$test_root/Pictures/Wallpaper/haifoss-waterfall-iceland-blue-sky-3440x1440.png"
 touch "$test_root/Pictures/Wallpaper/omarchy-osaka-jade.webp"
 touch "$test_root/Pictures/Wallpaper/omarchy-artzen.png"
 touch "$test_root/Pictures/Wallpaper/stephen-leonardi-eSNjFDbw_i4-unsplash.jpg"
@@ -514,7 +514,7 @@ omarchy_cases=(
   'ethereal|Ethereal|dark|omarchy-ethereal.webp|#7d82d9|#060b1e|#ffcead|#252e56'
   'flexoki-light|Flexoki Light|light|marek-piwnicki-rwcONvax9qE-unsplash.jpg|#205ea6|#fffcf0|#100f0f|#cecdc3'
   'catppuccin-lavender|Catppuccin Lavender|light|catppuccin-latte-alpine-morning-3440x1440.png|#756681|#f8f8fb|#484453|#e9e7f0'
-  'ayu-light|Ayu Light|light|haifoss-waterfall-iceland.png|#1b82cc|#f8f9fa|#474c52|#c4d7f2'
+  'ayu-light|Ayu Light|light|haifoss-waterfall-iceland-blue-sky-3440x1440.png|#1b82cc|#f8f9fa|#474c52|#c4d7f2'
   'osaka-jade|Osaka Jade|dark|omarchy-osaka-jade.webp|#509475|#111c18|#c1c497|#32473b'
   'artzen|Artzen|dark|omarchy-artzen.png|#da7a6f|#181c1f|#fdf9f8|#3b2b2c'
   'infernium-dark|Infernium Dark|dark|stephen-leonardi-eSNjFDbw_i4-unsplash.jpg|#e3884a|#1c1c1c|#e0e0e0|#d66938'
