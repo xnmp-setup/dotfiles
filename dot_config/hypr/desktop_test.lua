@@ -422,6 +422,20 @@ do
         lat ~= nil and desktop:find("-l " .. lat .. " ", 1, true) ~= nil)
     check("both night lights share one longitude",
         lon ~= nil and desktop:find("-L " .. lon .. " ", 1, true) ~= nil)
+
+    for _, is_laptop in ipairs({ true, false }) do
+        local commands = {}
+        nightlights.start({ exec_cmd = function(command)
+            commands[#commands + 1] = command
+        end }, is_laptop)
+        equal("starting night light preserves its backend", commands[1],
+            nightlights.command(is_laptop))
+        equal("starting night light also starts one theme scheduler", #commands, 2)
+        check("sunrise themes follow the same solar coordinates",
+            commands[2]:find("desktop_theme_solar.py --lat " .. lat .. " --lon " .. lon, 1, true) ~= nil)
+        check("sunrise themes require Python at runtime",
+            commands[2]:find("command -v python3", 1, true) ~= nil)
+    end
 end
 
 --------------------------------------------------------------------------------

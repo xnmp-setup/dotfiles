@@ -61,6 +61,18 @@ declare -A locally_managed_desktop_themes=(
   [sunset]=1
 )
 
+# Metadata is authoritative: MapQuest and Catppuccin Latte are light despite
+# their names. Fall back to the naming convention for older themes.
+desktop_theme_is_light() {
+  local slug="$1"
+  local toml="$HOME/.local/share/vicinae/themes/$slug.toml"
+  if [[ -f "$toml" ]]; then
+    grep -qE '^\s*variant\s*=\s*"light"' "$toml"
+    return
+  fi
+  [[ "$slug" =~ light ]]
+}
+
 desktop_theme_uses_local_assets() {
   [[ -n "${locally_managed_desktop_themes[$1]:-}" ]]
 }

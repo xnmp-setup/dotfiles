@@ -48,6 +48,7 @@ Options:
                                   ~/Pictures/Wallpaper.
       --list-wallpapers           List available wallpaper filenames.
       --list-desktop-themes       List complete desktop theme names.
+      --list-light-desktop-themes List complete light desktop theme slugs.
       --restart-chrome            Restart a running Chrome after installing its theme.
   -h, --help                      Show this help.
 
@@ -67,15 +68,25 @@ title_case() {
 }
 
 list_desktop_themes() {
+  local mode="${1:-}" format="${2:-title}"
   local theme title wallpaper_path missing_assets
 
   while IFS= read -r theme; do
+    if [[ "$mode" == light ]]; then
+      desktop_theme_is_light "$theme" || continue
+    fi
     title=$(title_case "$theme")
     wallpaper_path=""
     wallpaper_path=$(resolve_wallpaper "${theme_wallpapers[$theme]}" 2>/dev/null) || true
     missing_assets=$(desktop_theme_missing_assets \
       "$theme" "$title" "$wallpaper_path")
-    [[ -n "$missing_assets" ]] || printf '%s\n' "$title"
+    if [[ -z "$missing_assets" ]]; then
+      if [[ "$format" == slug ]]; then
+        printf '%s\n' "$theme"
+      else
+        printf '%s\n' "$title"
+      fi
+    fi
   done < <(printf '%s\n' "${!theme_wallpapers[@]}" | sort)
 }
 
@@ -106,6 +117,10 @@ while (( $# > 0 )); do
       ;;
     --list-desktop-themes)
       list_desktop_themes
+      exit
+      ;;
+    --list-light-desktop-themes)
+      list_desktop_themes light slug
       exit
       ;;
     --restart-chrome)
@@ -225,21 +240,8 @@ fi
 # css_var, norm_hex, mix, rgb_triplet and pick_readable come from
 # lib/theme-colors.sh.
 
-# Whether the theme is a light theme. The theme's own files are the authority —
-# a slug like "yosemite-glow" carries no hint, so a name test alone misfiles
-# light themes as dark. Vicinae's TOML declares the variant explicitly; fall
-# back to the "-light" naming convention for themes that predate a TOML.
-theme_is_light() {
-  local toml="$HOME/.local/share/vicinae/themes/$slug.toml"
-  if [[ -f "$toml" ]]; then
-    grep -qE '^\s*variant\s*=\s*"light"' "$toml"
-    return
-  fi
-  [[ "$slug" =~ light ]]
-}
-
 theme_mode="dark"
-theme_is_light && theme_mode="light"
+desktop_theme_is_light "$slug" && theme_mode="light"
 
 theme_state_file=$(desktop_theme_state_file)
 vicinae_config="$HOME/.config/vicinae/settings.json"
@@ -454,7 +456,7 @@ config="$HOME/Vaults/Technical Vault/.obsidian/appearance.json"
 if [[ -f "$config" ]]; then
   # Light themes get moonstone, dark ones obsidian
   obs_mode="obsidian"
-  theme_is_light && obs_mode="moonstone"
+  desktop_theme_is_light "$slug" && obs_mode="moonstone"
 
   if grep -q '"cssTheme"' "$config"; then
     sed -i "s|\"cssTheme\": \"[^\"]*\"|\"cssTheme\": \"$title\"|" "$config"
@@ -843,7 +845,7 @@ if [[ -f "$dr_css" ]] && command -v jq &>/dev/null; then
   if [[ -n "$bg" && -n "$fg" ]]; then
     # Light themes drive the light scheme; everything else is a dark scheme.
     dr_mode=1
-    theme_is_light && dr_mode=0
+    desktop_theme_is_light "$slug" && dr_mode=0
 
     dr_dir="$HOME/.local/share/darkreader-themes"
     mkdir -p "$dr_dir"

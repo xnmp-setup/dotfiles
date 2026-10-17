@@ -442,6 +442,15 @@ mv "$test_root/ethereal.css.missing" \
   "$test_root/.config/tauri-explorer/themes/ethereal.css"
 
 desktop_themes=$(HOME="$test_root" bash "$repo_root/scripts/set-theme.sh" --list-desktop-themes)
+light_themes=$(HOME="$test_root" bash "$repo_root/scripts/set-theme.sh" --list-light-desktop-themes)
+[[ "$light_themes" == $'ayu-light\ncatppuccin-lavender\nflexoki-light\nmapquest\nrapture-light-lagoon' ]] \
+  || fail "light theme listing must include complete light themes using metadata, not names"
+mv "$test_root/.config/tauri-explorer/themes/mapquest.css" "$test_root/mapquest.css.missing"
+incomplete_light_themes=$(HOME="$test_root" bash "$repo_root/scripts/set-theme.sh" --list-light-desktop-themes)
+if grep -Fxq 'mapquest' <<<"$incomplete_light_themes"; then
+  fail "light theme listing included a theme with missing assets"
+fi
+mv "$test_root/mapquest.css.missing" "$test_root/.config/tauri-explorer/themes/mapquest.css"
 grep -Fxq 'Cosmic Dusk' <<<"$desktop_themes" \
   || fail "desktop theme listing omitted its display name"
 if grep -q $'\t' <<<"$desktop_themes"; then

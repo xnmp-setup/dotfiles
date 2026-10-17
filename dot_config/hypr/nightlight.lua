@@ -23,6 +23,14 @@ local HYPRSHADE =
     .. " { command -v python3 >/dev/null 2>&1 && exec " .. SOLAR .. "; };"
     .. " exec hyprshade auto'"
 
+-- Both desktops and laptops switch a dark desktop theme at sunrise. Keep this
+-- separate from the shader daemon: theme changes reload Hyprland and signal
+-- that daemon to reapply its shader, which must not pick another theme.
+local THEME =
+    ("sh -c 'command -v python3 >/dev/null 2>&1 && exec"
+    .. ' "$HOME"/.config/hypr/desktop_theme_solar.py --lat %s --lon %s' .. "'")
+    :format(LATITUDE, LONGITUDE)
+
 ---@param is_laptop boolean
 ---@return string
 function M.command(is_laptop)
@@ -33,6 +41,7 @@ end
 ---@param is_laptop boolean
 function M.start(hl, is_laptop)
     hl.exec_cmd(M.command(is_laptop))
+    hl.exec_cmd(THEME)
 end
 
 return M
