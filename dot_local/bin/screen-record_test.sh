@@ -39,12 +39,30 @@ STUB
 chmod +x "$root/bin/wl-copy"
 export CLIP_TYPE=$root/clip.type CLIP_DATA=$root/clip.data
 
+# Pushes must arrive during capture transitions, including before finalising
+# the stopped file. The real bar is external; this stub observes its IPC API.
+cat >"$root/bin/quickshell" <<'STUB'
+#!/bin/bash
+[[ $* == 'ipc -c statusbar call bar screenRecording '* ]] || exit 2
+since=${!#}
+if [[ $since == 0 ]]; then
+  [[ ! -e $XDG_RUNTIME_DIR/screen-record/started ]] || exit 3
+  echo off >>"$INDICATOR_EVENTS"
+else
+  [[ $(<"$XDG_RUNTIME_DIR/screen-record/started") == "$since" ]] || exit 4
+  echo on >>"$INDICATOR_EVENTS"
+fi
+STUB
+chmod +x "$root/bin/quickshell"
+export INDICATOR_EVENTS=$root/indicator.events
+
 "$script" status && fail "status must report idle before recording"
 "$script" toggle
 shopt -s nullglob
 files=("$SCREEN_RECORD_DIR"/*.mp4)
 ((${#files[@]} == 1)) || fail "first toggle should start one recording, got ${#files[@]}"
 [[ $("$script" status) == "recording "[0-9]* ]] || fail "status should report the start time while recording"
+[[ $(<"$INDICATOR_EVENTS") == on ]] || fail "REC must be pushed on at start"
 
 "$script" toggle
 [[ $(<"${files[0]}") == finalised ]] || fail "second toggle should stop and finalise the file"
@@ -53,10 +71,27 @@ expected="file://${files[0]// /%20}"
 [[ $(tr -d '\r' <"$CLIP_DATA") == "$expected" ]] || fail "clipboard should reference the saved file, got: $(<"$CLIP_DATA")"
 "$script" status && fail "status must report idle after stop"
 [[ ! -e $root/run/screen-record/pid ]] || fail "pid state should be cleared after stop"
+[[ $(<"$INDICATOR_EVENTS") == $'on\noff' ]] || fail "REC must be pushed off at stop"
+
+# A delayed startup check must not clear or announce a newer capture.
+set -m # keep SIGINT usable when this test launches the toggle in the background
+"$script" toggle >"$root/first.log" 2>&1 &
+first=$!
+set +m
+for ((i = 0; i < 100; i++)); do
+  [[ -e $root/run/screen-record/started ]] && break
+  sleep 0.01
+done
+"$script" toggle
+"$script" toggle
+wait "$first" || fail "a deliberately stopped startup is not a failure"
+"$script" status >/dev/null || fail "the newer capture must retain its state"
+[[ ! -s $root/first.log ]] || fail "superseded startup must not announce success or failure"
+"$script" toggle
 
 # Cancelled selection records nothing.
 printf '#!/bin/sh\nexit 1\n' >"$root/bin/slurp"
-rm -f "${files[0]}"
+rm -f "$SCREEN_RECORD_DIR/"*.mp4
 "$script" toggle
 files=("$SCREEN_RECORD_DIR"/*.mp4)
 ((${#files[@]} == 0)) || fail "cancelled selection must not record"

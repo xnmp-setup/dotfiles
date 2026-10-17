@@ -33,6 +33,9 @@ Options:
                 final message
   -l FILE       transcript log path (default: a codex-run-*.log under $TMPDIR).
                 Written live, so a backgrounded run can be tailed for progress.
+  -S DIR        enable live messages via app-server; create a private control
+                directory (must not already exist). Requires Python 3.
+                Send with: codex-send.py DIR "additional instructions"
 
 Examples:
   codex-run.sh "Summarize what src/auth/ does."
@@ -69,8 +72,9 @@ idle_s=1200
 full=0
 search=0
 logfile=""
+control=""
 
-while getopts ":m:e:s:C:t:i:l:wfh" opt; do
+while getopts ":m:e:s:C:t:i:l:S:wfh" opt; do
   case "$opt" in
     m) model="$OPTARG" ;;
     e) effort="$OPTARG" ;;
@@ -79,6 +83,7 @@ while getopts ":m:e:s:C:t:i:l:wfh" opt; do
     t) timeout_s="$OPTARG" ;;
     i) idle_s="$OPTARG" ;;
     l) logfile="$OPTARG" ;;
+    S) control="$OPTARG" ;;
     w) search=1 ;;
     f) full=1 ;;
     h) usage; exit 0 ;;
@@ -162,7 +167,23 @@ kill_tree() {
   kill -KILL $pids 2>/dev/null || true
 }
 
-"$codex_bin" "${args[@]}" -o "$last_msg" -- "$prompt" </dev/null >"$logfile" 2>&1 &
+if [ -n "$control" ]; then
+  command -v python3 >/dev/null 2>&1 || {
+    echo "error: live messages (-S) require Python 3" >&2
+    exit 127
+  }
+  script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+  # Keep the exec path unchanged for callers that do not need live messages.
+  live_args=(--codex "$codex_bin" --control "$control" --output "$last_msg"
+    --workdir "$workdir" --sandbox "$sandbox")
+  [ -n "$model" ] && live_args+=(--model "$model")
+  [ -n "$effort" ] && live_args+=(--effort "$effort")
+  [ "$search" -eq 1 ] && live_args+=(--search)
+  echo "codex control: $control" >&2
+  python3 "$script_dir/codex-live.py" "${live_args[@]}" -- "$prompt" </dev/null >"$logfile" 2>&1 &
+else
+  "$codex_bin" "${args[@]}" -o "$last_msg" -- "$prompt" </dev/null >"$logfile" 2>&1 &
+fi
 codex_pid=$!
 
 started=$SECONDS

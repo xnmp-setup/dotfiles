@@ -34,14 +34,30 @@ notify() {
   echo "screen-record: $1" >&2
 }
 
+# The status bar is a separate optional repo. Push transitions over its IPC so
+# REC does not wait for the next poll; absent/older bars keep the polling path.
+update_indicator() {
+  command -v quickshell >/dev/null 2>&1 || return 0
+  quickshell ipc -c statusbar call bar screenRecording "$1" >/dev/null 2>&1 || true
+}
+
 # A pid is "ours" only while it is still a recorder; a recycled pid is not.
+recorder_running() {
+  local status
+  [[ -r /proc/$1/stat ]] || return 1
+  status=$(<"/proc/$1/stat") 2>/dev/null || return 1
+  # A recorder that has exited can remain a zombie until its launching shell
+  # reaps it. It has already finalised the file; kill -0 alone would wait 10s.
+  [[ ${status##*) } != Z\ * ]]
+}
+
 recording_pid() {
   local pid comm
   [[ -r $pidfile ]] || return 1
   pid=$(<"$pidfile")
   [[ $pid =~ ^[0-9]+$ ]] || return 1
   comm=$(<"/proc/$pid/comm") 2>/dev/null || return 1
-  case $comm in wf-recorder | wl-screenrec) echo "$pid" ;; *) return 1 ;; esac
+  case $comm in wf-recorder | wl-screenrec) recorder_running "$pid" && echo "$pid" ;; *) return 1 ;; esac
 }
 
 # Percent-encode a path into a file:// URI (RFC 8089).
@@ -66,13 +82,15 @@ stop() {
   local pid=$1 file i
   file=$(<"$filefile")
   kill -INT "$pid" 2>/dev/null
+  rm -f "$startfile"
+  update_indicator 0
   # The recorder finalises the container on SIGINT; the file is unplayable
   # until it has exited, so wait for it rather than reporting early.
   for ((i = 0; i < 100; i++)); do
-    kill -0 "$pid" 2>/dev/null || break
+    recorder_running "$pid" || break
     sleep 0.1
   done
-  if kill -0 "$pid" 2>/dev/null; then
+  if recorder_running "$pid"; then
     kill -KILL "$pid" 2>/dev/null
     notify "Recorder did not stop cleanly; ${file##*/} may be damaged" critical
   elif copy_to_clipboard "$file"; then
@@ -113,14 +131,20 @@ start() {
   pid=$!
   set +m
   disown "$pid" 2>/dev/null
-  sleep 0.5
-  if ! kill -0 "$pid" 2>/dev/null; then
-    notify "Recorder failed to start: $(tail -n 1 "$logfile")" critical
-    return 1
-  fi
   echo "$pid" >"$pidfile"
   echo "$file" >"$filefile"
   date +%s >"$startfile"
+  update_indicator "$(<"$startfile")"
+  sleep 0.5
+  # A second keypress may already have stopped this capture (and even started
+  # another). Only this capture's owner may clear state or announce success.
+  [[ -r $startfile && -r $pidfile && $(<"$pidfile") == "$pid" ]] || return 0
+  if ! kill -0 "$pid" 2>/dev/null; then
+    rm -f "$pidfile" "$startfile"
+    update_indicator 0
+    notify "Recorder failed to start: $(tail -n 1 "$logfile")" critical
+    return 1
+  fi
   notify "Recording… press the shortcut again to stop"
 }
 
@@ -130,6 +154,7 @@ case ${1:-toggle} in
     ;;
   status)
     recording_pid >/dev/null || exit 1
+    [[ -r $startfile ]] || exit 1 # hidden while the stopped file is finalising
     echo "recording $(<"$startfile")"
     ;;
   *)

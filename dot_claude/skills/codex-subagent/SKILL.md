@@ -8,7 +8,7 @@ description: Delegate a task to the OpenAI Codex CLI as a subagent and get its a
 Runs `codex exec` (Codex CLI's non-interactive mode) as a one-shot subagent and
 returns its final message. Useful for a second opinion from a different model
 family, or for offloading a self-contained task — code or otherwise; with `-w`
-it does open-ended web research.
+it does open-ended web research. Add `-S DIR` to allow messages while it runs.
 
 ## Usage
 
@@ -33,6 +33,9 @@ Options:
   current information from the internet.
 - `-l FILE` — transcript log path. Default: `$TMPDIR/codex-run-<pid>.log`.
 - `-f` — print the full transcript instead of just the final message.
+- `-S DIR` — enable live messages using Codex app-server instead of `exec`.
+  Creates a private control directory; use a new path for each run. Requires
+  Python 3 and a Codex CLI with `turn/steer` support.
 
 Long prompts: write the prompt to a file in the scratchpad and pipe it in —
 `scripts/codex-run.sh -C /repo < prompt.md` — rather than fighting shell quoting.
@@ -56,7 +59,43 @@ time — that is not a hang. The transcript is written live; tail it:
 tail -c 2000 "$(ls -t "${TMPDIR:-/tmp}"/codex-run-*.log | head -1)"
 ```
 
-`pgrep -af "codex exec"` confirms it is still alive.
+`pgrep -af "codex (exec|app-server)"` confirms it is still alive.
+
+## Sending a message while it runs
+
+Use `-S` for work that may need additional context or a change of direction.
+Launch this with `run_in_background: true`, then keep the control path:
+
+```bash
+~/.claude/skills/codex-subagent/scripts/codex-run.sh \
+  -S "${TMPDIR:-/tmp}/codex-review-$$" -C /repo "Review the current diff."
+```
+
+Send from another Bash call, using that exact directory:
+
+```bash
+~/.claude/skills/codex-subagent/scripts/codex-send.py \
+  /tmp/codex-review-12345 "Also check how cancellation affects retries."
+# Or read a long message from a file:
+~/.claude/skills/codex-subagent/scripts/codex-send.py \
+  /tmp/codex-review-12345 < followup.md
+```
+
+Both commands need `dangerouslyDisableSandbox: true` in Claude Code. Wait for
+`DIR/session.json` to report `"status": "active"` before sending. An acknowledged
+message returns `{"accepted": true, "turnId": "..."}`: Codex accepted the input
+for the active turn; it has not necessarily acted on it yet. This uses
+[`turn/steer`](https://developers.openai.com/codex/app-server#steer-an-active-turn),
+preserving the same agent, context, model and sandbox. It does not cancel an
+already running tool or start a new turn. An ended session rejects messages.
+After a timeout or disconnect, delivery may be unknown; inspect the transcript
+before retrying to avoid duplicate instructions.
+
+Runs started without `-S` cannot receive live messages. Start the next run with
+`-S`; do not launch `codex exec resume` concurrently against the running session.
+The control directory and transcript remain for diagnosis after completion and
+can be removed once no longer needed. The control file contains a private
+loopback authentication token; do not share it.
 
 ## Choosing the sandbox
 
@@ -109,3 +148,5 @@ The `codex` CLI must be installed (`npm i -g @openai/codex`) and authenticated
 (`codex login`); the skill does not install it. The script exits 127 with an
 install hint when it is missing, so on a machine without Codex the skill fails
 loudly instead of silently doing nothing.
+Live messaging additionally requires Python 3; the original one-shot mode does
+not. Unsupported app-server calls fail with their server error and transcript.
