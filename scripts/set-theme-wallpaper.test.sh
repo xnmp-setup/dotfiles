@@ -328,7 +328,7 @@ jq -n --arg id "$blocked_chrome_id" \
   '{extensions: {external_uninstalls: [$id]}}' \
   >"$test_root/.config/google-chrome/Default/Preferences"
 
-run_set_theme() {
+run_theme_command() {
   TEST_HYPRCTL_LOG="$test_root/hyprctl.log" \
     TEST_CHROME_RESTART_LOG="$test_root/chrome-restart.log" \
     TEST_CHROME_STOPPED="$test_root/chrome-stopped" \
@@ -341,7 +341,11 @@ run_set_theme() {
     SET_THEME_GREETER_CSS="$test_root/greeter.css" \
     DARKREADER_FORK_RELEASE_URL="file://$test_root/missing-darkreader-release.zip" \
     DARKREADER_FORK_RELEASE_SHA256="0000000000000000000000000000000000000000000000000000000000000000" \
-    bash "$repo_root/scripts/set-theme.sh" "$@"
+    "$@"
+}
+
+run_set_theme() {
+  run_theme_command bash "$repo_root/scripts/set-theme.sh" "$@"
 }
 
 ethereal_wallpaper="$test_root/Pictures/Wallpaper/omarchy-ethereal.webp"
@@ -512,6 +516,32 @@ assert_contains "$test_root/hyprctl.log" "hyprpaper wallpaper DP-1, $default_pat
 assert_contains "$test_root/hyprctl.log" "hyprpaper wallpaper DP-2, $default_path, fill"
 # Monitors connected after the switch fall back to the wildcard assignment.
 assert_contains "$test_root/hyprctl.log" "hyprpaper wallpaper , $default_path, fill"
+
+# Exercise the actual sunrise entry point through set-theme. A successful
+# desktop-state write alone is insufficient: Chrome must restart and Dark
+# Reader must receive the matching light palette.
+rm -f "$test_root/chrome-stopped"
+: >"$test_root/chrome-restart.log"
+run_theme_command python3 - "$repo_root" "$test_root" >"$test_root/sunrise.out" <<'PY'
+from pathlib import Path
+import sys
+sys.path.insert(0, sys.argv[1])
+from scripts.test_desktop_theme_solar import scheduler
+home = Path(sys.argv[2])
+assert scheduler.switch_to_random_light(
+    Path(sys.argv[1]) / "scripts/set-theme.sh",
+    home / ".local/state/desktop-theme",
+)
+PY
+assert_contains "$test_root/chrome-restart.log" '-TERM -x chrome'
+assert_contains "$test_root/chrome-restart.log" \
+  "-f $test_root/bin/google-chrome-stable"
+jq -e '.mode == "light"' "$theme_state" >/dev/null \
+  || fail "sunrise did not select a light desktop theme"
+jq -e '.enabled == true and .theme.mode == 0 and
+  all(.customThemes[]; .theme.mode == 0)' \
+  "$test_root/.local/state/darkreader-theme-bridge/current.json" >/dev/null \
+  || fail "sunrise did not send a light palette to Dark Reader"
 
 # Each requested theme switches the observable desktop state, uses its own
 # wallpaper and palette, and classifies every light theme correctly.

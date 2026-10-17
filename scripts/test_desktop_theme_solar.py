@@ -5,6 +5,8 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import pty
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -43,6 +45,7 @@ if [[ "$1" == --list-light-desktop-themes ]]; then
   exit 0
 fi
 [[ ! -e apply-fails ]] || exit 1
+if [[ -e require-noninteractive-input && -t 0 ]]; then exit 42; fi
 printf '%s\\n' "$1" >> applied
 printf '{"mode":"light","slug":"%s"}\\n' "$1" > current.json
 ''')
@@ -74,6 +77,28 @@ printf '{"mode":"light","slug":"%s"}\\n' "$1" > current.json
         self.assertTrue(self.switch())
         self.assertEqual(len(self.applied()), 1)
         self.assertIn(self.applied()[0], ["mapquest", "ayu-light", "catppuccin-latte"])
+        self.assertEqual(json.loads(self.state.read_text())["mode"], "light")
+
+    def test_compositor_terminal_is_not_passed_to_the_theme_command(self):
+        (self.root / "require-noninteractive-input").touch()
+        master, terminal = pty.openpty()
+        self.addCleanup(os.close, master)
+        self.addCleanup(os.close, terminal)
+        code = """
+from pathlib import Path
+import sys
+from scripts.test_desktop_theme_solar import scheduler
+sys.exit(0 if scheduler.switch_to_random_light(Path(sys.argv[1]), Path(sys.argv[2])) else 1)
+"""
+        result = subprocess.run(
+            [sys.executable, "-c", code, str(self.cli), str(self.root)],
+            cwd=REPO,
+            stdin=terminal,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(self.state.read_text())["mode"], "light")
 
     def test_already_light_and_unknown_states_are_preserved(self):

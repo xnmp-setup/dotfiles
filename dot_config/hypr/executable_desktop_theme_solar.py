@@ -53,6 +53,7 @@ def switch_to_random_light(theme_cli: Path, state_dir: Path) -> bool:
 
             listing = subprocess.run(
                 ["bash", str(theme_cli), "--list-light-desktop-themes"],
+                stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
                 check=True,
@@ -65,7 +66,14 @@ def switch_to_random_light(theme_cli: Path, state_dir: Path) -> bool:
                 )
                 return False
             theme = random.choice(themes)
-            subprocess.run(["bash", str(theme_cli), theme], check=True)
+            # Hyprland supplies a TTY even when output is hidden. Never inherit
+            # it: an interactive restart prompt would hold apply.lock forever,
+            # blocking Vicinae. Chrome's external theme requires a restart.
+            subprocess.run(
+                ["bash", str(theme_cli), theme, "--restart-chrome"],
+                stdin=subprocess.DEVNULL,
+                check=True,
+            )
             return True
     except (OSError, subprocess.CalledProcessError) as error:
         print(f"desktop_theme_solar: {error}", file=sys.stderr)
