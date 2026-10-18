@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 import secrets
 import signal
+import sys
 
 MESSAGE_LIMIT = 1024 * 1024
 
@@ -136,7 +137,10 @@ class LiveRun:
                    "-c", 'web_search="live"' if self.args.search else 'web_search="disabled"']
         self.process = await asyncio.create_subprocess_exec(
             *command, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
-            limit=16 * MESSAGE_LIMIT)
+            limit=16 * MESSAGE_LIMIT,
+            # Its own session: a signal Codex sends to its process group (for
+            # example when a sub-agent ends) must not reach this driver.
+            start_new_session=True)
         reader = asyncio.create_task(self.read())
         server = None
         status = "failed"
@@ -184,8 +188,11 @@ class LiveRun:
 async def main(args):
     task = asyncio.current_task()
     loop = asyncio.get_running_loop()
+    def stop(sig):
+        print(f"codex-live: received {signal.Signals(sig).name}", file=sys.stderr, flush=True)
+        task.cancel()
     for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(sig, task.cancel)
+        loop.add_signal_handler(sig, stop, sig)
     await LiveRun(args).run()
 
 
