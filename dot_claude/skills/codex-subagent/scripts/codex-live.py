@@ -41,10 +41,23 @@ class LiveRun:
         finally:
             self.pending.pop(identifier, None)
 
+    async def readline(self):
+        # App-server events can exceed any fixed buffer (a tool echoing a large
+        # file), so accumulate past the stream limit instead of failing.
+        line = bytearray()
+        while True:
+            try:
+                line += await self.process.stdout.readuntil(b"\n")
+                return bytes(line)
+            except asyncio.LimitOverrunError as error:
+                line += await self.process.stdout.readexactly(error.consumed)
+            except asyncio.IncompleteReadError as error:
+                return bytes(line + error.partial)
+
     async def read(self):
         try:
             while True:
-                line = await self.process.stdout.readline()
+                line = await self.readline()
                 if not line:
                     raise RuntimeError("Codex app-server exited before completing the turn")
                 print(line.decode().rstrip(), flush=True)
