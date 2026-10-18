@@ -203,4 +203,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main(parser.parse_args()))
     except (OSError, ValueError, RuntimeError, asyncio.TimeoutError, asyncio.CancelledError) as error:
-        parser.exit(1, f"codex-live: {error or 'cancelled'}\n")
+        parser.exit(1, f"codex-live: {type(error).__name__}: {error or 'cancelled'}\n")
