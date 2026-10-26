@@ -9,17 +9,17 @@ background = "#F6FFF8"
 foreground = "#3B413C"
 secondary_background = "#EAF7EF"
 border = "#C3DED0"
-accent = "#2E9C79"
+accent = "#1C8564"
 
 [colors.accents]
-blue = "#3E8CA6"
-green = "#3E9B78"
-magenta = "#9B6FA8"
-orange = "#C07A3E"
-purple = "#9B6FA8"
-red = "#D0644A"
-yellow = "#C07A3E"
-cyan = "#2FA893"
+blue = "#2D75A0"
+green = "#3A8236"
+magenta = "#B0507E"
+orange = "#B05A22"
+purple = "#93599F"
+red = "#C24E36"
+yellow = "#8F6D05"
+cyan = "#137985"
 
 [colors.list.item.selection]
 background = { name = "#CDEFDD", opacity = 0.9 }

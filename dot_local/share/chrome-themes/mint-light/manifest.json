@@ -16,12 +16,12 @@
       "bookmark_text": [59, 65, 60],
       "ntp_background": [246, 255, 248],
       "ntp_text": [59, 65, 60],
-      "ntp_link": [46, 156, 121],
+      "ntp_link": [28, 133, 100],
       "ntp_header": [195, 222, 208],
       "omnibox_background": [234, 247, 239],
       "omnibox_text": [59, 65, 60],
       "toolbar_button_icon": [95, 110, 103],
-      "button_background": [46, 156, 121]
+      "button_background": [28, 133, 100]
     },
     "tints": {
       "buttons": [-1, -1, -1],
