@@ -1,0 +1,48 @@
+# herdr (https://herdr.dev) — tmux-style multiplexer for agent sessions.
+# Keys mirror ~/.config/ghostty/config: same key as the Ghostty action, but
+# behind the prefix so Ghostty doesn't swallow it (ghostty ctrl+w -> prefix+w).
+# Reference: https://herdr.dev/tui/docs/config-reference/
+# Harmless on machines without herdr installed.
+
+# herdr writes this itself once the first-run welcome is dismissed.
+onboarding = false
+
+[keys]
+prefix = "ctrl+b"
+
+# ghostty ctrl+t new_tab / ctrl+w close_surface / ctrl+n new_window
+new_tab = ["prefix+t", "prefix+c"]
+close_pane = ["prefix+w", "prefix+x"]
+new_workspace = ["prefix+n", "prefix+shift+n"]
+
+# ghostty ctrl+page_up / ctrl+page_down. Page key names need a herdr build
+# with herdrdev/herdr#4892 fixed; stock 0.9.5 rejects them and drops these.
+previous_tab = "prefix+pageup"
+next_tab = "prefix+pagedown"
+
+# No ghostty equivalent (windows are switched by the compositor).
+previous_workspace = "prefix+left"
+next_workspace = "prefix+right"
+previous_agent = "prefix+up"
+next_agent = "prefix+down"
+
+# ghostty super+l/p/;/' goto_split left/up/down/right
+focus_pane_left = "prefix+l"
+focus_pane_up = "prefix+p"
+focus_pane_down = "prefix+semicolon"
+focus_pane_right = "prefix+quote"
+
+# ghostty alt+super+' / alt+super+; new_split right/down
+# (herdr only splits right or down)
+split_vertical = ["prefix+alt+quote", "prefix+v"]
+split_horizontal = ["prefix+alt+semicolon", "prefix+minus"]
+
+# ghostty alt+o toggle_split_zoom
+zoom = ["prefix+o", "prefix+z"]
+
+# ghostty ctrl+, open_config
+settings = ["prefix+comma", "prefix+s"]
+
+# Defaults displaced by the bindings above
+workspace_picker = "prefix+space"            # was prefix+w
+open_notification_target = "prefix+shift+o"  # was prefix+o
