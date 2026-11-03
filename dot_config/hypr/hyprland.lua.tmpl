@@ -89,13 +89,11 @@ local navigation      = require("window_navigation").new(hl, nary, group_actions
 local resize          = require("window_resize").new(hl)
 local scratchpad      = require("scratchpad").new(hl, window_actions)
 
--- Group tab geometry. The strip is TAB_HEIGHT tall; each tab rect is drawn
--- TAB_DROP taller so it hangs that far over the window, and the fill carves
--- the overhang back off (see theme.tab_fill and the groupbar block below).
--- The drop has to clear TAB_ROUNDING for the carve to square the bottom.
+-- Group tab geometry. The strip is TAB_HEIGHT tall and each tab rect fills
+-- it; an unfocused tab's fill carves TAB_FLOAT off its bottom so it lifts off
+-- the window (see theme.tab_fill and the groupbar block below).
 local TAB_HEIGHT   = 28
 local TAB_ROUNDING = 8
-local TAB_DROP     = TAB_ROUNDING
 local TAB_FLOAT    = 4 -- how far an unfocused pill sits off the window
 -- Softer corners while preserving usable window edges. Also the groupbar's
 -- side inset: the focused pill lands square on the window's top border, so
@@ -104,8 +102,7 @@ local TAB_FLOAT    = 4 -- how far an unfocused pill sits off the window
 local WINDOW_ROUNDING = 10
 
 local function tab_fill(spec, alpha, detached)
-    local carve = TAB_DROP + (detached and TAB_FLOAT or 0)
-    return theme.tab_fill(spec, alpha, TAB_HEIGHT + TAB_DROP, carve)
+    return theme.tab_fill(spec, alpha, TAB_HEIGHT, detached and TAB_FLOAT or 0)
 end
 
 -- The focused pill: the background pushed toward the accent, a touch more
@@ -280,18 +277,16 @@ hl.config({
         -- Shape: floating translucent pills — gaps let the wallpaper breathe
         -- between tabs, every corner rounded (round_only_edges would square
         -- the corners where pills meet). The focused pill is opaque, bold,
-        -- and its square bottom sits flush on the window; unfocused pills
-        -- float above it. The tint gradient is carried by the same fill.
+        -- and sits flush on the window; unfocused pills float above it. The
+        -- tint gradient is carried by the same fill.
         --
         -- Every one of those is per-tab, and the only per-tab knob the
         -- groupbar has is the fill, so all of it is done in theme.tab_fill:
-        -- the tab rect is drawn TAB_DROP px taller than the strip and hangs
-        -- that far over the window, and each fill carves back the part it
-        -- doesn't want. Carving past the corner radius squares the bottom
-        -- (see theme.tab_fill), so the focused pill carves exactly the
-        -- overhang and lands square on the window, and an unfocused pill
-        -- carves a further TAB_FLOAT to lift off it. Both keep their real,
-        -- rounded top.
+        -- an unfocused fill carves TAB_FLOAT off the rect's bottom to lift
+        -- off the window. Bottom corners stay rounded. Until Hyprland 0.57 a
+        -- negative indicator_gap hung the rect over the window so the carve
+        -- could square them; 0.57 clamps indicator_gap (and gaps_out) to >= 0,
+        -- so the rect can no longer leave the strip.
         --
         -- Everything is one texture draw, which is the point. The groupbar's
         -- other way to paint a tab, the indicator, is a plain rect drawn over
@@ -305,7 +300,7 @@ hl.config({
             enabled       = true,
             font_size     = 12,
             font_weight_active = "bold",
-            height        = TAB_HEIGHT + TAB_DROP,
+            height        = TAB_HEIGHT,
             render_titles = true,
             gradients     = true,
             rounding          = 0,
@@ -314,13 +309,9 @@ hl.config({
             round_only_edges = false,
             gaps_in        = 6,
             gaps_out       = 0,
-            -- The strip reserves height + indicator_gap; the negative gap is
-            -- what hangs the tab rect over the window. No indicator is drawn.
+            -- No indicator is drawn, and its gap must be >= 0 (Hyprland 0.57+).
             indicator_height = 0,
-            indicator_gap    = -TAB_DROP,
-            -- Titles centre themselves in the whole rect, overhang included;
-            -- lift them back into the middle of the visible pill.
-            text_offset      = TAB_DROP // 2,
+            indicator_gap    = 0,
             col = {
                 active          = focused_fill(false),
                 inactive        = tab_fill(theme.colors.background, "88", true),
