@@ -177,6 +177,19 @@ hl.config({
         layout = "lua:nary",
     },
 
+    render = {
+        -- Auto-HDR switches the output into HDR whenever a fullscreen surface
+        -- carries an HDR color description. Chromium (Chrome, Obsidian and
+        -- other Electron apps) tags its surfaces that way through
+        -- wp-color-management, so every fullscreen toggle of an ordinary SDR
+        -- page flipped the output's HDR state. On NVIDIA that is a full modeset
+        -- and the monitor resyncs: ~1s of black on enter and again on exit.
+        -- Measured: 6/6 toggles modeset with this on, 0/6 with it off.
+        -- Cost: fullscreen HDR games/video no longer switch to HDR on their own;
+        -- enable HDR per monitor (monitor rule cm = "hdr") when it is wanted.
+        cm_auto_hdr = 0,
+    },
+
     decoration = {
         rounding     = WINDOW_ROUNDING,
         dim_inactive = false,
