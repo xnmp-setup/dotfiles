@@ -59,15 +59,18 @@ local function new(hl, window_actions)
         return w
     end
 
-    -- A shown special workspace has the same negative ID on its window and monitor.
-    -- Comparing IDs also avoids coupling visibility to a particular workspace name.
+    -- A shown special workspace is the monitor's active_special_workspace, matched
+    -- by name. Not by ID: Hyprland 0.57's Lua API reports `id = nil` for special
+    -- workspaces (HL.Workspace.id is `integer|nil`), so an ID comparison never
+    -- matches and a shown pad reads as hidden -- F9 then re-summons instead of
+    -- dismissing. Special workspace names are unique, so the name is the identity.
     local function shown_monitor(w)
-        local workspace = w and w.workspace
-        if not (workspace and workspace.id) then return nil end
+        local name = w and w.workspace and w.workspace.name
+        if not name then return nil end
 
         for _, m in ipairs(hl.get_monitors() or {}) do
             local special = m.active_special_workspace
-            if special and special.id == workspace.id then return m end
+            if special and special.name == name then return m end
         end
     end
 

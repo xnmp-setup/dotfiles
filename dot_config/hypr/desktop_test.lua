@@ -181,13 +181,14 @@ local function fake_runtime(spec)
 
     -- Hyprland keeps one special workspace per name. A test that declares
     -- spec.special_workspace gets that one workspace for every name.
-    local specials, special_count = {}, 0
+    local specials = {}
     local function special_named(name)
         if spec.special_workspace then return spec.special_workspace end
         name = tostring(name):gsub("^special:", "")
         if not specials[name] then
-            specials[name] = { id = -94 - special_count, name = "special:" .. name }
-            special_count = special_count + 1
+            -- No id: Hyprland 0.57's Lua API reports `id = nil` for special
+            -- workspaces, so code under test must identify them by name.
+            specials[name] = { name = "special:" .. name }
         end
         return specials[name]
     end
@@ -195,7 +196,7 @@ local function fake_runtime(spec)
     local function showing(workspace)
         for _, monitor in ipairs(known_monitors) do
             local shown = monitor.active_special_workspace
-            if shown and shown.id == workspace.id then return monitor end
+            if shown and shown.name == workspace.name then return monitor end
         end
     end
 
@@ -340,7 +341,7 @@ local function fake_runtime(spec)
             local focused = active
             local focused_group = focused and focused.group
             if focused_group and focused.workspace
-                and focused.workspace.id == target.workspace.id
+                and focused.workspace.name == target.workspace.name
                 and not (target.floating and not focused.floating)
             then
                 focused_group.members[#focused_group.members + 1] = target
@@ -1692,7 +1693,7 @@ end
 
 do
     local ws = { id = 1, name = "1" }
-    local special = { id = -94, name = "special:ghostty-drop" }
+    local special = { name = "special:ghostty-drop" }
     local chrome = window("chrome", "google-chrome", ws)
     local obsidian = window("obsidian", "obsidian", ws)
     local tabs = group(chrome, obsidian)
@@ -1759,7 +1760,7 @@ end
 -- focus it instead of the terminal.
 do
     local ws = { id = 1, name = "1" }
-    local special = { id = -94, name = "special:ghostty-drop" }
+    local special = { name = "special:ghostty-drop" }
     local other = window("other", "google-chrome", ws)
     -- Ahead of the pad in window order: whichever comes first is what an
     -- unqualified search would take.
@@ -1801,7 +1802,7 @@ end
 
 do
     local ws = { id = 1, name = "1" }
-    local special = { id = -94, name = "special:ghostty-drop" }
+    local special = { name = "special:ghostty-drop" }
     local chrome = window("chrome", "google-chrome", ws)
     local obsidian = window("obsidian", "obsidian", ws)
     local tabs = group(chrome, obsidian)
@@ -1832,7 +1833,7 @@ end
 do
     local first_ws = { id = 1, name = "1" }
     local second_ws = { id = 2, name = "2" }
-    local special = { id = -94, name = "special:ghostty-drop" }
+    local special = { name = "special:ghostty-drop" }
     local first = window("first", "first-app", first_ws)
     local second = window("second", "second-app", second_ws)
     local pad = window("pad", "com.mitchellh.ghostty", special)
@@ -1871,7 +1872,7 @@ end
 do
     local primary_ws = { id = 1, name = "1" }
     local secondary_ws = { id = 6, name = "6" }
-    local special = { id = -94, name = "special:ghostty-drop" }
+    local special = { name = "special:ghostty-drop" }
     local primary_window = window("primary", "primary-app", primary_ws)
     local secondary_window = window("secondary", "secondary-app", secondary_ws)
     local pad = window("pad", "com.mitchellh.ghostty", special)
@@ -1933,7 +1934,7 @@ end
 -- browser, tabs and all, into the drop-down.
 do
     local ws = { id = 1, name = "1" }
-    local special = { id = -94, name = "special:chrome-drop" }
+    local special = { name = "special:chrome-drop" }
     local terminal = window("terminal", "com.mitchellh.ghostty", ws)
     local windows = { terminal }
     local hl, control = fake_runtime({
@@ -1996,7 +1997,7 @@ end
 
 do
     local ws = { id = 1, name = "1" }
-    local special = { id = -94, name = "special:chrome-drop" }
+    local special = { name = "special:chrome-drop" }
     local terminal = window("terminal", "com.mitchellh.ghostty", ws)
     local windows = { terminal }
     local hl, control = fake_runtime({
@@ -2065,7 +2066,7 @@ end
 
 do
     local ws = { id = 1, name = "1" }
-    local special = { id = -94, name = "special:ghostty-drop" }
+    local special = { name = "special:ghostty-drop" }
     local chrome = window("chrome", "google-chrome", ws)
     local pad = window("pad", "com.mitchellh.ghostty", special)
 
@@ -2110,7 +2111,7 @@ do
     -- The primary workspace stays authoritative even when another monitor has focus.
     local primary_ws = { id = 1, name = "1" }
     local other_ws = { id = 6, name = "6" }
-    local special = { id = -94, name = "special:ghostty-drop" }
+    local special = { name = "special:ghostty-drop" }
     local pad = window("pad", "com.mitchellh.ghostty", special)
     local ultrawide = monitor({
         id = 0, name = "DP-2", width = 3440, height = 1440,
@@ -2169,7 +2170,7 @@ do
     -- Scaling: Hyprland reports monitors in physical pixels but places windows in
     -- logical ones, so a HiDPI panel must not halve the share the pad occupies.
     local ws = { id = 1, name = "1" }
-    local special = { id = -94, name = "special:ghostty-drop" }
+    local special = { name = "special:ghostty-drop" }
     local pad = window("pad", "com.mitchellh.ghostty", special)
     local hidpi = monitor({
         id = 0, name = "eDP-1", width = 3840, height = 2400, scale = 2,
@@ -2202,7 +2203,7 @@ do
     -- Fluid sizing should stop growing once a terminal reaches a readable width.
     -- On a desktop with no built-in panel the first output is the target monitor.
     local ws = { id = 1, name = "1" }
-    local special = { id = -94, name = "special:ghostty-drop" }
+    local special = { name = "special:ghostty-drop" }
     local pad = window("pad", "com.mitchellh.ghostty", special)
     local ultrawide = monitor({
         id = 0, name = "DP-1", width = 3440, height = 1440,
@@ -2235,7 +2236,7 @@ end
 do
     -- Absolute sizes and the default anchor still behave as they always did.
     local ws = { id = 1, name = "1" }
-    local special = { id = -94, name = "special:chrome-drop" }
+    local special = { name = "special:chrome-drop" }
     local pad = window("pad", "google-chrome", special)
     local screen = monitor({
         id = 0, name = "DP-1", width = 3440, height = 1440,
