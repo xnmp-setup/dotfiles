@@ -341,6 +341,12 @@ hl.animation({ leaf = "windows",          enabled = true, speed = 2, bezier = "f
 hl.animation({ leaf = "workspaces",       enabled = true, speed = 2, bezier = "default" })
 hl.animation({ leaf = "specialWorkspace", enabled = true, speed = 3, bezier = "fastBezier", style = "slidefadevert -50%" })
 
+-- Every fade leaf (window open/close, fullscreen fading out the windows
+-- behind, focus opacity, dim, shadow) inherits from "fade", which otherwise
+-- falls through to global's speed 8 (800ms). With translucent windows, the
+-- fullscreen toggle then visibly lags the 200ms resize for most of a second.
+hl.animation({ leaf = "fade",             enabled = true, speed = 2, bezier = "default" })
+
 -- Quickshell's workspace hints are Wayland popups. The inherited global fade
 -- keeps dismissed hints on screen while the next one opens, making hover lag.
 -- Hyprland controls these fades globally (layer no_anim does not cover popups),
