@@ -36,7 +36,7 @@ ${env_var.STARSHIP_PWD_RO}\
 [](fg:dir_bg)\
 $git_branch\
 ([](fg:sync_bg inverted)$git_state$git_status[](fg:sync_bg))\
-([](fg:lang_bg inverted)$python$nodejs$bun$rust$golang$nix_shell[](fg:lang_bg))\
+([](fg:lang_bg inverted)$nix_shell[](fg:lang_bg))\
 ${env_var.CHEZMOI}\
 $status\
 ([](fg:dur_bg inverted)$cmd_duration$jobs[ ](bg:dur_bg)[](fg:dur_bg))\
@@ -83,31 +83,6 @@ ahead = "⇡${count}"
 behind = "⇣${count}"
 diverged = "⇡${ahead_count} ⇣${behind_count}"
 up_to_date = ""
-
-[python]
-format = "[ ${symbol}${version}( \\($virtualenv\\)) ](bg:lang_bg fg:lang_fg)"
-symbol = " "
-version_format = "${major}.${minor}"
-
-[nodejs]
-format = "[ $symbol($version) ](bg:lang_bg fg:lang_fg)"
-symbol = " "
-version_format = "${major}"
-
-[bun]
-format = "[ $symbol($version) ](bg:lang_bg fg:lang_fg)"
-symbol = "bun "
-version_format = "${major}.${minor}"
-
-[rust]
-format = "[ $symbol($version) ](bg:lang_bg fg:lang_fg)"
-symbol = " "
-version_format = "${major}.${minor}"
-
-[golang]
-format = "[ $symbol($version) ](bg:lang_bg fg:lang_fg)"
-symbol = " "
-version_format = "${major}.${minor}"
 
 [nix_shell]
 format = "[ $symbol$state ](bg:lang_bg fg:lang_fg)"
