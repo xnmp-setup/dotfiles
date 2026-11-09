@@ -455,6 +455,28 @@ _is_text_file() {
   [[ "$type" == "inode/x-empty" ]]
 }
 
+# Shell script → how to run it. Succeeds for .sh/.bash files and for
+# extensionless files with a sh-family shebang (.zsh files are left alone: here
+# they're sourced, not run). Prints nothing when the file is executable (run
+# it directly, so its shebang decides), else the interpreter to pass it to.
+_shell_script_runner() {
+  local f="$1" ext=${${1:t}:l:e} shebang interp
+  [[ -f "$f" ]] || return 1
+  [[ -n $ext && $ext != (sh|bash) ]] && return 1
+  # First 128 bytes only, so a large binary isn't read whole.
+  zmodload -F zsh/system b:sysread 2>/dev/null
+  [[ -r "$f" ]] && sysread -s 128 shebang < "$f" 2>/dev/null
+  shebang=${shebang%%$'\n'*}
+  if [[ $shebang =~ '^#!.*[/ ]((ba|da|k|z)?sh)( |$)' ]]; then
+    interp=$match[1]
+  elif [[ -n $ext ]]; then
+    interp=bash
+  else
+    return 1
+  fi
+  [[ -x "$f" ]] || print -r -- "$interp"
+}
+
 # Pick the command to open a file with, by extension then content.
 # Echoes nothing for "no opinion" (caller falls back to the bare filename).
 _fzf_open_cmd() {
@@ -497,9 +519,19 @@ fzf-file-widget() {
     quoted+=("${(q)f}")
   done
 
-  # Single file on an empty prompt → prefill the right opener (tv/o/m).
-  local cmd
-  if [[ ${#quoted} -eq 1 && -z "$LBUFFER" ]] && cmd=$(_fzf_open_cmd "${(f)sel}") && [[ -n "$cmd" ]]; then
+  # Single file on an empty prompt → prefill the command to run it if it's a
+  # shell script (Enter runs it, or add arguments first), else the right
+  # opener (tv/o/m).
+  local cmd runner
+  if [[ ${#quoted} -eq 1 && -z "$LBUFFER" ]] && runner=$(_shell_script_runner "$sel"); then
+    if [[ -n $runner ]]; then
+      LBUFFER="$runner ${quoted[1]} "
+    elif [[ $sel == */* ]]; then
+      LBUFFER="${quoted[1]} "
+    else
+      LBUFFER="./${quoted[1]} "
+    fi
+  elif [[ ${#quoted} -eq 1 && -z "$LBUFFER" ]] && cmd=$(_fzf_open_cmd "${(f)sel}") && [[ -n "$cmd" ]]; then
     LBUFFER="$cmd ${quoted[1]} "
   else
     LBUFFER+="${(j: :)quoted} "
