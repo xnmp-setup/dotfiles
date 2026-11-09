@@ -24,6 +24,8 @@ source "$set_theme_script_dir/lib/darkreader-theme.sh"
 source "$set_theme_script_dir/lib/desktop-color-scheme.sh"
 # shellcheck source=lib/mako-theme.sh
 source "$set_theme_script_dir/lib/mako-theme.sh"
+# shellcheck source=lib/starship-theme.sh
+source "$set_theme_script_dir/lib/starship-theme.sh"
 # shellcheck source=lib/theme-colors.sh
 source "$set_theme_script_dir/lib/theme-colors.sh"
 # shellcheck source=lib/theme-state.sh
@@ -1318,6 +1320,25 @@ if desktop_theme_write_state \
   echo "  ✓ Local theme state → $(desktop_theme_state_file)"
 else
   skipped+=("Local theme state (could not write $(desktop_theme_state_file))")
+fi
+
+# --- Starship (zsh prompt) ---
+# Palette generated from the Ghostty theme file, since the prompt's blocks sit
+# on the terminal's own colours (see lib/starship-theme.sh). Open shells pick
+# it up at their next prompt (~/.config/zsh/starship-theme.zsh); there is
+# nothing to reload. Not gated on the starship binary: set-theme may run from
+# a launcher whose PATH lacks ~/.local/bin, and the file is harmless unused.
+starship_terminal_theme="$HOME/.config/ghostty/themes/$title"
+starship_palette="${XDG_CONFIG_HOME:-$HOME/.config}/starship/palette.toml"
+if starship_generate_palette "$starship_terminal_theme" "$theme_mode" "$starship_palette"; then
+  echo "  ✓ Starship → $slug ($theme_mode)"
+  reload+=("Starship: recolours at the next prompt")
+  ((changed++))
+else
+  # A stale palette would paint the previous theme's colours; without one the
+  # prompt falls back to ANSI colour names, which at least follow the terminal.
+  rm -f -- "$starship_palette"
+  skipped+=("Starship ($starship_theme_error; using ANSI colours)")
 fi
 
 # --- Powerlevel10k (zsh prompt) ---

@@ -6,10 +6,25 @@ if [[ -z "${GEMINI_API_KEY:-}" ]] && command -v secret-tool >/dev/null 2>&1; the
   unset _gemini_api_key
 fi
 
+# Prompt engine: Starship where its binary is installed, Powerlevel10k
+# otherwise. Starship comes from the system package manager (pacman, brew, a
+# NixOS/home-manager package) or a user install in ~/.local/bin or ~/.cargo/bin;
+# those dirs and Homebrew's join PATH further down, so they are checked here by
+# path. A machine without Starship keeps the p10k prompt unchanged. Set
+# ZSH_PROMPT_ENGINE=p10k in the environment to force the old prompt.
+if [[ -z ${ZSH_PROMPT_ENGINE:-} ]]; then
+  if () { (( $# )) } $^path/starship(N*) ~/.local/bin/starship(N*) \
+      ~/.cargo/bin/starship(N*) /opt/homebrew/bin/starship(N*); then
+    typeset -g ZSH_PROMPT_ENGINE=starship
+  else
+    typeset -g ZSH_PROMPT_ENGINE=p10k
+  fi
+fi
+
 # Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
 # Initialization code that may require console input (password prompts, [y/n]
 # confirmations, etc.) must go above this block; everything else may go below.
-if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
+if [[ $ZSH_PROMPT_ENGINE == p10k && -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
 fi
 
@@ -179,10 +194,19 @@ source ~/.oh-my-zsh/custom/plugins/zsh-history-substring-search/zsh-history-subs
 source ~/.oh-my-zsh/custom/plugins/zsh-claude-code-shell/zsh-claude-code-shell.plugin.zsh
 source ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 
-# --- Theme ---
-source ~/.oh-my-zsh/custom/themes/powerlevel10k/powerlevel10k.zsh-theme
-[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
-[[ ! -f ~/.config/p10k-themes/current.zsh ]] || source ~/.config/p10k-themes/current.zsh
+# --- Prompt ---
+# Starship's colours come from a palette set-theme generates per theme; the
+# helper splices it in and exports the directory parts the prompt draws.
+if [[ $ZSH_PROMPT_ENGINE == starship ]] && (( $+commands[starship] )); then
+  [[ -r ~/.config/zsh/starship-theme.zsh ]] && source ~/.config/zsh/starship-theme.zsh
+  eval "$(starship init zsh)"
+  [[ -r ~/.config/zsh/starship-transient.zsh ]] && source ~/.config/zsh/starship-transient.zsh
+else
+  ZSH_PROMPT_ENGINE=p10k
+  source ~/.oh-my-zsh/custom/themes/powerlevel10k/powerlevel10k.zsh-theme
+  [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+  [[ ! -f ~/.config/p10k-themes/current.zsh ]] || source ~/.config/p10k-themes/current.zsh
+fi
 
 # --- Secrets ---
 [[ -f ~/.secrets ]] && source ~/.secrets
@@ -775,7 +799,11 @@ ve() {
 
 set-theme() {
   bash ~/.local/share/chezmoi/scripts/set-theme.sh "$@"
-  [[ -f ~/.config/p10k-themes/current.zsh ]] && source ~/.config/p10k-themes/current.zsh && p10k reload 2>/dev/null
+  # Starship recolours on its own when the terminal palette changes.
+  if [[ $ZSH_PROMPT_ENGINE == p10k && -f ~/.config/p10k-themes/current.zsh ]]; then
+    source ~/.config/p10k-themes/current.zsh && p10k reload 2>/dev/null
+  fi
+  return 0
 }
 
 # Deliberately shadows Orbiton's `o` binary (~/go/bin/o); run it by full path.
