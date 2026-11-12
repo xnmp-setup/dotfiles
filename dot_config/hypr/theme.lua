@@ -35,12 +35,16 @@ if ok and type(generated) == "table" then
     M.colors = setmetatable(generated, { __index = defaults })
 end
 
--- Keep light windows nearly solid: a faint wallpaper tint without washed-out ink.
--- This is the only transparency layer in light mode; Ghostty adds none of its
--- own (background-opacity 1), so every app shows the same tint.
-function M.window_opacity(dark_opacity)
-    local opacity = M.colors.mode == "light" and "0.94" or tostring(dark_opacity)
-    return opacity .. " " .. opacity
+-- Light themes sit this much more translucent than the dark baseline each rule
+-- passes, so pale windows still pick up the wallpaper through the blur.
+local LIGHT_OPACITY_DROP = 0.06
+
+-- Active/inactive opacity pair for a window rule. `opacity` is the dark-mode
+-- value; decoration:blur frosts whatever shows through.
+function M.window_opacity(opacity)
+    if M.colors.mode == "light" then opacity = opacity - LIGHT_OPACITY_DROP end
+    local o = ("%.2f"):format(math.max(0, math.min(1, opacity)))
+    return o .. " " .. o
 end
 
 --- "d4607a" -> "rgba(d4607aff)". Alpha is the usual two hex digits.

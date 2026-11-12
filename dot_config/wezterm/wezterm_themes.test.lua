@@ -51,7 +51,7 @@ themes.setup({}, {
   persist_path = path,
   resolve_scheme = function(_, name) return name end,
   tab_bar_colors = function(name) return { background = name } end,
-  background_opacity = function(name) return name == 'Light' and 0.97 or 0.92 end,
+  background_opacity = function(name) return name == 'Light' and 0.85 or 0.92 end,
 })
 local overrides = { font_size = 17 }
 local selector
@@ -62,7 +62,7 @@ local window = {
 }
 events['augment-command-palette'](window, {})[1].action(window, {})
 selector.action(window, {}, 'Light', 'Light')
-eq('picker gives light backgrounds subtle transparency', overrides.window_background_opacity, 0.97)
+eq('picker gives light backgrounds more transparency', overrides.window_background_opacity, 0.85)
 eq('picker preserves unrelated overrides', overrides.font_size, 17)
 selector.action(window, {}, 'Dark', 'Dark')
 eq('picker restores dark transparency', overrides.window_background_opacity, 0.92)

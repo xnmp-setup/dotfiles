@@ -31,7 +31,7 @@ function M.background_opacity(scheme)
     return value <= 0.04045 and value / 12.92 or ((value + 0.055) / 1.055) ^ 2.4
   end
   local luminance = 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b)
-  return luminance > 0.5 and 0.97 or 0.92
+  return luminance > 0.5 and 0.85 or 0.92
 end
 
 -- Linear blend: t=0 yields `from`, t=1 yields `to`.

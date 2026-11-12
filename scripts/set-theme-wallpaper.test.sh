@@ -295,6 +295,15 @@ cat > "$test_root/bin/setsid" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$TEST_CHROME_RESTART_LOG"
 EOF
+# set-theme renders Ghostty's config from this repo's template; point chezmoi
+# at the repo and keep its config and state inside the test root.
+real_chezmoi=$(command -v chezmoi || true)
+cat > "$test_root/bin/chezmoi" <<EOF
+#!/usr/bin/env bash
+[[ -n "$real_chezmoi" ]] || exit 127
+exec "$real_chezmoi" --source "$repo_root" --config "$test_root/chezmoi.toml" \\
+  --persistent-state "$test_root/chezmoistate.boltdb" "\$@"
+EOF
 cat > "$test_root/bin/systemctl" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$TEST_SYSTEMCTL_LOG"
@@ -316,7 +325,7 @@ if [[ "$*" == "activewindow -j" ]]; then
 fi
 printf '%s\n' "$*" >> "$TEST_HYPRCTL_LOG"
 EOF
-chmod +x "$test_root/bin/vicinae" "$test_root/bin/google-chrome-stable" \
+chmod +x "$test_root/bin/chezmoi" "$test_root/bin/vicinae" "$test_root/bin/google-chrome-stable" \
   "$test_root/bin/pgrep" "$test_root/bin/pkill" "$test_root/bin/setsid" \
   "$test_root/bin/systemctl" "$test_root/bin/hyprctl"
 
@@ -589,13 +598,14 @@ for omarchy_case in "${omarchy_cases[@]}"; do
     "accent       = \"${omarchy_accent#\#}\""
   assert_contains "$test_root/.config/hypr/theme-colors.lua" \
     "mode         = \"$omarchy_mode\""
-  expected_opacity=0.95
   expected_shadow=0.45
-  if [[ "$omarchy_mode" == light ]]; then
-    expected_opacity=1
-    expected_shadow=0.12
+  [[ "$omarchy_mode" == light ]] && expected_shadow=0.12
+  # Opacity comes from config.tmpl, rendered for the new theme's mode.
+  if [[ -n "$real_chezmoi" ]]; then
+    expected_ghostty_opacity=0.95
+    [[ "$omarchy_mode" == light ]] && expected_ghostty_opacity=0.85
+    assert_contains "$test_root/.config/ghostty/config" "background-opacity = $expected_ghostty_opacity"
   fi
-  assert_contains "$test_root/.config/ghostty/config" "background-opacity = $expected_opacity"
   assert_contains "$test_root/greeter.css" "box-shadow: 0 8px 32px rgba(0, 0, 0, $expected_shadow)"
   if [[ "$omarchy_slug" == flexoki-light ]]; then
     assert_contains "$test_root/.config/hypr/theme-colors.lua" 'surface      = "f2efe4"'
@@ -617,7 +627,9 @@ local prelude = config:read('*a'):match('^(.-)local nary =')
 config:close()
 assert(load(prelude))()
 local theme = require 'theme'
-assert(theme.window_opacity(0.93) == (mode == 'light' and '0.94 0.94' or '0.93 0.93'))
+-- Rules pass their dark-mode opacity; light themes sit 0.06 more translucent.
+local expected_opacity = mode == 'light' and '0.87 0.87' or '0.93 0.93'
+assert(theme.window_opacity(0.93) == expected_opacity, 'window opacity must follow the new mode')
 local focused = {
   ['rapture-light-lagoon'] = { '007fc4', '005ca8' },
   ['catppuccin-lavender'] = { '8554ce', 'b452a3' },

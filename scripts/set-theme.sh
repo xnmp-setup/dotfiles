@@ -272,80 +272,6 @@ if [[ "$requested_slug" != "$slug" ]]; then
   echo "  matched theme prefix: $requested_slug → $slug"
 fi
 
-# --- Ghostty ---
-reload_ghostty_config() {
-  local service="app-com.mitchellh.ghostty.service"
-
-  # Ghostty's systemd unit tracks the main process and maps reload to SIGUSR2.
-  if command -v systemctl &>/dev/null \
-    && systemctl reload --user "$service" &>/dev/null; then
-    return 0
-  fi
-
-  # A directly launched GTK build is not tracked by the unit. SIGUSR2 is
-  # Ghostty's native config-reload signal on Linux and FreeBSD.
-  if ! command -v pgrep &>/dev/null || ! pgrep -x ghostty &>/dev/null; then
-    return 2
-  fi
-  case "$(uname -s)" in
-    Linux|FreeBSD)
-      command -v pkill &>/dev/null && pkill -USR2 -x ghostty &>/dev/null
-      return
-      ;;
-  esac
-
-  return 1
-}
-
-config="$HOME/.config/ghostty/config"
-if [[ -f "$config" ]]; then
-  if grep -q "^theme = " "$config"; then
-    sed -i "s/^theme = .*/theme = $title/" "$config"
-    echo "  ✓ Ghostty → $title"
-  else
-    echo "theme = $title" >> "$config"
-    echo "  ✓ Ghostty → $title (appended)"
-  fi
-
-  # window-flash.glsl is colored by the desktop theme's accent (see the
-  # shader). Rewrite its THEME_ACCENT line before the reload below recompiles
-  # it; a theme without an accent gets the shader's ANSI-blue fallback.
-  flash_shader="$HOME/.config/ghostty/shaders/window-flash.glsl"
-  if [[ -f "$flash_shader" ]]; then
-    flash_accent=$(norm_hex "$(css_var "$HOME/.config/tauri-explorer/themes/$slug.css" accent)")
-    if [[ "$flash_accent" =~ ^[[:xdigit:]]{6}$ ]]; then
-      flash_accent=${flash_accent,,}
-      flash_value="vec3(0x${flash_accent:0:2}, 0x${flash_accent:2:2}, 0x${flash_accent:4:2}) / 255.0"
-    else
-      flash_value="vec3(-1.0)"
-    fi
-    sed -i "s|^const vec3 THEME_ACCENT = .*;|const vec3 THEME_ACCENT = $flash_value;|" "$flash_shader"
-  fi
-
-  ghostty_opacity=0.95
-  [[ "$theme_mode" == light ]] && ghostty_opacity=1
-  if grep -q '^background-opacity[[:space:]]*=' "$config"; then
-    sed -i "s/^background-opacity[[:space:]]*=.*/background-opacity = $ghostty_opacity/" "$config"
-  else
-    echo "background-opacity = $ghostty_opacity" >> "$config"
-  fi
-
-  if reload_ghostty_config; then
-    echo "    reloaded running Ghostty"
-    reload+=("Ghostty: reloaded automatically")
-  else
-    ghostty_reload_status=$?
-    if (( ghostty_reload_status == 2 )); then
-      reload+=("Ghostty: applies at next launch")
-    else
-      reload+=("Ghostty: automatic reload failed; use the reload_config keybind")
-    fi
-  fi
-  ((changed++))
-else
-  skipped+=("Ghostty (no config at $config)")
-fi
-
 # --- WezTerm ---
 # Schemes come from two places: inline entries in config.color_schemes —
 # historically in wezterm.lua, now in wezterm_appearance.lua — and WezTerm's
@@ -1320,6 +1246,86 @@ if desktop_theme_write_state \
   echo "  ✓ Local theme state → $(desktop_theme_state_file)"
 else
   skipped+=("Local theme state (could not write $(desktop_theme_state_file))")
+fi
+
+# --- Ghostty ---
+reload_ghostty_config() {
+  local service="app-com.mitchellh.ghostty.service"
+
+  # Ghostty's systemd unit tracks the main process and maps reload to SIGUSR2.
+  if command -v systemctl &>/dev/null \
+    && systemctl reload --user "$service" &>/dev/null; then
+    return 0
+  fi
+
+  # A directly launched GTK build is not tracked by the unit. SIGUSR2 is
+  # Ghostty's native config-reload signal on Linux and FreeBSD.
+  if ! command -v pgrep &>/dev/null || ! pgrep -x ghostty &>/dev/null; then
+    return 2
+  fi
+  case "$(uname -s)" in
+    Linux|FreeBSD)
+      command -v pkill &>/dev/null && pkill -USR2 -x ghostty &>/dev/null
+      return
+      ;;
+  esac
+
+  return 1
+}
+
+config="$HOME/.config/ghostty/config"
+if [[ -f "$config" ]]; then
+  # dot_config/ghostty/config.tmpl is the only source of Ghostty's
+  # theme-dependent lines (theme, background-opacity). It reads the state file
+  # written above, so re-rendering it picks up the new theme; nothing here
+  # repeats its values. Without chezmoi, fall back to patching the theme line
+  # alone and leave the rest as last applied.
+  ghostty_rendered=$(mktemp)
+  if command -v chezmoi &>/dev/null \
+    && chezmoi cat "$config" >"$ghostty_rendered" 2>/dev/null \
+    && [[ -s "$ghostty_rendered" ]]; then
+    cat "$ghostty_rendered" >"$config"
+    echo "  ✓ Ghostty → $title (rendered from chezmoi)"
+  elif grep -q "^theme = " "$config"; then
+    sed -i "s/^theme = .*/theme = $title/" "$config"
+    echo "  ✓ Ghostty → $title"
+    skipped+=("Ghostty opacity (chezmoi could not render config.tmpl)")
+  else
+    echo "theme = $title" >> "$config"
+    echo "  ✓ Ghostty → $title (appended)"
+    skipped+=("Ghostty opacity (chezmoi could not render config.tmpl)")
+  fi
+  rm -f -- "$ghostty_rendered"
+
+  # window-flash.glsl is colored by the desktop theme's accent (see the
+  # shader). Rewrite its THEME_ACCENT line before the reload below recompiles
+  # it; a theme without an accent gets the shader's ANSI-blue fallback.
+  flash_shader="$HOME/.config/ghostty/shaders/window-flash.glsl"
+  if [[ -f "$flash_shader" ]]; then
+    flash_accent=$(norm_hex "$(css_var "$HOME/.config/tauri-explorer/themes/$slug.css" accent)")
+    if [[ "$flash_accent" =~ ^[[:xdigit:]]{6}$ ]]; then
+      flash_accent=${flash_accent,,}
+      flash_value="vec3(0x${flash_accent:0:2}, 0x${flash_accent:2:2}, 0x${flash_accent:4:2}) / 255.0"
+    else
+      flash_value="vec3(-1.0)"
+    fi
+    sed -i "s|^const vec3 THEME_ACCENT = .*;|const vec3 THEME_ACCENT = $flash_value;|" "$flash_shader"
+  fi
+
+  if reload_ghostty_config; then
+    echo "    reloaded running Ghostty"
+    reload+=("Ghostty: reloaded automatically")
+  else
+    ghostty_reload_status=$?
+    if (( ghostty_reload_status == 2 )); then
+      reload+=("Ghostty: applies at next launch")
+    else
+      reload+=("Ghostty: automatic reload failed; use the reload_config keybind")
+    fi
+  fi
+  ((changed++))
+else
+  skipped+=("Ghostty (no config at $config)")
 fi
 
 # --- Starship (zsh prompt) ---

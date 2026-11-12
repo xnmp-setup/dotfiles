@@ -3,7 +3,17 @@
 quick-terminal-position = top
 quick-terminal-size = 65%,1000px
 
-background-opacity = {{ if eq $desktopTheme.mode "light" }}1{{ else }}0.95{{ end }}
+# Sole source of Ghostty's translucency: background only, text stays opaque.
+# (No Hyprland opacity rule for Ghostty — it would multiply with this and fade
+# the glyphs too.) Light themes run more translucent. scripts/set-theme.sh
+# re-renders this template on a theme switch, so this is the only copy.
+background-opacity = {{ if eq $desktopTheme.mode "light" }}0.85{{ else }}0.95{{ end }}
+# Must be on for any blur behind Ghostty under Hyprland. Ghostty always binds
+# ext-background-effect-v1 on Wayland, and with this false it sends an empty
+# blur region, which Hyprland (0.57+) obeys over decoration:blur, so the
+# window gets no blur even with an opacity rule. On macOS this is the native
+# blur under background-opacity; on X11 it is a no-op outside KWin.
+background-blur = true
 macos-hidden = never
 macos-titlebar-style = tabs
 

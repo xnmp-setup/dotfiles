@@ -33,9 +33,9 @@ local function eq(name, got, want)
 end
 
 -- ---------- mix ----------
-eq('Flexoki keeps paper subtly translucent', appearance.background_opacity({ background = '#fffcf0' }), 0.97)
-eq('Ayu keeps porcelain subtly translucent', appearance.background_opacity({ background = '#f8f9fa' }), 0.97)
-eq('MapQuest keeps parchment subtly translucent', appearance.background_opacity({ background = '#ecd3a1' }), 0.97)
+eq('Flexoki makes paper translucent', appearance.background_opacity({ background = '#fffcf0' }), 0.85)
+eq('Ayu makes porcelain translucent', appearance.background_opacity({ background = '#f8f9fa' }), 0.85)
+eq('MapQuest makes parchment translucent', appearance.background_opacity({ background = '#ecd3a1' }), 0.85)
 eq('dark schemes retain transparency', appearance.background_opacity({ background = '#1a1b26' }), 0.92)
 eq('missing background retains default', appearance.background_opacity({}), 0.92)
 eq('nil scheme retains default', appearance.background_opacity(nil), 0.92)
