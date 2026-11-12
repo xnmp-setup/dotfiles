@@ -1,0 +1,20 @@
+# Lig (github.com/KevenGoncalves/lig). Only overrides live here; `lig config`
+# prints every option with its default. Harmless on machines without lig.
+#
+# This is only the hand-written half. lig reads a single file with no include
+# directive, so ~/.config/zsh/lig-theme.zsh assembles ~/.config/lig/config.toml
+# (generated, not managed by chezmoi) from this file plus colors.toml, which
+# set-theme generates from the terminal theme (scripts/lib/lig-theme.sh). Edit
+# this file, not config.toml. Do not add a [colors] table here.
+
+[ui]
+# The terminal's own ANSI colours: the look on a machine where set-theme has
+# not generated colors.toml. With colors.toml the [colors] table overrides it.
+theme = "terminal"
+
+[behavior]
+# zoxide's `z`/`zi`: one Enter picks the highlighted frecent match and jumps,
+# instead of one Enter to pick and a second to run. Needs a lig with this
+# option (github.com/KevenGoncalves/lig, PR pending); lig-theme.zsh drops the
+# line for a lig without it, which would otherwise reject the whole file.
+enter_runs_commands = ["z", "zi"]

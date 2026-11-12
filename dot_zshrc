@@ -1,3 +1,18 @@
+# Lig (github.com/KevenGoncalves/lig): IDE-style completion popup. Its `pre`
+# part re-execs this interactive shell inside lig's PTY, so it must run first;
+# the `post` part at the bottom of this file hooks ZLE in the inner shell.
+# Installed per machine (release install.sh -> ~/.local/bin, brew, or a Nix
+# package), not by this repo. ~/.local/bin and Homebrew join PATH further down,
+# so they are checked by path. lig-theme.zsh builds its theme-coloured config
+# (set-theme generates the colours). No lig binary -> both parts are skipped. Set
+# LIG_DISABLE=1 in the environment to start a shell without it.
+if () { (( $# )) && typeset -g _lig_bin=$1 } $^path/lig(N*) ~/.local/bin/lig(N*) \
+    ~/.cargo/bin/lig(N*) /opt/homebrew/bin/lig(N*); then
+  # lig reads its config as the inner shell starts, so assemble it first.
+  [[ -r ~/.config/zsh/lig-theme.zsh ]] && source ~/.config/zsh/lig-theme.zsh
+  eval "$("$_lig_bin" init zsh pre)"
+fi
+
 # Resolve the Gemini key in the host's interactive session. Sandboxed tools
 # inherit it but cannot connect to the host Secret Service over D-Bus.
 if [[ -z "${GEMINI_API_KEY:-}" ]] && command -v secret-tool >/dev/null 2>&1; then
@@ -1066,3 +1081,10 @@ if [[ -n "$CLAUDECODE" ]]; then
   # --help, so `du -sh` prints a usage page and exits 0.
   unalias ls ll du cat 2>/dev/null
 fi
+
+# Lig post-hook (see the `pre` block at the top of this file). Inert outside
+# lig's PTY: the generated code checks LIG_TTY itself.
+if [[ -n ${_lig_bin:-} ]]; then
+  eval "$("$_lig_bin" init zsh post)"
+fi
+unset _lig_bin

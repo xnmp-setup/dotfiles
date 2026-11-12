@@ -22,6 +22,8 @@ source "$set_theme_script_dir/lib/chrome-theme.sh"
 source "$set_theme_script_dir/lib/darkreader-theme.sh"
 # shellcheck source=lib/desktop-color-scheme.sh
 source "$set_theme_script_dir/lib/desktop-color-scheme.sh"
+# shellcheck source=lib/lig-theme.sh
+source "$set_theme_script_dir/lib/lig-theme.sh"
 # shellcheck source=lib/mako-theme.sh
 source "$set_theme_script_dir/lib/mako-theme.sh"
 # shellcheck source=lib/starship-theme.sh
@@ -1345,6 +1347,24 @@ else
   # prompt falls back to ANSI colour names, which at least follow the terminal.
   rm -f -- "$starship_palette"
   skipped+=("Starship ($starship_theme_error; using ANSI colours)")
+fi
+
+# --- lig (terminal autocomplete popup) ---
+# Colours generated from the Ghostty theme file (see lib/lig-theme.sh).
+# ~/.config/zsh/lig-theme.zsh folds them into lig's config when a shell
+# starts, so already-open shells keep the old colours until restarted. Not
+# gated on the lig binary, like Starship above: the file is harmless unused.
+lig_terminal_theme="$HOME/.config/ghostty/themes/$title"
+lig_colors="${XDG_CONFIG_HOME:-$HOME/.config}/lig/colors.toml"
+if lig_generate_colors "$lig_terminal_theme" "$lig_colors"; then
+  echo "  ✓ lig → $slug ($theme_mode)"
+  reload+=("lig: recolours in newly started shells")
+  ((changed++))
+else
+  # A stale file would paint the previous theme's colours; without one lig
+  # uses its ANSI `terminal` theme, which at least follows the terminal.
+  rm -f -- "$lig_colors"
+  skipped+=("lig ($lig_theme_error; using ANSI colours)")
 fi
 
 # --- Powerlevel10k (zsh prompt) ---
