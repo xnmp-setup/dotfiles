@@ -715,6 +715,15 @@ EOF
         [[ "$chrome_answer" =~ ^[Yy]$ ]] && chrome_should_restart=1
       fi
       if (( chrome_should_restart )); then
+        # A windowless Chrome is only alive in background mode (an extension
+        # with the "background" permission outlives the last window). It
+        # still needs the restart to pick up the theme, but must come back
+        # without a window. Unknown window counts keep the windowed relaunch.
+        chrome_launch=("$chrome_bin")
+        if chrome_window_count=$(chrome_layout_window_count "$chrome_proc") \
+          && (( chrome_window_count == 0 )); then
+          chrome_launch+=(--no-startup-window)
+        fi
         chrome_layout=""
         if chrome_layout=$(chrome_layout_snapshot "$chrome_proc"); then
           echo "    saved Chrome workspaces, groups, and focus"
@@ -727,14 +736,16 @@ EOF
         done
         # Through the compositor where there is one (see chrome_layout_launch):
         # launched from here it would inherit this shell's environment.
-        if chrome_layout_launch "$chrome_bin"; then
+        if chrome_layout_launch "${chrome_launch[@]}"; then
           :
         elif command -v setsid &>/dev/null; then
-          setsid -f "$chrome_bin" &>/dev/null
+          setsid -f "${chrome_launch[@]}" &>/dev/null
         else
-          nohup "$chrome_bin" &>/dev/null &
+          nohup "${chrome_launch[@]}" &>/dev/null &
         fi
-        if [[ -n "$chrome_layout" ]]; then
+        if (( ${#chrome_launch[@]} > 1 )); then
+          echo "    restarted in the background (no Chrome windows were open)"
+        elif [[ -n "$chrome_layout" ]]; then
           if chrome_layout_restore "$chrome_layout"; then
             echo "    restarted; restored Chrome workspaces, groups, and focus"
           else

@@ -70,6 +70,27 @@ assert_json "$snapshot" '.groups[0].members == ["0xchrome-a", "0xnotes"]'
 assert_json "$snapshot" '.groups[0].visible_address == "0xnotes"'
 assert_json "$snapshot" '.active_address == "0xnotes"'
 
+# Window counting: only mapped windows owned by the browser count, so a
+# background-mode Chrome (process alive, no window) reports zero.
+saved_clients=$fake_clients
+fake_clients='[
+  {"address":"0xa","pid":42,"mapped":true,"class":"google-chrome"},
+  {"address":"0xb","pid":42,"mapped":false,"class":"google-chrome"},
+  {"address":"0xc","pid":7,"mapped":true,"class":"ghostty"}
+]'
+[[ "$(chrome_layout_window_count chrome)" == 1 ]] ||
+  fail "an open Chrome window was not counted once"
+fake_clients='[{"address":"0xc","pid":7,"mapped":true,"class":"ghostty"}]'
+[[ "$(chrome_layout_window_count chrome)" == 0 ]] ||
+  fail "a windowless background Chrome was not counted as zero windows"
+fake_clients=$saved_clients
+(
+  unset HYPRLAND_INSTANCE_SIGNATURE
+  if chrome_layout_window_count chrome >/dev/null; then
+    fail "window count claimed to know without a compositor"
+  fi
+)
+
 current='[
   {"address":"0xnew-b","title":"Beta"},
   {"address":"0xnew-a","title":"Alpha"}
@@ -596,6 +617,12 @@ grep -Fq 'hl.dsp.exec_cmd("/usr/bin/google-chrome-stable")' "$dispatch_log" ||
     fail "launch claimed Hyprland outside a Hyprland session"
   fi
 )
+: >"$dispatch_log"
+chrome_layout_launch /usr/bin/google-chrome-stable --no-startup-window ||
+  fail "launch with flags through Hyprland reported failure"
+grep -Fq 'hl.dsp.exec_cmd("/usr/bin/google-chrome-stable --no-startup-window")' "$dispatch_log" ||
+  fail "launch flags were not passed through Hyprland: $(cat "$dispatch_log")"
+
 
 # Restored windows are found whatever the case of their class.
 cat >"$state_file" <<'JSON'

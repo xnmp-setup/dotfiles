@@ -26,7 +26,7 @@ chrome_layout_snapshot() {
 
       $clients as $all
       | [ $all[]
-          | select(.mapped // true)
+          | select(.mapped != false)
           | select(.pid as $pid | $browser_pids | index($pid))
         ] as $browser
       | {
@@ -57,6 +57,30 @@ chrome_layout_snapshot() {
     ') || return 1
   [[ -n "$snapshot" ]] || return 1
   echo "$snapshot"
+}
+
+# Print how many windows a running browser has mapped. A live process is not
+# an open browser: an extension with the "background" permission keeps Chrome
+# running after its last window closes. Returns non-zero when the count cannot
+# be known (no Hyprland), so callers keep their windowed behaviour.
+chrome_layout_window_count() {
+  local process_name="$1"
+  local pid_lines clients
+
+  [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]] || return 1
+  command -v hyprctl &>/dev/null || return 1
+  command -v jq &>/dev/null || return 1
+
+  pid_lines=$(pgrep -x "$process_name") || { echo 0; return 0; }
+  clients=$(hyprctl clients -j 2>/dev/null) || return 1
+  jq -Rn --argjson clients "$clients" '
+    [inputs | select(length > 0) | tonumber] as $pids
+    | [ $clients[]
+        | select(.mapped != false)
+        | select(.pid as $pid | $pids | index($pid))
+      ]
+    | length
+  ' <<<"$pid_lines"
 }
 
 chrome_layout_assign_windows() {
@@ -102,7 +126,7 @@ chrome_layout_current_windows() {
   jq -c --argjson snapshot "$snapshot" '
     ($snapshot.classes | map(strings | ascii_downcase)) as $classes
     | [ .[]
-        | select(.mapped // true)
+        | select(.mapped != false)
         | select((.class // "" | ascii_downcase) as $class | $classes | index($class))
         | { address, title: (.title // "") }
       ]' <<<"$clients"
@@ -116,12 +140,12 @@ chrome_layout_current_windows() {
 # different window class. Returns non-zero when there is no Hyprland to ask,
 # so the caller launches it directly.
 chrome_layout_launch() {
-  local browser="$1"
-  local command_lua
+  local browser_command command_lua
 
   [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]] || return 1
   command -v hyprctl &>/dev/null || return 1
-  command_lua=$(chrome_layout_lua_string "$(printf '%q' "$browser")")
+  browser_command=$(printf '%q ' "$@")
+  command_lua=$(chrome_layout_lua_string "${browser_command% }")
   chrome_layout_dispatch "hl.dsp.exec_cmd($command_lua)" 2>/dev/null
 }
 

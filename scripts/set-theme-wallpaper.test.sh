@@ -316,7 +316,7 @@ if [[ "$*" == "monitors -j" ]]; then
   exit 0
 fi
 if [[ "$*" == "clients -j" ]]; then
-  printf '[]\n'
+  printf '%s\n' "${TEST_HYPR_CLIENTS:-[]}"
   exit 0
 fi
 if [[ "$*" == "activewindow -j" ]]; then
@@ -513,8 +513,23 @@ chrome_output_line=$(grep -nF '✓ Chrome' "$test_root/default.out" | cut -d: -f
   && "$state_output_line" -lt "$chrome_output_line" ]] \
   || fail "Chrome did not run after the persisted desktop theme update"
 assert_contains "$test_root/chrome-restart.log" '-TERM -x chrome'
+# The fake compositor lists no Chrome windows: Chrome was only alive in
+# background mode, so it restarts for the theme without opening a window.
 assert_contains "$test_root/chrome-restart.log" \
-  "-f $test_root/bin/google-chrome-stable"
+  "-f $test_root/bin/google-chrome-stable --no-startup-window"
+assert_contains "$test_root/default.out" "restarted in the background"
+
+# A Chrome with an open window comes back with its windows.
+rm -f "$test_root/chrome-stopped"
+: >"$test_root/chrome-restart.log"
+TEST_HYPR_CLIENTS='[{"address":"0xc","pid":123,"mapped":true,"class":"google-chrome","title":"Tab","workspace":{"id":1,"name":"1"},"grouped":[]}]' \
+  run_set_theme cosmic-dusk --restart-chrome >"$test_root/windowed.out"
+grep -Fxq -- "-f $test_root/bin/google-chrome-stable" "$test_root/chrome-restart.log" \
+  || fail "Chrome with an open window was not relaunched with its windows"
+! grep -Fq -- '--no-startup-window' "$test_root/chrome-restart.log" \
+  || fail "Chrome with an open window was relaunched without one"
+rm -f "$test_root/chrome-stopped"
+
 [[ $(grep -Fh "path = $default_path" \
   "$test_root/.config/hypr/hyprpaper.conf" \
   "$test_root/.config/hypr/hyprlock.conf" | wc -l) -eq 3 ]] \
