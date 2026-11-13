@@ -9,8 +9,8 @@
 # this value, so a large width only prevents truncation — no visual downside.
 # CCSTATUSLINE_WIDTH is checked first in ccstatusline's width probe and wins.
 #
-# Capture stdin once (ccstatusline consumes it, but we also need the raw JSON to
-# read the real session cost that Claude Code passes as cost.total_cost_usd).
+# Capture stdin once (ccstatusline consumes it, but we also need the raw JSON for
+# the transcript path and the subscription rate limits).
 INPUT=$(cat)
 
 # Claude Code exposes subscription usage windows only to its status-line stdin.
@@ -24,14 +24,9 @@ fi
 
 OUTPUT=$(printf '%s' "$INPUT" | CCSTATUSLINE_WIDTH=1000 bunx -y ccstatusline@latest 2>/dev/null)
 
-# Two costs from the statusline stdin JSON:
-#   SESSION_COST  - cumulative session cost, the authoritative cost.total_cost_usd
-#   LAST_MSG_COST - cost of the last user turn, priced from the transcript's token
-#                   usage (Claude Code doesn't report a per-turn cost). "Last turn"
-#                   = the most recent real user message and every assistant response
-#                   (incl. subagents) after it. Rates are per 1M tokens. Anthropic
-#                   cache writes use TTL premiums. DeepSeek has no write surcharge:
-#                   creation tokens, if exposed, use the normal cache-miss rate.
+# Cache re-warm data from the transcript: the last assistant reply's cached
+# context size and age. Rates are per 1M tokens; Anthropic cache writes use
+# TTL premiums.
 COSTS=$(printf '%s' "$INPUT" | python3 -c '
 import sys, json, os
 
@@ -55,92 +50,22 @@ def family(model):
             return name
     return "Opus"
 
-def is_real_user(entry):
-    # A human turn, not a tool_result carrier.
-    if entry.get("type") != "user":
-        return False
-    content = entry.get("message", {}).get("content")
-    if isinstance(content, str):
-        return True
-    if isinstance(content, list):
-        return any(isinstance(b, dict) and b.get("type") != "tool_result" for b in content)
-    return False
-
-def msg_cost(entry):
-    msg = entry.get("message", {})
-    u = msg.get("usage") or {}
-    p = PRICES[family(msg.get("model"))]
-    cc = u.get("cache_creation") or {}
-    cc5 = cc.get("ephemeral_5m_input_tokens")
-    cc1h = cc.get("ephemeral_1h_input_tokens")
-    if cc5 is None and cc1h is None:
-        cc5, cc1h = u.get("cache_creation_input_tokens", 0) or 0, 0
-    return (
-        (u.get("input_tokens", 0) or 0) * p["in"]
-        + (u.get("output_tokens", 0) or 0) * p["out"]
-        + (u.get("cache_read_input_tokens", 0) or 0) * p["cr"]
-        + (cc5 or 0) * p["cw5"]
-        + (cc1h or 0) * p["cw1h"]
-    ) / 1e6
-
 try:
     data = json.load(sys.stdin)
 except Exception:
-    print("\t"); sys.exit()
+    print("\t\t\t"); sys.exit()
 
-session_cost = data.get("cost", {}).get("total_cost_usd", "")
 tpath = data.get("transcript_path", "")
 
-last_cost = ""
+entries = []
 if tpath and os.path.exists(tpath):
     try:
-        entries = []
         for ln in open(tpath).read().splitlines():
             if ln.strip():
                 try:
                     entries.append(json.loads(ln))
                 except Exception:
                     pass
-        # Claude Code cannot reliably price third-party model ids. Recalculate
-        # the cumulative total for DeepSeek sessions from provider token usage;
-        # retain the native reported total for Anthropic sessions.
-        if any(
-            "deepseek" in (e.get("message", {}).get("model") or "").lower()
-            for e in entries
-            if e.get("type") == "assistant"
-        ):
-            seen, session_total = set(), 0.0
-            for e in entries:
-                if e.get("type") != "assistant":
-                    continue
-                mid = e.get("message", {}).get("id") or e.get("requestId")
-                if mid is not None:
-                    if mid in seen:
-                        continue
-                    seen.add(mid)
-                session_total += msg_cost(e)
-            session_cost = session_total
-        # Last main-chain human turn marks the start of the current turn.
-        start = None
-        for i in range(len(entries) - 1, -1, -1):
-            if not entries[i].get("isSidechain") and is_real_user(entries[i]):
-                start = i
-                break
-        if start is not None:
-            # Dedupe by message id: one assistant message is often logged on
-            # several transcript lines (one per content block), but its usage is
-            # billed once per API response. Summing raw lines multi-counts cost.
-            seen, total = set(), 0.0
-            for e in entries[start + 1:]:
-                if e.get("type") != "assistant":
-                    continue
-                mid = e.get("message", {}).get("id") or e.get("requestId")
-                if mid is not None:
-                    if mid in seen:
-                        continue
-                    seen.add(mid)
-                total += msg_cost(e)
-            last_cost = total
     except Exception:
         pass
 
@@ -183,9 +108,9 @@ try:
 except Exception:
     pass
 
-print(f"{session_cost}\t{last_cost}\t{rewarm}\t{mins_left}\t{frac_cached}\t{age_min}")
+print(f"{rewarm}\t{mins_left}\t{frac_cached}\t{age_min}")
 ')
-IFS=$'\t' read -r SESSION_COST LAST_MSG_COST REWARM MINS_LEFT FRAC_CACHED AGE_MIN <<< "$COSTS"
+IFS=$'\t' read -r REWARM MINS_LEFT FRAC_CACHED AGE_MIN <<< "$COSTS"
 
 # Explicit override wins; machines without valid desktop theme state stay dark.
 case "${CLAUDE_STATUSLINE_THEME:-}" in
@@ -204,12 +129,22 @@ except (OSError, ValueError):
     ;;
 esac
 
+# Weekly-limit pace (wk used/on-track %, day used/allowance). Empty when the
+# payload carries no rate limits (API key / third-party model), or when the
+# helper is missing, so the bar degrades to omitting the segment.
+QUOTA_SEG=""
+if [ -f "${HOME}/.claude/scripts/quota_pace.py" ]; then
+  QUOTA_SEG=$(printf '%s' "$INPUT" \
+    | python3 "${HOME}/.claude/scripts/quota_pace.py" --theme "$STATUSLINE_THEME" 2>/dev/null) \
+    || QUOTA_SEG=""
+fi
+
 # The context-bar color is computed continuously (green->yellow->red) inside
 # rebuild_context_bar from the fill proportion, so no threshold bucketing here.
 echo "$OUTPUT" \
   | sed \
       -e 's|\.\.\./||g' \
-  | STATUSLINE_THEME="$STATUSLINE_THEME" SESSION_COST="$SESSION_COST" LAST_MSG_COST="$LAST_MSG_COST" \
+  | STATUSLINE_THEME="$STATUSLINE_THEME" QUOTA_SEG="$QUOTA_SEG" \
     REWARM="$REWARM" MINS_LEFT="$MINS_LEFT" FRAC_CACHED="$FRAC_CACHED" AGE_MIN="$AGE_MIN" python3 -c '
 import sys, re, os
 
@@ -234,7 +169,7 @@ PALETTES = {
         "models": {"Opus": "208", "Sonnet": "216", "Haiku": "223", "Fable": "204",
                    "DS Flash": "81", "DS Pro": "75"},
         "step": "245", "rewarm": ("203", "179", "108"),
-        "last_cost": "111", "session_cost": "220", "cache_cold": "131",
+        "cache_cold": "131",
     },
     "light": {
         "cwd": ("254", "24"), "branch": "28",
@@ -242,7 +177,7 @@ PALETTES = {
         "models": {"Opus": "166", "Sonnet": "172", "Haiku": "130", "Fable": "161",
                    "DS Flash": "31", "DS Pro": "25"},
         "step": "243", "rewarm": ("160", "136", "65"),
-        "last_cost": "26", "session_cost": "136", "cache_cold": "124",
+        "cache_cold": "124",
     },
 }
 PALETTE = PALETTES.get(THEME, PALETTES["dark"])
@@ -252,8 +187,6 @@ MODEL_COLORS = PALETTE["models"]
 MODEL_CODES = "|".join(MODEL_COLORS.values())
 STEP_COLOR = PALETTE["step"]
 REWARM_COLORS = PALETTE["rewarm"]
-LAST_COST_COLOR = PALETTE["last_cost"]
-SESSION_COST_COLOR = PALETTE["session_cost"]
 CACHE_COLD_COLOR = PALETTE["cache_cold"]
 
 # Continuous context-bar color. The fill proportion maps to a smooth
@@ -501,27 +434,10 @@ for line in sys.stdin:
             when = f"in {int(round(ml))}m"
             seg = f"  \x1b[38;5;{col}m⟳{format_cost(rv)} {when}\x1b[0m"
             line = line.rstrip("\n") + seg + "\n"
-    # append cost of the last user turn (blue, "+" = accrued this turn)
-    last_cost = os.environ.get("LAST_MSG_COST", "").strip()
-    if last_cost:
-        try:
-            usd = float(last_cost)
-        except ValueError:
-            usd = None
-        if usd is not None:
-            seg = f"  \x1b[38;5;{LAST_COST_COLOR}m+{format_cost(usd)}\x1b[0m"
-            line = line.rstrip("\n") + seg + "\n"
-    # append actual cumulative session cost on the far right (gold), from the
-    # real total_cost_usd Claude Code reports — not the per-step estimate above.
-    session_cost = os.environ.get("SESSION_COST", "").strip()
-    if session_cost:
-        try:
-            usd = float(session_cost)
-        except ValueError:
-            usd = None
-        if usd is not None:
-            seg = f"  \x1b[38;5;{SESSION_COST_COLOR}m{format_cost(usd)}\x1b[0m"
-            line = line.rstrip("\n") + seg + "\n"
+    # weekly-limit pace on the far right (pre-rendered by quota_pace.py)
+    quota_seg = os.environ.get("QUOTA_SEG", "")
+    if quota_seg:
+        line = line.rstrip("\n") + "  " + quota_seg + "\n"
     # Expiry notice: if the last reply is over an hour old the 1h prompt cache is
     # dead, so the next message pays full re-warm. AGE_MIN is recomputed live at
     # every render (needs refreshInterval in settings, else the statusline freezes
