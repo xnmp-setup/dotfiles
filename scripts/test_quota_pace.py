@@ -172,7 +172,7 @@ class ParseReading(unittest.TestCase):
 class Render(unittest.TestCase):
     def test_text_matches_spec(self):
         pace = qp.Pace(used=34, on_track=300 / 7, day_used=80, day_quota=120)
-        self.assertEqual(ANSI.sub("", qp.render(pace)), "wk 34/43%  day 80/120")
+        self.assertEqual(ANSI.sub("", qp.render(pace)), "80/120 today · 34/43% wtd")
 
     def test_colors_by_severity_per_theme(self):
         for theme, pal in qp.PALETTES.items():
@@ -203,8 +203,8 @@ class Cli(unittest.TestCase):
     def test_prints_segment_and_persists_across_renders(self):
         reset = int(time.time()) + 4 * DAY + 3600  # currently day 3 (index 2)
         payload = lambda u: json.dumps({"rate_limits": {"seven_day": {"used_percentage": u, "resets_at": reset}}})
-        self.assertEqual(self.cli(payload(30)), "wk 30/43%  day 0/98")
-        self.assertEqual(self.cli(payload(32)), "wk 32/43%  day 14/98")
+        self.assertEqual(self.cli(payload(30)), "0/98 today · 30/43% wtd")
+        self.assertEqual(self.cli(payload(32)), "14/98 today · 32/43% wtd")
 
     def test_silent_without_limits_or_on_garbage(self):
         for stdin in ["", "not json", "{}", json.dumps({"rate_limits": {}})]:
@@ -219,7 +219,7 @@ class Cli(unittest.TestCase):
         hist.write_text(json.dumps({"version": 1, "providers": {"claude": [
             [now - DAY, 20.0, None], [now - 3 * 3600, 25.0, None]]}}))
         out = self.cli(json.dumps({"rate_limits": {"seven_day": {"used_percentage": 30, "resets_at": reset}}}))
-        self.assertEqual(out, "wk 30/43%  day 70/112")
+        self.assertEqual(out, "70/112 today · 30/43% wtd")
 
     def test_corrupt_history_falls_back(self):
         hist = Path(self.tmp.name) / "statusbar-ai-usage" / "history.json"
@@ -227,7 +227,7 @@ class Cli(unittest.TestCase):
         hist.write_text("[[[")
         reset = int(time.time()) + 4 * DAY + 3600
         out = self.cli(json.dumps({"rate_limits": {"seven_day": {"used_percentage": 30, "resets_at": reset}}}))
-        self.assertEqual(out, "wk 30/43%  day 0/98")
+        self.assertEqual(out, "0/98 today · 30/43% wtd")
 
     def test_corrupt_state_file_is_ignored(self):
         path = Path(self.tmp.name) / "claude-statusline" / "quota-pace.json"
@@ -235,7 +235,7 @@ class Cli(unittest.TestCase):
         path.write_text("{corrupt")
         reset = int(time.time()) + 4 * DAY + 3600
         out = self.cli(json.dumps({"rate_limits": {"seven_day": {"used_percentage": 30, "resets_at": reset}}}))
-        self.assertTrue(out.startswith("wk 30/43%"))
+        self.assertTrue(out.endswith("30/43% wtd"))
 
 
 if __name__ == "__main__":

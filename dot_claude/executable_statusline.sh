@@ -168,7 +168,7 @@ PALETTES = {
         "bg_empty": "238", "fg_on_fill": "0", "empty_text_scale": 1.0,
         "models": {"Opus": "208", "Sonnet": "216", "Haiku": "223", "Fable": "204",
                    "DS Flash": "81", "DS Pro": "75"},
-        "step": "245", "rewarm": ("203", "179", "108"),
+        "rewarm": ("203", "179", "108"),
         "cache_cold": "131",
     },
     "light": {
@@ -176,7 +176,7 @@ PALETTES = {
         "bg_empty": "254", "fg_on_fill": "0", "empty_text_scale": 0.6,
         "models": {"Opus": "166", "Sonnet": "172", "Haiku": "130", "Fable": "161",
                    "DS Flash": "31", "DS Pro": "25"},
-        "step": "243", "rewarm": ("160", "136", "65"),
+        "rewarm": ("160", "136", "65"),
         "cache_cold": "124",
     },
 }
@@ -184,8 +184,6 @@ PALETTE = PALETTES.get(THEME, PALETTES["dark"])
 BG_EMPTY = PALETTE["bg_empty"]
 FG_ON_FILL = PALETTE["fg_on_fill"]
 MODEL_COLORS = PALETTE["models"]
-MODEL_CODES = "|".join(MODEL_COLORS.values())
-STEP_COLOR = PALETTE["step"]
 REWARM_COLORS = PALETTE["rewarm"]
 CACHE_COLD_COLOR = PALETTE["cache_cold"]
 
@@ -256,16 +254,6 @@ def compact_cutoff_fraction(window_tokens):
         except ValueError:
             pass
     return thresh / window_tokens
-
-# Cache-read price per 1M tokens. Every model request (agent "step") re-sends
-# the whole context as
-# cached input, so the marginal cost of one step ~= context_tokens x cache_read.
-# One user message can span many steps (each tool result triggers another).
-#   DeepSeek V4 Flash cache hits are $0.0028/M; Pro hits are $0.003625/M.
-CACHE_READ_PRICE = {
-    "Opus": 0.50, "Sonnet": 0.30, "Haiku": 0.10, "Fable": 1.00,
-    "DS Flash": 0.0028, "DS Pro": 0.003625,
-}
 
 def parse_tokens(s):
     m = re.match(r"([0-9.]+)([kKmM]?)", s)
@@ -372,12 +360,6 @@ for line in sys.stdin:
             f"\x1b[48;5;{cwd_bg}m\x1b[38;5;{cwd_fg}m", line
         )
         line = re.sub(r"\x1b\[38;5;155m", f"\x1b[38;5;{branch_fg}m", line)
-    # capture current context tokens from the raw bar ("[████░░] 203k/1.0M ...")
-    # before rebuild_context_bar reformats the label and drops the token count.
-    ctx_tokens = None
-    mt = re.search(r"\[[█░]+\]\s*([0-9.]+[kKmM]?)\s*/", line)
-    if mt:
-        ctx_tokens = parse_tokens(mt.group(1))
     # strip "no git" and the orphaned separator+color it leaves behind
     line = line.replace("⎇\xa0no\xa0git", "")
     line = re.sub(r"\x1b\[38;5;\d+m\x1b\[39m\xa0\|\xa0", "", line)
@@ -400,20 +382,6 @@ for line in sys.stdin:
         rebuild_context_bar,
         line
     )
-    # append estimated cached cost per step: context_tokens x cache_read_price.
-    # model family is detected from the recolored model segment (its color code
-    # is set only by recolor_model above, so this never false-matches cwd/branch).
-    if ctx_tokens:
-        mm = re.search(
-            rf"\x1b\[38;5;(?:{MODEL_CODES})m(Opus|Sonnet|Haiku|Fable|DS Flash|DS Pro)",
-            line,
-        )
-        if mm:
-            price = CACHE_READ_PRICE.get(mm.group(1))
-            if price:
-                cost = ctx_tokens * price / 1e6
-                seg = f" \x1b[38;5;{STEP_COLOR}m~{format_cost(cost)}/step\x1b[0m"
-                line = line.rstrip("\n") + seg + "\n"
     # cache re-warm countdown (⟳ COST in Nm): fixed cost to rebuild the prompt
     # cache once it expires, and how long until that happens. Color = proportion
     # of the 1h window still warm: muted green >=80%, amber >=50%, red <50%.

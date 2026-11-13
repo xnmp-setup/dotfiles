@@ -3,14 +3,14 @@
 
 Reads the status-line JSON on stdin and prints one coloured segment:
 
-    wk 34/43%  day 80/120
+    80/120 today · 34/43% wtd
 
-wk  - percent of the 7-day limit used / percent you would have used by the end
-      of today at an even pace (day N of 7 -> N/7).
-day - today's usage / today's allowance, in units where 100 = one even day
-      (1/7 of the weekly limit). The allowance spreads whatever is left at the
-      start of today evenly over the remaining days, so frugal days earlier in
-      the week raise it above 100 and heavy days lower it.
+today - today's usage / today's allowance, in units where 100 = one even day
+        (1/7 of the weekly limit). The allowance spreads whatever is left at
+        the start of today evenly over the remaining days, so frugal days
+        earlier in the week raise it above 100 and heavy days lower it.
+wtd   - week to date: percent of the 7-day limit used / percent you would
+        have used by the end of today at an even pace (day N of 7 -> N/7).
 
 "Days" are 24h slices of the rate-limit window (aligned to its reset time),
 not calendar days, because that is how the limit itself rolls over.
@@ -174,19 +174,20 @@ def render(pace: Pace, theme: str = "dark") -> str:
     p = PALETTES.get(theme, PALETTES["dark"])
 
     def seg(label: str, text: str, level: str) -> str:
-        return f"\x1b[38;5;{p['label']}m{label} \x1b[38;5;{p[level]}m{text}\x1b[0m"
+        return f"\x1b[38;5;{p[level]}m{text}\x1b[38;5;{p['label']}m {label}\x1b[0m"
 
     wk = seg(
-        "wk",
+        "wtd",
         f"{round(pace.used)}/{round(pace.on_track)}%",
         severity(pace.used, pace.on_track),
     )
     day = seg(
-        "day",
+        "today",
         f"{round(pace.day_used)}/{round(pace.day_quota)}",
         severity(pace.day_used, pace.day_quota),
     )
-    return f"{wk}  {day}"
+    sep = f"\x1b[38;5;{p['label']}m · \x1b[0m"
+    return f"{day}{sep}{wk}"
 
 
 # ---------------------------------------------------------------- input -----
