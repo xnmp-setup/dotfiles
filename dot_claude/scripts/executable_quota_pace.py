@@ -3,35 +3,41 @@
 
 Reads the status-line JSON on stdin and prints one coloured segment:
 
-    80/120 today · 34/43% wtd · 12/18 hr
+    80/120 today · 34/43% wtd · 40/88 ses
 
-All three x/y pairs compare usage with an allowance. "hr" and "today" share
-one unit: 100 = one even day, i.e. 1/7 of the weekly limit.
+"today" and "ses" share one unit: 100 = one even day, i.e. 1/7 of the weekly
+limit.
 
-hr    - usage over the last 60 minutes / the hourly rate that would use up the
-        rest of the current 5-hour window just as it resets.
 today - usage since local midnight / today's allowance. The allowance spreads
         whatever weekly quota was left at midnight evenly over the time until
         the weekly reset, and takes today's share; frugal days earlier in the
         week raise it above 100, heavy days lower it.
 wtd   - week to date: percent of the 7-day limit used / percent an even pace
         would have used by the end of today.
+ses   - usage in the current 5-hour session / that session's whole limit.
+        Resets with the session.
 
-Units: Claude Code reports the 5-hour and weekly limits as separate
-percentages with no stated exchange rate, so the script learns one from how
-the two move together (weekly %-points per 5-hour %-point), starting from a
-prior of 1/8 until it has seen enough usage.
+Both numerators are measured the same way, as weekly %-points gained since
+the span began (midnight, or the session's start), so a session that covers
+all of today shows the same number for both. Claude Code reports whole
+percents, so they move in steps of 7 (one weekly point).
+
+The session limit needs an exchange rate between the 5-hour and weekly
+percentages, which Claude Code doesn't state, so the script learns one from
+how the two move together (weekly %-points per 5-hour %-point), starting from
+a prior of 1/8 until it has seen enough usage.
 
 Claude Code only reports current percentages, so the start-of-day figure is
 the last reading taken before midnight. That comes from the Quickshell desktop
 bar's quota history when present (it samples the same payload continuously),
-else from this script's own small state file. With neither (first run
-mid-day) today's usage counts from the first reading. If the weekly window
-itself rolled over today, "today" starts at the rollover: usage counted
-against the previous week is not carried into the new one.
+else from this script's own small state file. When the bar wasn't running
+at midnight, today counts from its earliest reading today; with no history at
+all (first run mid-day), from this script's first reading. If the weekly
+window itself rolled over today, "today" starts at the rollover: usage
+counted against the previous week is not carried into the new one.
 
 Prints nothing when the payload has no weekly limit (API-key or third-party
-model sessions), and omits "hr" when there is no 5-hour data, so the status
+model sessions), and omits "ses" when there is no 5-hour data, so the status
 line degrades cleanly.
 """
 from __future__ import annotations
@@ -47,11 +53,10 @@ from datetime import datetime, time as dtime, timedelta, tzinfo
 from pathlib import Path
 from typing import Mapping, Optional, Sequence
 
-HOUR = 3_600
 DAY = 86_400
 WEEK_DAYS = 7
 WEEK = WEEK_DAYS * DAY
-FIVE_HOURS = 5 * HOUR
+FIVE_HOURS = 5 * 3_600
 # Display units per weekly %-point: 100 units = one even day = 100/7 %.
 UNITS_PER_WEEK_PCT = float(WEEK_DAYS)
 # resets_at for one window should be stable, but tolerate small jitter before
@@ -63,9 +68,10 @@ SAME_WINDOW_TOLERANCE = 600
 PRIOR_RATIO = 0.125
 PRIOR_WEIGHT = 10.0     # prior counts as this many 5-hour %-points observed
 RATIO_MEMORY = 400.0    # keep roughly the last four full windows of evidence
-SAMPLE_SPACING = 60     # seconds between stored hourly samples
 OVER_FACTOR = 1.0       # above pace -> orange
 WAY_OVER_FACTOR = 1.5   # 50% above pace -> red
+SESSION_WARN = 0.75     # share of the 5-hour limit used -> orange
+SESSION_CRITICAL = 0.9  # -> red
 STATE_VERSION = 2
 
 
@@ -94,14 +100,13 @@ class DayState:
 
 
 @dataclass(frozen=True)
-class HourState:
-    """Running 5-hour consumption, for last-hour usage and the unit ratio."""
+class SessionState:
+    """Current 5-hour session, and the learned 5-hour -> weekly unit ratio."""
     five_resets_at: int
     five_peak: float       # highest 5-hour % seen in that window
     week_resets_at: int
     week_peak: float       # highest weekly % seen in that window
-    consumed: float        # cumulative 5-hour %-points used, across windows
-    samples: tuple         # ((epoch, consumed), ...) oldest first
+    week_baseline: float   # weekly % when the session began
     ratio_week: float      # weekly %-points observed alongside...
     ratio_five: float      # ...this many 5-hour %-points
 
@@ -112,8 +117,8 @@ class Pace:
     on_track: float                     # weekly % an even pace allows by end of today
     day_used: float                     # today's usage, 100 = one even day
     day_quota: float                    # today's allowance, same units
-    hour_used: Optional[float] = None   # last hour's usage, same units
-    hour_quota: Optional[float] = None  # hourly rate that exactly uses up the 5-hour window
+    session_used: Optional[float] = None   # this 5-hour session's usage, same units
+    session_quota: Optional[float] = None  # the whole 5-hour limit, same units
 
 
 def _same(a: int, b: int) -> bool:
@@ -142,13 +147,15 @@ def baseline_from_history(samples: Sequence, week: Window, day_start: float) -> 
     """Weekly used % at `day_start`, from (epoch, used%, ...) samples.
 
     Takes the last sample at or before day_start, provided it falls inside
-    this window (an older one belongs to the previous week). None when no such
-    sample exists, so the caller falls back to its own state.
+    this window (an older one belongs to the previous week). Without one (the
+    bar wasn't running at midnight), the earliest sample from today is the
+    closest known starting point. None when there is neither, so the caller
+    falls back to its own state.
     """
     window_start = week.resets_at - WEEK
     if day_start <= window_start:
         return 0.0
-    best = None
+    before = after = None
     for sample in samples:
         if not isinstance(sample, Sequence) or isinstance(sample, (str, bytes)) or len(sample) < 2:
             continue
@@ -157,8 +164,11 @@ def baseline_from_history(samples: Sequence, week: Window, day_start: float) -> 
             continue
         if not (math.isfinite(at) and math.isfinite(used)):
             continue
-        if window_start <= at <= day_start and (best is None or at >= best[0]):
-            best = (at, used)
+        if window_start <= at <= day_start and (before is None or at >= before[0]):
+            before = (at, used)
+        elif at > day_start and (after is None or at < after[0]):
+            after = (at, used)
+    best = before or after
     return None if best is None else float(max(0.0, min(100.0, best[1])))
 
 
@@ -194,78 +204,72 @@ def advance_day(
     return DayState(week.resets_at, start, min(baseline, last), last)
 
 
-def advance_hour(prev: Optional[HourState], reading: Reading) -> Optional[HourState]:
-    """Fold a new reading into the 5-hour consumption state."""
-    five, week, now = reading.five, reading.week, reading.now
+def advance_session(
+    prev: Optional[SessionState],
+    reading: Reading,
+    history_baseline: Optional[float] = None,
+) -> Optional[SessionState]:
+    """Fold a new reading into the 5-hour session state.
+
+    `history_baseline`, when known, is the observed weekly % at the session's
+    start and beats anything inferred from `prev`.
+    """
+    five, week = reading.five, reading.week
     if five is None:
         return prev
-    if prev is None:
-        return HourState(
-            five.resets_at, five.used, week.resets_at, week.used,
-            consumed=0.0, samples=((now, 0.0),), ratio_week=0.0, ratio_five=0.0,
-        )
-    same_five = _same(prev.five_resets_at, five.resets_at)
-    same_week = _same(prev.week_resets_at, week.resets_at)
-    # High-water deltas: stale lower readings add nothing; a new window
-    # started from zero, so everything it shows is new usage.
-    d_five = max(0.0, five.used - prev.five_peak) if same_five else five.used
-    d_week = max(0.0, week.used - prev.week_peak) if same_week else week.used
-    ratio_week, ratio_five = prev.ratio_week, prev.ratio_five
-    if same_five and same_week:
+    same_five = prev is not None and _same(prev.five_resets_at, five.resets_at)
+    same_week = prev is not None and _same(prev.week_resets_at, week.resets_at)
+    ratio_week = prev.ratio_week if prev else 0.0
+    ratio_five = prev.ratio_five if prev else 0.0
+    if prev is not None and same_five and same_week:
         # Only intervals inside both windows tell us the exchange rate.
-        ratio_week, ratio_five = ratio_week + d_week, ratio_five + d_five
+        # High-water deltas: stale lower readings add nothing.
+        ratio_week += max(0.0, week.used - prev.week_peak)
+        ratio_five += max(0.0, five.used - prev.five_peak)
         if ratio_five > RATIO_MEMORY:
             scale = RATIO_MEMORY / ratio_five
             ratio_week, ratio_five = ratio_week * scale, ratio_five * scale
-    consumed = prev.consumed + d_five
-    return HourState(
+    week_peak = max(prev.week_peak, week.used) if prev is not None and same_week else week.used
+    if history_baseline is not None:
+        baseline = history_baseline
+    elif prev is not None and same_five and same_week:
+        baseline = prev.week_baseline
+    elif prev is not None and same_five:
+        baseline = 0.0  # the weekly window reset mid-session and starts empty
+    else:
+        # First sighting of this session: back out what it has used so far.
+        ratio = (ratio_week + PRIOR_RATIO * PRIOR_WEIGHT) / (ratio_five + PRIOR_WEIGHT)
+        baseline = max(0.0, week.used - five.used * ratio)
+    return SessionState(
         five_resets_at=five.resets_at,
-        five_peak=max(prev.five_peak, five.used) if same_five else five.used,
+        five_peak=max(prev.five_peak, five.used) if prev is not None and same_five else five.used,
         week_resets_at=week.resets_at,
-        week_peak=max(prev.week_peak, week.used) if same_week else week.used,
-        consumed=consumed,
-        samples=_record_sample(prev.samples, now, consumed),
+        week_peak=week_peak,
+        week_baseline=min(baseline, week_peak),
         ratio_week=ratio_week,
         ratio_five=ratio_five,
     )
 
 
-def _record_sample(samples: tuple, now: float, consumed: float) -> tuple:
-    kept = tuple(s for s in samples if s[0] <= now)
-    if not kept or now - kept[-1][0] >= SAMPLE_SPACING:
-        kept = kept + ((now, consumed),)
-    # Keep the last hour plus one older sample to measure it from.
-    older = [i for i, s in enumerate(kept) if s[0] <= now - HOUR]
-    return kept[older[-1]:] if older else kept
-
-
-def week_pct_per_five_pct(state: HourState) -> float:
+def week_pct_per_five_pct(state: SessionState) -> float:
     return (state.ratio_week + PRIOR_RATIO * PRIOR_WEIGHT) / (state.ratio_five + PRIOR_WEIGHT)
 
 
-def hour_pace(state: Optional[HourState], reading: Reading) -> tuple:
-    """(last hour's usage, sustainable hourly rate), in display units."""
+def session_pace(state: Optional[SessionState], reading: Reading) -> tuple:
+    """(this session's usage, the whole session limit), in display units."""
     if state is None:
         return None, None
-    to_units = week_pct_per_five_pct(state) * UNITS_PER_WEEK_PCT
-    before = [c for t, c in state.samples if t <= reading.now - HOUR]
-    reference = before[-1] if before else state.samples[0][1]
-    used = max(0.0, state.consumed - reference)
-    five = reading.five
-    if five is None:
-        # No window open: the next one starts fresh when usage resumes.
-        rate = 100.0 / (FIVE_HOURS / HOUR)
-    else:
-        hours_left = max(1.0, five.resets_at - reading.now) / HOUR
-        rate = max(0.0, 100.0 - state.five_peak) / hours_left
-    return used * to_units, rate * to_units
+    # No open window means the next session starts from zero.
+    used = state.week_peak - state.week_baseline if reading.five is not None else 0.0
+    limit = 100.0 * week_pct_per_five_pct(state)
+    return used * UNITS_PER_WEEK_PCT, limit * UNITS_PER_WEEK_PCT
 
 
 def compute_pace(
     week: Window,
     day: DayState,
     day_end: float,
-    hour: tuple = (None, None),
+    session: tuple = (None, None),
 ) -> Pace:
     window_start = week.resets_at - WEEK
     remaining_span = max(1.0, week.resets_at - day.day_start)
@@ -275,8 +279,8 @@ def compute_pace(
         on_track=(day_end - window_start) / WEEK * 100.0,
         day_used=(day.last - day.baseline) * UNITS_PER_WEEK_PCT,
         day_quota=max(0.0, 100.0 - day.baseline) * today_share * UNITS_PER_WEEK_PCT,
-        hour_used=hour[0],
-        hour_quota=hour[1],
+        session_used=session[0],
+        session_quota=session[1],
     )
 
 
@@ -289,6 +293,14 @@ def severity(value: float, allowance: float) -> str:
     if value > allowance * OVER_FACTOR:
         return "over"
     return "ok"
+
+
+def session_severity(used: float, limit: float) -> str:
+    """Session usage can't exceed its limit, so colour by how close it is."""
+    if limit <= 0:
+        return "ok"
+    share = used / limit
+    return "way_over" if share >= SESSION_CRITICAL else "over" if share >= SESSION_WARN else "ok"
 
 
 # ------------------------------------------------------------- rendering ----
@@ -305,15 +317,16 @@ def render(pace: Pace, theme: str = "dark") -> str:
     def seg(label: str, text: str, level: str) -> str:
         return f"\x1b[38;5;{p[level]}m{text}\x1b[38;5;{p['label']}m {label}\x1b[0m"
 
-    def pair(label: str, used: float, quota: float, suffix: str = "") -> str:
-        return seg(label, f"{round(used)}/{round(quota)}{suffix}", severity(used, quota))
+    def pair(label: str, used: float, quota: float, suffix: str = "", level: str = "") -> str:
+        return seg(label, f"{round(used)}/{round(quota)}{suffix}", level or severity(used, quota))
 
     parts = [
         pair("today", pace.day_used, pace.day_quota),
         pair("wtd", pace.used, pace.on_track, "%"),
     ]
-    if pace.hour_used is not None and pace.hour_quota is not None:
-        parts.append(pair("hr", pace.hour_used, pace.hour_quota))
+    if pace.session_used is not None and pace.session_quota is not None:
+        level = session_severity(pace.session_used, pace.session_quota)
+        parts.append(pair("ses", pace.session_used, pace.session_quota, level=level))
     sep = f"\x1b[38;5;{p['label']}m · \x1b[0m"
     return sep.join(parts)
 
@@ -384,24 +397,20 @@ def _load_day(raw: Mapping) -> DayState:
     )
 
 
-def _load_hour(raw: Mapping) -> HourState:
-    samples = tuple((_finite(t), _finite(c)) for t, c in raw["samples"][-256:])
-    if not samples:
-        raise ValueError("no samples")
-    return HourState(
+def _load_session(raw: Mapping) -> SessionState:
+    return SessionState(
         five_resets_at=int(_finite(raw["five_resets_at"])),
         five_peak=_finite(raw["five_peak"]),
         week_resets_at=int(_finite(raw["week_resets_at"])),
         week_peak=_finite(raw["week_peak"]),
-        consumed=_finite(raw["consumed"]),
-        samples=samples,
+        week_baseline=_finite(raw["week_baseline"]),
         ratio_week=max(0.0, _finite(raw["ratio_week"])),
         ratio_five=max(0.0, _finite(raw["ratio_five"])),
     )
 
 
 def load_state(path: Path) -> tuple:
-    """(DayState | None, HourState | None); each half degrades independently."""
+    """(DayState | None, SessionState | None); each half degrades independently."""
     try:
         raw = json.loads(path.read_text())
     except (OSError, ValueError):
@@ -409,7 +418,7 @@ def load_state(path: Path) -> tuple:
     if not isinstance(raw, Mapping) or raw.get("v") != STATE_VERSION:
         return None, None
     loaded = []
-    for key, loader in (("day", _load_day), ("hour", _load_hour)):
+    for key, loader in (("day", _load_day), ("session", _load_session)):
         try:
             loaded.append(loader(raw[key]))
         except (ValueError, KeyError, TypeError, IndexError):
@@ -417,11 +426,11 @@ def load_state(path: Path) -> tuple:
     return tuple(loaded)
 
 
-def save_state(path: Path, day: DayState, hour: Optional[HourState]) -> None:
+def save_state(path: Path, day: DayState, session: Optional[SessionState]) -> None:
     # Several sessions render concurrently; write-then-rename keeps the file
     # whole for readers. Last writer wins: high-water deltas make a lost
-    # update cost at most one sample, never double-count.
-    payload = {"v": STATE_VERSION, "day": asdict(day), "hour": asdict(hour) if hour else None}
+    # update cost at most one ratio sample, never double-count.
+    payload = {"v": STATE_VERSION, "day": asdict(day), "session": asdict(session) if session else None}
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".quota-pace.")
@@ -467,13 +476,20 @@ def main(argv: list) -> int:
         return 0
     day_start, day_end = today_span(reading.week, reading.now)
     path = state_path()
-    prev_day, prev_hour = load_state(path)
-    history = baseline_from_history(load_history(history_path()), reading.week, day_start)
-    day = advance_day(prev_day, reading.week, day_start, history)
-    hour = advance_hour(prev_hour, reading)
-    if (day, hour) != (prev_day, prev_hour):
-        save_state(path, day, hour)
-    pace = compute_pace(reading.week, day, day_end, hour_pace(hour, reading))
+    prev_day, prev_session = load_state(path)
+    samples = load_history(history_path())
+    day = advance_day(
+        prev_day, reading.week, day_start,
+        baseline_from_history(samples, reading.week, day_start),
+    )
+    session_start = reading.five.resets_at - FIVE_HOURS if reading.five else None
+    session = advance_session(
+        prev_session, reading,
+        None if session_start is None else baseline_from_history(samples, reading.week, session_start),
+    )
+    if (day, session) != (prev_day, prev_session):
+        save_state(path, day, session)
+    pace = compute_pace(reading.week, day, day_end, session_pace(session, reading))
     sys.stdout.write(render(pace, theme))
     return 0
 
