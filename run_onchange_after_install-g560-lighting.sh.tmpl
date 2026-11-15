@@ -1,0 +1,42 @@
+#!/bin/sh
+# Install the Logitech G560 lighting udev rule (scripts/system/g560). It grants
+# the logged-in seat user the speaker's HID++ node (uaccess) and starts the
+# g560-lighting user unit whenever the speaker enumerates; set-theme and that
+# unit then set the lighting to the theme colour (scripts/lib/g560-theme.sh,
+# ~/.local/bin/g560-lighting) without root.
+#
+# The rule only matches the G560's USB ID, so it is inert on machines without
+# the speaker. Re-runs when any of the installed files change:
+{{ range (glob (joinPath .chezmoi.sourceDir "scripts/system/g560/*")) -}}
+# {{ base . }}: {{ include . | sha256sum }}
+{{ end }}
+set -eu
+
+# Needs udev + systemd (absent on macOS and systemd-less WSL). NixOS manages
+# /etc/udev from the system config; there, copy 70-g560-lighting.rules into
+# services.udev.extraRules instead.
+[ "$(uname -s)" = Linux ] || exit 0
+command -v systemctl >/dev/null 2>&1 || exit 0
+[ -d /etc/udev/rules.d ] || exit 0
+[ -e /etc/NIXOS ] && exit 0
+
+src="{{ .chezmoi.sourceDir }}/scripts/system/g560"
+sudo install -Dm644 "$src/70-g560-lighting.rules" /etc/udev/rules.d/70-g560-lighting.rules
+
+# Retire the earlier root oneshot that forced a fixed colour on enumerate; it
+# would race the user unit and overwrite the theme colour.
+if [ -e /etc/systemd/system/g560-static.service ]; then
+  sudo rm -f /etc/udev/rules.d/70-g560-static.rules \
+    /etc/systemd/system/g560-static.service /usr/local/bin/g560-static
+  sudo systemctl daemon-reload
+fi
+
+sudo udevadm control --reload
+# Apply now if the speaker is already plugged in: re-running the rule sets the
+# uaccess ACL and starts the user unit. --attr-match only tests the hidraw
+# node's own attributes, so select by the USB parent's sysfs path.
+for usb in /sys/bus/usb/devices/*; do
+  [ "$(cat "$usb/idVendor" 2>/dev/null)" = 046d ] || continue
+  [ "$(cat "$usb/idProduct" 2>/dev/null)" = 0a78 ] || continue
+  sudo udevadm trigger --action=add --subsystem-match=hidraw --parent-match="$usb"
+done

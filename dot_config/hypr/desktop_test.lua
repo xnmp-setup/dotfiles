@@ -431,11 +431,15 @@ do
         end }, is_laptop)
         equal("starting night light preserves its backend", commands[1],
             nightlights.command(is_laptop))
-        equal("starting night light also starts one theme scheduler", #commands, 2)
+        equal("starting night light also starts the theme and G560 schedulers", #commands, 3)
         check("sunrise themes follow the same solar coordinates",
             commands[2]:find("desktop_theme_solar.py --lat " .. lat .. " --lon " .. lon, 1, true) ~= nil)
         check("sunrise themes require Python at runtime",
             commands[2]:find("command -v python3", 1, true) ~= nil)
+        check("speaker night tint follows the same solar coordinates",
+            commands[3]:find("g560_nightlight.py --lat " .. lat .. " --lon " .. lon, 1, true) ~= nil)
+        check("speaker night tint requires Python at runtime",
+            commands[3]:find("command -v python3", 1, true) ~= nil)
     end
 end
 

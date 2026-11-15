@@ -31,6 +31,13 @@ local THEME =
     .. ' "$HOME"/.config/hypr/desktop_theme_solar.py --lat %s --lon %s' .. "'")
     :format(LATITUDE, LONGITUDE)
 
+-- Warms the Logitech G560's lighting at night on the same schedule (see
+-- g560_nightlight.py). It exits at once where g560-lighting is not installed.
+local G560 =
+    ("sh -c 'command -v python3 >/dev/null 2>&1 && exec"
+    .. ' "$HOME"/.config/hypr/g560_nightlight.py --lat %s --lon %s' .. "'")
+    :format(LATITUDE, LONGITUDE)
+
 ---@param is_laptop boolean
 ---@return string
 function M.command(is_laptop)
@@ -42,6 +49,7 @@ end
 function M.start(hl, is_laptop)
     hl.exec_cmd(M.command(is_laptop))
     hl.exec_cmd(THEME)
+    hl.exec_cmd(G560)
 end
 
 return M

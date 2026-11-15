@@ -9,9 +9,12 @@
 #
 # run_onchange, keyed on the hashes below, so it fires exactly when a unit file
 # changes rather than on every apply. Adding or removing a unit changes the list
-# itself, which is also a change.
+# itself, which is also a change. Directories (*.target.wants, holding
+# enable symlinks) are skipped: include cannot read them.
 {{ range (glob (joinPath .chezmoi.sourceDir "dot_config/systemd/user/*")) -}}
+{{ if not (stat .).isDir -}}
 # {{ base . }}: {{ include . | sha256sum }}
+{{ end -}}
 {{ end }}
 set -eu
 

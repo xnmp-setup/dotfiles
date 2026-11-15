@@ -22,6 +22,8 @@ source "$set_theme_script_dir/lib/chrome-theme.sh"
 source "$set_theme_script_dir/lib/darkreader-theme.sh"
 # shellcheck source=lib/desktop-color-scheme.sh
 source "$set_theme_script_dir/lib/desktop-color-scheme.sh"
+# shellcheck source=lib/g560-theme.sh
+source "$set_theme_script_dir/lib/g560-theme.sh"
 # shellcheck source=lib/lig-theme.sh
 source "$set_theme_script_dir/lib/lig-theme.sh"
 # shellcheck source=lib/mako-theme.sh
@@ -1054,6 +1056,29 @@ if command -v mako &>/dev/null || command -v makoctl &>/dev/null; then
   fi
 else
   skipped+=("Mako (not installed)")
+fi
+
+# --- Logitech G560 speaker lighting ---
+# The LEDs take the theme accent (lib/g560-theme.sh). The colour is stored even
+# when the speaker is unplugged: the g560-lighting user unit re-applies it at
+# login and on hotplug. Gated on Linux HID support, so macOS and WSL skip it;
+# a machine without the speaker (exit 3) stays quiet.
+if [[ -d /sys/class/hidraw ]]; then
+  if ! g560_write_theme_colour "$HOME/.config/tauri-explorer/themes/$slug.css" "$(g560_colour_file)"; then
+    skipped+=("G560 lighting ($g560_theme_error)")
+  elif command -v g560-lighting &>/dev/null; then
+    g560_status=0
+    g560_output=$(g560-lighting 2>&1) || g560_status=$?
+    case "$g560_status" in
+      0)
+        echo "  ✓ G560 lighting → #$(<"$(g560_colour_file)")"
+        reload+=("G560 lighting: applied automatically")
+        ((changed++))
+        ;;
+      3) ;;
+      *) skipped+=("G560 lighting (${g560_output##*$'\n'})") ;;
+    esac
+  fi
 fi
 
 # --- Greeter appearance (regreet) ---

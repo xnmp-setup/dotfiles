@@ -1,0 +1,6 @@
+# Logitech G560: let the logged-in seat user drive the speaker's HID++
+# interface (uaccess), so set-theme can recolour it without root, and start the
+# g560-lighting user unit whenever the speaker enumerates (boot, replug, power
+# cycle) — it forgets its lighting on power loss and reverts to the audio
+# visualiser. Must sort before 73-seat-late.rules, which applies uaccess.
+ACTION!="remove", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="0a78", TAG+="uaccess", TAG+="systemd", ENV{SYSTEMD_USER_WANTS}+="g560-lighting.service"

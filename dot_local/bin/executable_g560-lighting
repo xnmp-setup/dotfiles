@@ -1,0 +1,175 @@
+#!/usr/bin/env python3
+"""Set Logitech G560 lighting to a single static colour via HID++ 2.0.
+
+Uses feature 0x8070 (ColorLEDEffects): looks up the feature index, enumerates
+each zone's effects, picks the one whose effect ID is 0x0001 ("fixed"), and
+applies it with the given RGB. No dependencies beyond the stdlib.
+
+Usage: g560-lighting [RRGGBB] [/dev/hidrawN]
+
+With no colour, applies the one set-theme stored (scripts/lib/g560-theme.sh)
+in $XDG_STATE_HOME/g560-lighting/colour, and does nothing if there is none.
+While the night light is on ($XDG_RUNTIME_DIR/g560-lighting/phase reads
+"night", kept by ~/.config/hypr/g560_nightlight.py) that colour is warmed
+with NIGHT_TINT. An explicit colour is applied exactly as given.
+Exits 3 when no G560 is connected, 75 (EX_TEMPFAIL) when the device is
+present but not ready — the only status the user unit retries — and 1 on
+permanent errors. Writing the HID node needs the uaccess
+udev rule (scripts/system/g560/70-g560-lighting.rules) or root.
+"""
+import errno
+import glob
+import os
+import select
+import sys
+import time
+
+VID_PID = "0000046D:00000A78"
+DEV_IDX = 0xFF          # direct-attached (non-receiver) device
+SWID = 0x0A
+FEAT_ROOT = 0x0000
+FEAT_LED = 0x8070
+EFFECT_FIXED = 0x0001
+EXIT_NOT_CONNECTED = 3
+EXIT_TEMPFAIL = 75
+
+
+# Night-light warmth, as per-channel multipliers on the LED (linear-light)
+# colour: blue drops most, red is untouched. Deliberately gentler than the
+# screen's 3500K night light, which in linear light is roughly 1 : 0.56 : 0.25
+# and would turn most accents muddy on the speaker. Tune here.
+NIGHT_TINT = (1.0, 0.88, 0.75)
+
+
+def warm(rgb, factors=NIGHT_TINT):
+    """Scale each channel by its factor, rounding and clamping to a byte."""
+    return bytes(max(0, min(255, round(c * f))) for c, f in zip(rgb, factors))
+
+
+def night_light_on():
+    runtime = os.environ.get("XDG_RUNTIME_DIR")
+    if not runtime:
+        return False
+    try:
+        with open(os.path.join(runtime, "g560-lighting", "phase")) as f:
+            return f.read().strip() == "night"
+    except OSError:
+        return False
+
+
+def stored_colour():
+    state = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
+    try:
+        with open(os.path.join(state, "g560-lighting", "colour")) as f:
+            return f.read().strip() or None
+    except FileNotFoundError:
+        return None
+
+
+def find_hidraw():
+    for path in sorted(glob.glob("/sys/class/hidraw/hidraw*")):
+        try:
+            with open(f"{path}/device/uevent") as f:
+                ue = f.read()
+            with open(f"{path}/device/report_descriptor", "rb") as f:
+                rd = f.read()
+        except OSError:
+            continue
+        # HID++ long report: Report ID 0x11 in the descriptor
+        if VID_PID in ue.upper() and b"\x85\x11" in rd:
+            return "/dev/" + os.path.basename(path)
+    return None
+
+
+def request(fd, feat_idx, fn, params=b"", timeout=1.0):
+    msg = bytes([0x11, DEV_IDX, feat_idx, (fn << 4) | SWID]) + params
+    os.write(fd, msg.ljust(20, b"\x00"))
+    deadline = time.monotonic() + timeout
+    while True:
+        remaining = deadline - time.monotonic()
+        r, _, _ = select.select([fd], [], [], max(remaining, 0))
+        if not r:
+            raise TimeoutError(f"no reply to feat {feat_idx:#x} fn {fn}")
+        resp = os.read(fd, 64)
+        if len(resp) < 5 or resp[0] != 0x11 or resp[1] != DEV_IDX:
+            continue
+        if resp[2] == 0xFF and resp[3] == feat_idx and resp[4] == ((fn << 4) | SWID):
+            raise RuntimeError(f"HID++ error {resp[5]:#x} on feat {feat_idx:#x} fn {fn}")
+        if resp[2] == feat_idx and resp[3] == ((fn << 4) | SWID):
+            return resp[4:]
+
+
+def tempfail(message):
+    print(message, file=sys.stderr)
+    sys.exit(EXIT_TEMPFAIL)
+
+
+def target_colour(explicit=None):
+    """The RGB to apply: an explicit colour as given, else the stored theme
+    colour, warmed while the night light is on. None if nothing is stored."""
+    colour = explicit if explicit is not None else stored_colour()
+    if colour is None:
+        return None
+    try:
+        rgb = bytes.fromhex(colour.lstrip("#"))
+    except ValueError:
+        rgb = b""
+    if len(rgb) != 3:
+        sys.exit(f"bad colour {colour!r}, want RRGGBB")
+    if explicit is None and night_light_on():
+        rgb = warm(rgb)
+    return rgb
+
+
+def main():
+    rgb = target_colour(sys.argv[1] if len(sys.argv) > 1 else None)
+    if rgb is None:
+        print("no colour stored yet (run set-theme); leaving lighting as is")
+        return
+    dev = sys.argv[2] if len(sys.argv) > 2 else find_hidraw()
+    if not dev:
+        print("G560 not connected", file=sys.stderr)
+        sys.exit(EXIT_NOT_CONNECTED)
+
+    try:
+        fd = os.open(dev, os.O_RDWR)
+    except PermissionError:
+        # At login the uaccess ACL can lag the unit; if it persists, the udev
+        # rule is missing (e.g. NixOS without services.udev.extraRules).
+        tempfail(f"no write access to {dev}: needs 70-g560-lighting.rules "
+                 "(chezmoi apply), or run as root")
+    except OSError as e:
+        if e.errno == errno.ENOENT:
+            tempfail(f"{dev} not created yet")
+        sys.exit(f"cannot open {dev}: {e.strerror}")
+    applied = 0
+    try:
+        r = request(fd, 0x00, 0, FEAT_LED.to_bytes(2, "big"))  # root.getFeature
+        led = r[0]
+        if led == 0:
+            sys.exit("device does not expose feature 0x8070")
+        zones = request(fd, led, 0)[0]                          # getInfo
+        for z in range(zones):
+            n_eff = request(fd, led, 1, bytes([z]))[3]          # getZoneInfo
+            idx = None
+            for e in range(n_eff):
+                info = request(fd, led, 2, bytes([z, e]))       # getZoneEffectInfo
+                if int.from_bytes(info[2:4], "big") == EFFECT_FIXED:
+                    idx = e
+                    break
+            if idx is None:
+                print(f"zone {z}: no fixed effect, skipped", file=sys.stderr)
+                continue
+            request(fd, led, 3, bytes([z, idx]) + rgb)          # setZoneEffect
+            print(f"zone {z}: fixed #{rgb.hex()}")
+            applied += 1
+    except TimeoutError as e:
+        tempfail(str(e))
+    finally:
+        os.close(fd)
+    if not applied:
+        sys.exit("no lighting zone supports a fixed colour")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,26 @@
+# Re-applies the theme colour (set-theme stores it in
+# ~/.local/state/g560-lighting/colour) to the Logitech G560's lighting, which
+# the speaker forgets on power loss. Started at login (default.target) and by
+# 70-g560-lighting.rules when the speaker is plugged in; that rule also grants
+# the seat user the HID node. It is installed by
+# run_onchange_after_install-g560-lighting.sh, which skips NixOS — there, add
+# the rule via services.udev.extraRules or this unit fails (no write access).
+[Unit]
+Description=Set Logitech G560 lighting to the theme colour
+StartLimitIntervalSec=30
+StartLimitBurst=5
+
+[Service]
+Type=oneshot
+# Skip (not fail) on machines without the speaker, before needing python3.
+ExecCondition=/bin/sh -c 'grep -qsi "0000046D:00000A78" /sys/class/hidraw/*/device/uevent'
+ExecStart=%h/.local/bin/g560-lighting
+# At login the uaccess ACL, and on hotplug the HID++ interface, can lag the
+# unit's start by a moment; g560-lighting exits 75 for that, and only that is
+# retried. Permanent errors (missing rule, python3 absent) fail once.
+Restart=no
+RestartForceExitStatus=75
+RestartSec=2
+
+[Install]
+WantedBy=default.target
