@@ -129,9 +129,10 @@ except (OSError, ValueError):
     ;;
 esac
 
-# Weekly-limit pace (wk used/on-track %, day used/allowance). Empty when the
-# payload carries no rate limits (API key / third-party model), or when the
-# helper is missing, so the bar degrades to omitting the segment.
+# Quota pace (last-hour used/sustainable 5h rate, today used/allowance, week
+# used/on-track %). Empty when the payload carries no rate limits (API key /
+# third-party model), or when the helper is missing, so the bar degrades to
+# omitting the segment.
 QUOTA_SEG=""
 if [ -f "${HOME}/.claude/scripts/quota_pace.py" ]; then
   QUOTA_SEG=$(printf '%s' "$INPUT" \
