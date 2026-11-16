@@ -3,10 +3,10 @@
 
 Reads the status-line JSON on stdin and prints one coloured segment:
 
-    80/120 today · 34/43% wtd · 40/88 ses
+    80/120 today · 34/43% wtd · 40/80% ses
 
-"today" and "ses" share one unit: 100 = one even day, i.e. 1/7 of the weekly
-limit.
+"today" is in even-day units: 100 = one even day, i.e. 1/7 of the weekly
+limit. "ses" is on its own 0..100 scale (see below).
 
 today - usage since local midnight / today's allowance. The allowance spreads
         whatever weekly quota was left at midnight evenly over the time until
@@ -14,13 +14,14 @@ today - usage since local midnight / today's allowance. The allowance spreads
         week raise it above 100, heavy days lower it.
 wtd   - week to date: percent of the 7-day limit used / percent an even pace
         would have used by the end of today.
-ses   - usage in the current 5-hour session / that session's whole limit.
-        Resets with the session.
+ses   - percent of the 5-hour limit used / percent of the session elapsed
+        (the usage that would be on track: 80 with an hour to go). Both run
+        0..100 and reset with the session.
 
 Both numerators are measured the same way, as weekly %-points gained since
-the span began (midnight, or the session's start), so a session that covers
-all of today shows the same number for both. Claude Code reports whole
-percents, so they move in steps of 7 (one weekly point).
+the span began (midnight, or the session's start); the session's is then
+divided by the session's whole limit in weekly points. Claude Code reports
+whole percents, so they move in coarse steps.
 
 The session limit needs an exchange rate between the 5-hour and weekly
 percentages, which Claude Code doesn't state, so the script learns one from
@@ -72,6 +73,9 @@ OVER_FACTOR = 1.0       # above pace -> orange
 WAY_OVER_FACTOR = 1.5   # 50% above pace -> red
 SESSION_WARN = 0.75     # share of the 5-hour limit used -> orange
 SESSION_CRITICAL = 0.9  # -> red
+# Colouring only: judge pace against at least this much of the session (the
+# first half hour), so a first message doesn't flag red against ~0% on track.
+SESSION_PACE_FLOOR = 10.0
 STATE_VERSION = 2
 
 
@@ -117,8 +121,8 @@ class Pace:
     on_track: float                     # weekly % an even pace allows by end of today
     day_used: float                     # today's usage, 100 = one even day
     day_quota: float                    # today's allowance, same units
-    session_used: Optional[float] = None   # this 5-hour session's usage, same units
-    session_quota: Optional[float] = None  # the whole 5-hour limit, same units
+    session_used: Optional[float] = None   # % of the 5-hour limit used (0..100)
+    session_quota: Optional[float] = None  # % of the session elapsed: usage on track
 
 
 def _same(a: int, b: int) -> bool:
@@ -299,13 +303,20 @@ def week_pct_per_five_pct(state: Optional[SessionState]) -> float:
 
 
 def session_pace(state: Optional[SessionState], reading: Reading) -> tuple:
-    """(this session's usage, the whole session limit), in display units."""
+    """(percent of the session limit used, percent of the session elapsed).
+
+    Both are on a 0..100 scale where 100 is the whole 5-hour limit / session,
+    so the second is the usage that is exactly on track right now.
+    """
     if state is None:
         return None, None
     # No open window means the next session starts from zero.
-    used = state.week_peak - state.week_baseline if reading.five is not None else 0.0
-    limit = 100.0 * week_pct_per_five_pct(state)
-    return used * UNITS_PER_WEEK_PCT, limit * UNITS_PER_WEEK_PCT
+    if reading.five is None:
+        return 0.0, 0.0
+    limit = 100.0 * week_pct_per_five_pct(state)  # weekly %-points
+    used = (state.week_peak - state.week_baseline) / limit * 100.0 if limit > 0 else 0.0
+    elapsed = (reading.now - (reading.five.resets_at - FIVE_HOURS)) / FIVE_HOURS * 100.0
+    return min(100.0, max(0.0, used)), min(100.0, max(0.0, elapsed))
 
 
 def compute_pace(
@@ -368,8 +379,14 @@ def render(pace: Pace, theme: str = "dark") -> str:
         pair("wtd", pace.used, pace.on_track, "%"),
     ]
     if pace.session_used is not None and pace.session_quota is not None:
-        level = session_severity(pace.session_used, pace.session_quota)
-        parts.append(pair("ses", pace.session_used, pace.session_quota, level=level))
+        # Worse of: ahead of the on-track pace, or nearly out of session.
+        levels = ("ok", "over", "way_over")
+        level = max(
+            severity(pace.session_used, max(pace.session_quota, SESSION_PACE_FLOOR)),
+            session_severity(pace.session_used, 100.0),
+            key=levels.index,
+        )
+        parts.append(pair("ses", pace.session_used, pace.session_quota, "%", level=level))
     sep = f"\x1b[38;5;{p['label']}m · \x1b[0m"
     return sep.join(parts)
 

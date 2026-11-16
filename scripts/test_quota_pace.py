@@ -243,12 +243,18 @@ class Session(unittest.TestCase):
 
     def test_fresh_session_limit_uses_prior_ratio(self):
         state, r = session_run([(self.T0, 50, 0, self.FIVE_RESET)])
-        # A whole 5-hour session = 12.5 weekly points = 87.5 day-units.
-        self.assertEqual(qp.session_pace(state, r), (0, 87.5))
+        self.assertEqual(qp.session_pace(state, r), (0, 0))
 
-    def test_usage_is_weekly_points_since_session_start(self):
+    def test_on_track_is_share_of_session_elapsed(self):
+        for hours_in, expected in [(0, 0), (4, 80), (5, 100)]:
+            with self.subTest(hours_in=hours_in):
+                state, r = session_run([(self.T0 + hours_in * HOUR - (1 if hours_in == 5 else 0), 50, 0, self.FIVE_RESET)])
+                self.assertAlmostEqual(qp.session_pace(state, r)[1], expected, delta=0.1)
+
+    def test_usage_is_share_of_the_session_limit(self):
         state, r = session_run([(self.T0, 50, 0, self.FIVE_RESET), (self.T0 + HOUR, 53, 40, self.FIVE_RESET)])
-        self.assertEqual(qp.session_pace(state, r)[0], 3 * 7)
+        # 3 weekly points of the learned limit.
+        self.assertAlmostEqual(qp.session_pace(state, r)[0], 3 / (100 * qp.week_pct_per_five_pct(state)) * 100)
 
     def test_session_and_today_agree_when_session_is_all_of_today(self):
         # Bar first saw usage at 20:52 (weekly 13%), after midnight and after
@@ -266,11 +272,11 @@ class Session(unittest.TestCase):
         )
         pace = qp.compute_pace(week, day, day_end, qp.session_pace(session, reading))
         self.assertEqual(pace.day_used, 21)
-        self.assertEqual(pace.session_used, 21)
+        self.assertAlmostEqual(pace.session_used, 3 / (100 * qp.week_pct_per_five_pct(session)) * 100)
 
     def test_first_sighting_mid_session_backs_out_usage_so_far(self):
         state, r = session_run([(self.T0, 50, 40, self.FIVE_RESET)])
-        self.assertAlmostEqual(qp.session_pace(state, r)[0], 40 * qp.PRIOR_RATIO * 7)
+        self.assertAlmostEqual(qp.session_pace(state, r)[0], 40)
 
     def test_usage_resets_with_the_session(self):
         next_reset = self.FIVE_RESET + 5 * HOUR
@@ -278,8 +284,8 @@ class Session(unittest.TestCase):
             (self.FIVE_RESET - 10 * 60, 50, 95, self.FIVE_RESET),
             (self.FIVE_RESET + 20 * 60, 51, 8, next_reset),
         ])
-        # First sighting of the new session at 8%: ~1 weekly point so far.
-        self.assertAlmostEqual(qp.session_pace(state, r)[0], 7)
+        # First sighting of the new session at 8%.
+        self.assertAlmostEqual(qp.session_pace(state, r)[0], 8)
 
     def test_ratio_is_learned_from_co_movement(self):
         # Weekly moves 1 point per 4 five-hour points: ratio heads toward 1/4.
@@ -287,7 +293,8 @@ class Session(unittest.TestCase):
         state, r = session_run(readings)
         ratio = qp.week_pct_per_five_pct(state)
         self.assertAlmostEqual(ratio, (24 + 0.125 * qp.PRIOR_WEIGHT) / (96 + qp.PRIOR_WEIGHT))
-        self.assertAlmostEqual(qp.session_pace(state, r)[1], 100 * ratio * 7)
+        # 24 weekly points used of a (100 * ratio)-point limit.
+        self.assertAlmostEqual(qp.session_pace(state, r)[0], min(100.0, 24 / (100 * ratio) * 100))
 
     def test_ratio_ignores_intervals_spanning_a_reset(self):
         next_reset = self.FIVE_RESET + 5 * HOUR
@@ -312,7 +319,7 @@ class Session(unittest.TestCase):
             (self.T0 + 60, 52, 20, self.FIVE_RESET),
             (self.T0 + 120, 49, 2, self.FIVE_RESET),  # stale session
         ])
-        self.assertEqual(qp.session_pace(state, r)[0], 2 * 7)
+        self.assertAlmostEqual(qp.session_pace(state, r)[0], 2 / (100 * qp.week_pct_per_five_pct(state)) * 100)
 
     def test_weekly_reset_mid_session_counts_from_zero(self):
         week_reset_soon = self.T0 + HOUR
@@ -320,15 +327,13 @@ class Session(unittest.TestCase):
         state = qp.advance_session(None, qp.Reading(qp.Window(90, week_reset_soon), self.T0, five))
         r = qp.Reading(qp.Window(2, RESET), week_reset_soon + 60, qp.Window(15, self.FIVE_RESET))
         state = qp.advance_session(state, r)
-        self.assertEqual(qp.session_pace(state, r)[0], 2 * 7)
+        self.assertAlmostEqual(qp.session_pace(state, r)[0], 2 / (100 * qp.week_pct_per_five_pct(state)) * 100)
 
-    def test_no_session_open_shows_zero_of_full_limit(self):
+    def test_no_session_open_shows_zero(self):
         state, _ = session_run([(self.T0, 50, 60, self.FIVE_RESET)])
         idle = qp.Reading(qp.Window(50, RESET), self.FIVE_RESET + HOUR, None)
         state = qp.advance_session(state, idle)
-        used, limit = qp.session_pace(state, idle)
-        self.assertEqual(used, 0)
-        self.assertAlmostEqual(limit, 100 * qp.week_pct_per_five_pct(state) * 7)
+        self.assertEqual(qp.session_pace(state, idle), (0, 0))
 
     def test_no_five_hour_data_ever_omits_session(self):
         state, r = session_run([(self.T0, 50, None, None)])
@@ -392,8 +397,8 @@ class ParseReading(unittest.TestCase):
 
 class Render(unittest.TestCase):
     def test_text_matches_spec(self):
-        pace = qp.Pace(used=34, on_track=300 / 7, day_used=80, day_quota=120, session_used=40.4, session_quota=87.5)
-        self.assertEqual(ANSI.sub("", qp.render(pace)), "80/120 today · 34/43% wtd · 40/88 ses")
+        pace = qp.Pace(used=34, on_track=300 / 7, day_used=80, day_quota=120, session_used=40.4, session_quota=80)
+        self.assertEqual(ANSI.sub("", qp.render(pace)), "80/120 today · 34/43% wtd · 40/80% ses")
 
     def test_session_omitted_without_data(self):
         pace = qp.Pace(used=34, on_track=300 / 7, day_used=80, day_quota=120)
@@ -401,16 +406,25 @@ class Render(unittest.TestCase):
 
     def test_colors_by_severity_per_theme(self):
         for theme, pal in qp.PALETTES.items():
-            way = qp.render(qp.Pace(70, 300 / 7, 50, 100, 80, 88), theme)
+            way = qp.render(qp.Pace(70, 300 / 7, 50, 100, 90, 60), theme)
             self.assertIn(f"38;5;{pal['way_over']}m70/43%", way)
             self.assertIn(f"38;5;{pal['ok']}m50/100", way)
-            self.assertIn(f"38;5;{pal['way_over']}m80/88", way)
-            over = qp.render(qp.Pace(50, 300 / 7, 110, 100, 70, 88), theme)
+            self.assertIn(f"38;5;{pal['way_over']}m90/60%", way)
+            over = qp.render(qp.Pace(50, 300 / 7, 110, 100, 75, 60), theme)
             self.assertIn(f"38;5;{pal['over']}m50/43%", over)
             self.assertIn(f"38;5;{pal['over']}m110/100", over)
-            self.assertIn(f"38;5;{pal['over']}m70/88", over)
-            ok = qp.render(qp.Pace(50, 300 / 7, 110, 100, 30, 88), theme)
-            self.assertIn(f"38;5;{pal['ok']}m30/88", ok)
+            self.assertIn(f"38;5;{pal['over']}m75/60%", over)
+            ok = qp.render(qp.Pace(50, 300 / 7, 110, 100, 30, 60), theme)
+            self.assertIn(f"38;5;{pal['ok']}m30/60%", ok)
+
+
+class SessionColor(unittest.TestCase):
+    def test_colour_follows_pace_and_absolute_use(self):
+        pal = qp.PALETTES["dark"]
+        for used, track, level in [(30, 8, "way_over"), (12, 8, "over"), (8, 10, "ok"), (92, 99, "way_over"), (4, 0, "ok"), (4, 2, "ok"), (16, 2, "way_over")]:
+            with self.subTest(used=used, track=track):
+                out = qp.render(qp.Pace(10, 50, 1, 100, used, track))
+                self.assertIn(f"38;5;{pal[level]}m{used}/{track}%", out)
 
 
 class Cli(unittest.TestCase):
@@ -446,9 +460,9 @@ class Cli(unittest.TestCase):
         self.assertEqual(self.cli(self.payload(32)), "14/98 today · 32/43% wtd")
 
     def test_session_segment_tracks_the_session(self):
-        self.assertEqual(self.cli(self.payload(30, 0)), "0/98 today · 30/43% wtd · 0/88 ses")
+        self.assertEqual(self.cli(self.payload(30, 0)), "0/98 today · 30/43% wtd · 0/0% ses")
         # 10 five-hour points with 1 weekly point: ratio (1 + 1.25) / 20.
-        self.assertEqual(self.cli(self.payload(31, 10)), "7/98 today · 31/43% wtd · 7/79 ses")
+        self.assertEqual(self.cli(self.payload(31, 10)), "7/98 today · 31/43% wtd · 9/0% ses")
 
     def test_silent_without_limits_or_on_garbage(self):
         for stdin in ["", "not json", "{}", json.dumps({"rate_limits": {}})]:
