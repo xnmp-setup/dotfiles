@@ -183,6 +183,50 @@ class HistoryBaseline(unittest.TestCase):
         self.assertAlmostEqual(pace.day_quota, 259)
 
 
+class SessionHistoryBaseline(unittest.TestCase):
+    WEEK = qp.Window(30, RESET)
+    START_AT = at(3, 9 + 40 / 60)  # session began 09:40
+    RATIO = 0.125
+
+    def baseline(self, samples):
+        return qp.session_baseline_from_history(samples, self.WEEK, self.START_AT, self.RATIO)
+
+    def test_unseen_usage_before_session_is_not_charged_to_it(self):
+        # Bar last saw 16% at 21:22 the night before, then next saw 19% with
+        # the session only 8% in: ~3 points went elsewhere (another device,
+        # claude.ai, bar not running), so the session started near 18%.
+        samples = [[at(2, 21.37), 16, 23], [at(3, 9.95), 19, 8], [at(3, 14.3), 30, 82]]
+        self.assertAlmostEqual(self.baseline(samples), 19 - 8 * self.RATIO)
+
+    def test_recent_pre_session_reading_wins_when_nothing_was_missed(self):
+        samples = [[self.START_AT - 60, 20, 95], [self.START_AT + 600, 20, 2]]
+        self.assertEqual(self.baseline(samples), 20.0)
+
+    def test_stale_old_window_reading_inside_session_cannot_lower_it(self):
+        # A stale render after 09:40 still reporting the previous session's 90%.
+        samples = [[self.START_AT - 600, 20, 88], [self.START_AT + 60, 20, 90]]
+        self.assertEqual(self.baseline(samples), 20.0)
+
+    def test_only_in_session_readings_backs_out_session_usage(self):
+        samples = [[START - HOUR, 90, 10], [self.START_AT + 3600, 14, 40]]
+        self.assertAlmostEqual(self.baseline(samples), 14 - 40 * self.RATIO)
+
+    def test_in_session_reading_without_five_hour_uses_weekly_as_is(self):
+        self.assertEqual(self.baseline([[self.START_AT + 60, 14]]), 14.0)
+
+    def test_estimate_is_clamped_to_a_percentage(self):
+        self.assertEqual(self.baseline([[self.START_AT + 60, 1, 100]]), 0.0)
+
+    def test_no_history_is_unknown(self):
+        self.assertIsNone(self.baseline([]))
+        self.assertIsNone(self.baseline([None, "x", [self.START_AT, "1", 2]]))
+
+    def test_weekly_window_beginning_mid_session_is_zero(self):
+        self.assertEqual(
+            qp.session_baseline_from_history([[START + 60, 5, 50]], self.WEEK, START - HOUR, self.RATIO), 0.0
+        )
+
+
 def session_run(readings):
     """Feed (now, weekly used, five used, five reset) readings; return (state, last reading)."""
     state, reading = None, None
@@ -217,7 +261,9 @@ class Session(unittest.TestCase):
         reading = qp.Reading(week, now, qp.Window(21, five_reset))
         day_start, day_end = qp.today_span(week, now, UTC)
         day = qp.advance_day(None, week, day_start, qp.baseline_from_history(samples, week, day_start))
-        session = qp.advance_session(None, reading, qp.baseline_from_history(samples, week, session_start))
+        session = qp.advance_session(
+            None, reading, qp.session_baseline_from_history(samples, week, session_start, qp.PRIOR_RATIO)
+        )
         pace = qp.compute_pace(week, day, day_end, qp.session_pace(session, reading))
         self.assertEqual(pace.day_used, 21)
         self.assertEqual(pace.session_used, 21)

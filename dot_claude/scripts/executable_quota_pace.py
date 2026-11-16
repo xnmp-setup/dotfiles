@@ -143,6 +143,35 @@ def today_span(week: Window, now: float, tz: Optional[tzinfo] = None) -> tuple:
     return max(midnight, week.resets_at - WEEK), min(next_midnight, week.resets_at)
 
 
+def _clean_samples(samples: Sequence) -> list:
+    """(epoch, weekly %, 5-hour % or None) for each well-formed history sample."""
+    def num(v: object) -> bool:
+        return not isinstance(v, bool) and isinstance(v, (int, float)) and math.isfinite(v)
+
+    out = []
+    for sample in samples:
+        if not isinstance(sample, Sequence) or isinstance(sample, (str, bytes)) or len(sample) < 2:
+            continue
+        at, used = sample[0], sample[1]
+        if not (num(at) and num(used)):
+            continue
+        five = sample[2] if len(sample) > 2 and num(sample[2]) else None
+        out.append((float(at), float(used), None if five is None else float(five)))
+    return out
+
+
+def _split_at(samples: list, week: Window, start: float) -> tuple:
+    """(last sample at or before `start` within the window, first sample after it)."""
+    window_start = week.resets_at - WEEK
+    before = max((s for s in samples if window_start <= s[0] <= start), default=None, key=lambda s: s[0])
+    after = min((s for s in samples if s[0] > start), default=None, key=lambda s: s[0])
+    return before, after
+
+
+def _pct(value: float) -> float:
+    return float(max(0.0, min(100.0, value)))
+
+
 def baseline_from_history(samples: Sequence, week: Window, day_start: float) -> Optional[float]:
     """Weekly used % at `day_start`, from (epoch, used%, ...) samples.
 
@@ -152,24 +181,36 @@ def baseline_from_history(samples: Sequence, week: Window, day_start: float) -> 
     closest known starting point. None when there is neither, so the caller
     falls back to its own state.
     """
-    window_start = week.resets_at - WEEK
-    if day_start <= window_start:
+    if day_start <= week.resets_at - WEEK:
         return 0.0
-    before = after = None
-    for sample in samples:
-        if not isinstance(sample, Sequence) or isinstance(sample, (str, bytes)) or len(sample) < 2:
-            continue
-        at, used = sample[0], sample[1]
-        if any(isinstance(v, bool) or not isinstance(v, (int, float)) for v in (at, used)):
-            continue
-        if not (math.isfinite(at) and math.isfinite(used)):
-            continue
-        if window_start <= at <= day_start and (before is None or at >= before[0]):
-            before = (at, used)
-        elif at > day_start and (after is None or at < after[0]):
-            after = (at, used)
+    before, after = _split_at(_clean_samples(samples), week, day_start)
     best = before or after
-    return None if best is None else float(max(0.0, min(100.0, best[1])))
+    return None if best is None else _pct(best[1])
+
+
+def session_baseline_from_history(
+    samples: Sequence, week: Window, session_start: float, ratio: float
+) -> Optional[float]:
+    """Weekly used % when the 5-hour session began.
+
+    A reading from before the session is only a lower bound: usage the bar
+    never saw (another device, claude.ai, the bar not running) can land
+    between it and the session start. The first reading inside the session
+    bounds it from the other side: weekly % then, less what the session had
+    used by then (its 5-hour % at `ratio` weekly points per 5-hour point).
+    Weekly usage never decreases, so the higher estimate is the closer one.
+    None when there is neither reading.
+    """
+    if session_start <= week.resets_at - WEEK:
+        return 0.0  # the weekly window began mid-session and starts empty
+    before, after = _split_at(_clean_samples(samples), week, session_start)
+    estimates = []
+    if before is not None:
+        estimates.append(before[1])
+    if after is not None:
+        five_used = after[2] if after[2] is not None else 0.0
+        estimates.append(after[1] - five_used * ratio)
+    return _pct(max(estimates)) if estimates else None
 
 
 def advance_day(
@@ -251,7 +292,9 @@ def advance_session(
     )
 
 
-def week_pct_per_five_pct(state: SessionState) -> float:
+def week_pct_per_five_pct(state: Optional[SessionState]) -> float:
+    if state is None:
+        return PRIOR_RATIO
     return (state.ratio_week + PRIOR_RATIO * PRIOR_WEIGHT) / (state.ratio_five + PRIOR_WEIGHT)
 
 
@@ -485,7 +528,9 @@ def main(argv: list) -> int:
     session_start = reading.five.resets_at - FIVE_HOURS if reading.five else None
     session = advance_session(
         prev_session, reading,
-        None if session_start is None else baseline_from_history(samples, reading.week, session_start),
+        None if session_start is None else session_baseline_from_history(
+            samples, reading.week, session_start, week_pct_per_five_pct(prev_session),
+        ),
     )
     if (day, session) != (prev_day, prev_session):
         save_state(path, day, session)

@@ -369,6 +369,7 @@ cc() {
   print -P "%F{cyan}→ $model%f"
   _cc_launch_claude --permission-mode auto --model "$model" "$query"
 }
+alias cca="claude agents"
 alias ccs="claude --permission-mode auto --model sonnet"
 alias ccf="claude --permission-mode auto --model fable"
 alias cco="claude --permission-mode auto --model opus"
