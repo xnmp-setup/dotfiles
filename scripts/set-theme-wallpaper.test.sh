@@ -169,7 +169,8 @@ jq -e '
     {name: "MapQuest", appearance: "light"},
     {name: "Sakura", appearance: "dark"},
     {name: "Sunset", appearance: "dark"},
-    {name: "Everforest Light Medium", appearance: "light"}
+    {name: "Everforest Light Medium", appearance: "light"},
+    {name: "Aurora", appearance: "dark"}
   ]
 ' "$repo_root/dot_config/zed/themes/omarchy-extra.json" >/dev/null \
   || fail "Omarchy Zed theme family is incomplete or has an invalid mode"
@@ -283,6 +284,11 @@ exit 0
 EOF
 cat > "$test_root/bin/pgrep" <<'EOF'
 #!/usr/bin/env bash
+if [[ "$*" == *'-x hyprpaper'* ]]; then
+  [[ ! -e "$TEST_HYPRPAPER_STOPPED" ]] || exit 1
+  printf '456\n'
+  exit 0
+fi
 [[ ! -e "$TEST_CHROME_STOPPED" ]] || exit 1
 printf '123\n'
 EOF
@@ -290,10 +296,19 @@ cat > "$test_root/bin/pkill" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$TEST_CHROME_RESTART_LOG"
 [[ "$*" == *'-TERM -x chrome'* ]] && : >"$TEST_CHROME_STOPPED"
+[[ "$*" == *'-x hyprpaper'* ]] && : >"$TEST_HYPRPAPER_STOPPED"
+exit 0
+EOF
+cat > "$test_root/bin/hyprpaper" <<'EOF'
+#!/usr/bin/env bash
 EOF
 cat > "$test_root/bin/setsid" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$TEST_CHROME_RESTART_LOG"
+# A hyprpaper that starts is running again; one that crashes at startup is not.
+[[ "$*" == "-f hyprpaper" && -z "${TEST_HYPRPAPER_CRASHES:-}" ]] \
+  && rm -f "$TEST_HYPRPAPER_STOPPED"
+exit 0
 EOF
 # set-theme renders Ghostty's config from this repo's template; point chezmoi
 # at the repo and keep its config and state inside the test root.
@@ -312,7 +327,9 @@ EOF
 cat > "$test_root/bin/hyprctl" <<'EOF'
 #!/usr/bin/env bash
 if [[ "$*" == "monitors -j" ]]; then
-  printf '[{"name":"DP-1"},{"name":"DP-2"}]\n'
+  for monitor in ${TEST_HYPR_CONNECTED-DP-1 DP-2}; do
+    printf '{"name":"%s"}\n' "$monitor"
+  done | jq -s -c .
   exit 0
 fi
 if [[ "$*" == "clients -j" ]]; then
@@ -324,10 +341,17 @@ if [[ "$*" == "activewindow -j" ]]; then
   exit 0
 fi
 printf '%s\n' "$*" >> "$TEST_HYPRCTL_LOG"
+# Like hyprpaper's IPC: hyprpaper must be running and a named monitor connected.
+if [[ "$1 $2" == "hyprpaper wallpaper" ]]; then
+  [[ -z "${TEST_HYPRPAPER_DOWN:-}" ]] || exit 1
+  monitor="${3%%,*}"
+  [[ -z "$monitor" || " ${TEST_HYPR_CONNECTED-DP-1 DP-2} " == *" $monitor "* ]] || exit 1
+fi
+exit 0
 EOF
 chmod +x "$test_root/bin/chezmoi" "$test_root/bin/vicinae" "$test_root/bin/google-chrome-stable" \
   "$test_root/bin/pgrep" "$test_root/bin/pkill" "$test_root/bin/setsid" \
-  "$test_root/bin/systemctl" "$test_root/bin/hyprctl"
+  "$test_root/bin/systemctl" "$test_root/bin/hyprctl" "$test_root/bin/hyprpaper"
 
 chrome_state="$test_root/.local/state/chrome-theme"
 mkdir -p "$chrome_state"
@@ -341,6 +365,8 @@ run_theme_command() {
   TEST_HYPRCTL_LOG="$test_root/hyprctl.log" \
     TEST_CHROME_RESTART_LOG="$test_root/chrome-restart.log" \
     TEST_CHROME_STOPPED="$test_root/chrome-stopped" \
+    TEST_HYPRPAPER_STOPPED="$test_root/hyprpaper-stopped" \
+    WAYLAND_DISPLAY="${WAYLAND_DISPLAY-wayland-test}" \
     TEST_SYSTEMCTL_LOG="$test_root/systemctl.log" \
     HOME="$test_root" \
     XDG_CONFIG_HOME="$test_root/.config" \
@@ -540,6 +566,70 @@ assert_contains "$test_root/hyprctl.log" "hyprpaper wallpaper DP-1, $default_pat
 assert_contains "$test_root/hyprctl.log" "hyprpaper wallpaper DP-2, $default_path, fill"
 # Monitors connected after the switch fall back to the wildcard assignment.
 assert_contains "$test_root/hyprctl.log" "hyprpaper wallpaper , $default_path, fill"
+assert_contains "$test_root/default.out" "Hyprpaper applied immediately"
+! grep -q 'hyprpaper' "$test_root/chrome-restart.log" \
+  || fail "hyprpaper restarted although its IPC reached every configured monitor"
+
+# A sleeping DisplayPort monitor is disconnected, so the IPC cannot update its
+# named assignment, which would bring the old wallpaper back when it wakes.
+# hyprpaper must restart onto the rewritten config instead.
+: >"$test_root/chrome-restart.log"
+rm -f "$test_root/hyprpaper-stopped"
+TEST_HYPR_CONNECTED="DP-1" run_set_theme cosmic-dusk >"$test_root/asleep.out"
+assert_contains "$test_root/chrome-restart.log" "-TERM -U $(id -u) -x hyprpaper"
+assert_contains "$test_root/chrome-restart.log" "-f hyprpaper"
+assert_contains "$test_root/asleep.out" "Hyprpaper applied immediately"
+
+# hyprpaper that crashes on restart is reported, not claimed as applied.
+: >"$test_root/chrome-restart.log"
+rm -f "$test_root/hyprpaper-stopped"
+TEST_HYPR_CONNECTED="DP-1" TEST_HYPRPAPER_CRASHES=1 \
+  run_set_theme cosmic-dusk >"$test_root/crashed.out"
+assert_contains "$test_root/chrome-restart.log" "-f hyprpaper"
+! grep -q "Hyprpaper applied immediately" "$test_root/crashed.out" \
+  || fail "a hyprpaper that failed to start was reported as applied"
+
+# On a machine without the configured monitors (a laptop's eDP-1 under a
+# config written for a desktop), only the IPC wildcard covers the screen, and a
+# restart would drop it. The wildcard alone must be applied.
+: >"$test_root/chrome-restart.log" >"$test_root/hyprctl.log"
+rm -f "$test_root/hyprpaper-stopped"
+TEST_HYPR_CONNECTED="eDP-1" run_set_theme cosmic-dusk >"$test_root/laptop.out"
+! grep -q 'hyprpaper' "$test_root/chrome-restart.log" \
+  || fail "hyprpaper restarted although its config does not cover eDP-1"
+assert_contains "$test_root/hyprctl.log" "hyprpaper wallpaper , $default_path, fill"
+assert_contains "$test_root/laptop.out" "Hyprpaper applied immediately"
+
+# A desktop not running hyprpaper must not have one started for it.
+: >"$test_root/chrome-restart.log"
+TEST_HYPR_CONNECTED="DP-1" TEST_HYPRPAPER_DOWN=1 \
+  run_set_theme cosmic-dusk >"$test_root/down.out"
+! grep -q 'hyprpaper' "$test_root/chrome-restart.log" \
+  || fail "hyprpaper was started although it was not running"
+
+# The config's "*" wildcard outranks the IPC's, so it also needs a restart.
+cp "$test_root/.config/hypr/hyprpaper.conf" "$test_root/named-monitors.conf"
+cat > "$test_root/.config/hypr/hyprpaper.conf" <<'EOF'
+wallpaper {
+    monitor = *
+    path = /old/wallpaper.png
+    fit_mode = fill
+}
+EOF
+: >"$test_root/chrome-restart.log"
+rm -f "$test_root/hyprpaper-stopped"
+run_set_theme cosmic-dusk >"$test_root/wildcard.out"
+assert_contains "$test_root/.config/hypr/hyprpaper.conf" "path = $default_path"
+assert_contains "$test_root/chrome-restart.log" "-f hyprpaper"
+
+# Without a Wayland session (ssh) hyprpaper is not restarted into nothing.
+: >"$test_root/chrome-restart.log"
+rm -f "$test_root/hyprpaper-stopped"
+WAYLAND_DISPLAY="" run_set_theme cosmic-dusk >"$test_root/headless.out"
+! grep -q 'hyprpaper' "$test_root/chrome-restart.log" \
+  || fail "hyprpaper was restarted without a Wayland session"
+assert_contains "$test_root/headless.out" "Hyprpaper: restart if running outside this session"
+mv "$test_root/named-monitors.conf" "$test_root/.config/hypr/hyprpaper.conf"
 
 # Exercise the actual sunrise entry point through set-theme. A successful
 # desktop-state write alone is insufficient: Chrome must restart and Dark

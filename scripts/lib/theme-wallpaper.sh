@@ -29,6 +29,7 @@ declare -A theme_wallpapers=(
   [sakura]="omarchy-sakura.jpg"
   [sunset]="omarchy-sunset.jpg"
   [mint-light]="luca-micheli-r9RW20TrQ0Y-unsplash.jpg"
+  [aurora]="starlit-canyon-outpaint-flare-3440x1440.png"
   [everforest-light-medium]="golden-meadow-sunset.png"
 )
 
@@ -57,6 +58,7 @@ declare -A locally_managed_desktop_themes=(
   [mapquest]=1
   [sakura]=1
   [mint-light]=1
+  [aurora]=1
   [everforest-light-medium]=1
   [sunset]=1
 )
@@ -415,27 +417,119 @@ read_hyprpaper_fit_mode() {
   fi
 }
 
+# The monitor value of every wallpaper block in hyprpaper.conf, one per line.
+# "*" is the config's wildcard.
+hyprpaper_configured_monitors() {
+  local config="$1"
+
+  [[ -f "$config" ]] || return 0
+  awk '
+    /^[[:space:]]*wallpaper[[:space:]]*\{/ { in_section = 1; next }
+    in_section && /^[[:space:]]*}/ { in_section = 0; next }
+    in_section && match($0, /^[[:space:]]*monitor[[:space:]]*=[[:space:]]*/) {
+      value = substr($0, RLENGTH + 1)
+      sub(/[[:space:]]*#.*/, "", value)
+      sub(/[[:space:]]+$/, "", value)
+      if (value != "") print value
+    }
+  ' "$config"
+}
+
+# hyprpaper only reads its config at startup; restart it so the rewritten
+# config reaches assignments its IPC cannot. Needs a Wayland session to start
+# into, so over ssh this reports failure instead of leaving no wallpaper.
+restart_hyprpaper() {
+  local uid
+
+  # A user unit (Arch ships hyprpaper.service) would respawn a killed
+  # hyprpaper alongside ours, so let systemd own the restart when it is active.
+  if command -v systemctl &>/dev/null \
+    && systemctl --user is-active --quiet hyprpaper.service 2>/dev/null; then
+    systemctl --user restart hyprpaper.service
+    return
+  fi
+
+  [[ -n "${WAYLAND_DISPLAY:-}" ]] || return 1
+  command -v hyprpaper &>/dev/null || return 1
+  uid=$(id -u)
+
+  pkill -TERM -U "$uid" -x hyprpaper
+  for _ in $(seq 20); do
+    pgrep -U "$uid" -x hyprpaper &>/dev/null || break
+    sleep 0.1
+  done
+  # Past this point the old instance is going regardless, so make sure it is
+  # gone rather than leave the desktop without one when it finally exits.
+  if pgrep -U "$uid" -x hyprpaper &>/dev/null; then
+    pkill -KILL -U "$uid" -x hyprpaper
+    sleep 0.2
+  fi
+
+  # Detached with its output redirected: callers capture this script's output
+  # and would otherwise wait on hyprpaper for the rest of the session.
+  if command -v setsid &>/dev/null; then
+    setsid -f hyprpaper &>/dev/null </dev/null
+  else
+    nohup hyprpaper &>/dev/null </dev/null &
+  fi
+
+  # Report a hyprpaper that exits at startup (a stale WAYLAND_DISPLAY, a bad
+  # config) instead of claiming the wallpaper was applied.
+  sleep 0.5
+  pgrep -U "$uid" -x hyprpaper &>/dev/null
+}
+
+# Whether hyprpaper.conf alone gives every connected monitor a wallpaper. A
+# restart drops the IPC wildcard, so it is only safe when this holds; a config
+# naming another machine's monitors (one dotfile shared by a laptop and a
+# desktop) would otherwise leave this machine's screens blank.
+hyprpaper_config_covers_connected() {
+  local -a configured=("$@")
+  local monitor
+  local -a connected=()
+
+  [[ " ${configured[*]} " == *" * "* ]] && return 0
+  if command -v jq &>/dev/null; then
+    mapfile -t connected < <(hyprctl monitors -j 2>/dev/null | jq -r '.[].name' 2>/dev/null)
+  else
+    mapfile -t connected < <(hyprctl monitors 2>/dev/null | awk '/^Monitor / { print $2 }')
+  fi
+  for monitor in "${connected[@]}"; do
+    [[ " ${configured[*]} " == *" $monitor "* ]] || return 1
+  done
+}
+
+# Show the wallpaper in the running hyprpaper (0.8). Its IPC cannot reach every
+# assignment: a per-monitor assignment outranks the wildcard, the IPC rejects a
+# monitor that is not connected (a sleeping DisplayPort monitor drops off the
+# bus), and the config's "*" wildcard outranks the IPC's own. Nothing removes
+# an assignment once made, so an unreachable one would bring the previous
+# wallpaper back when its monitor wakes. Those cases restart hyprpaper on the
+# already-rewritten config, provided that config covers every connected
+# monitor; a named monitor that is merely absent from this machine is left to
+# the IPC wildcard. The script never assigns a monitor the config does not
+# name, so it creates no assignments it could later fail to update.
 apply_hyprpaper_live() {
   local path="$1"
   local fit_mode="$2"
+  local config="$3"
   local monitor
   local -a monitors=()
 
   [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]] || return 2
   command -v hyprctl &>/dev/null || return 2
 
-  if command -v jq &>/dev/null; then
-    mapfile -t monitors < <(hyprctl monitors -j 2>/dev/null | jq -r '.[].name' 2>/dev/null)
-  else
-    mapfile -t monitors < <(hyprctl monitors 2>/dev/null | awk '/^Monitor / { print $2 }')
-  fi
-  # The wildcard (empty monitor) covers outputs connected later; without it a
-  # hotplugged monitor matches nothing and Hyprland shows its stock wallpaper.
+  # The IPC wildcard covers outputs the config does not name. It also fails
+  # when hyprpaper is not running, which must not start it.
   hyprctl hyprpaper wallpaper ", $path, $fit_mode" &>/dev/null || return 1
-  (( ${#monitors[@]} > 0 )) || return 0
 
-  # Named assignments outrank the wildcard, so replace any left by earlier runs.
+  mapfile -t monitors < <(hyprpaper_configured_monitors "$config")
   for monitor in "${monitors[@]}"; do
-    hyprctl hyprpaper wallpaper "$monitor, $path, $fit_mode" &>/dev/null || return 1
+    if [[ "$monitor" == "*" ]] \
+      || ! hyprctl hyprpaper wallpaper "$monitor, $path, $fit_mode" &>/dev/null; then
+      hyprpaper_config_covers_connected "${monitors[@]}" || return 0
+      restart_hyprpaper
+      return
+    fi
   done
 }
