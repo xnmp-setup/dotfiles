@@ -1,0 +1,109 @@
+/** Aurora — deep charcoal with Arctic teal accents and a starfield. */
+[data-theme="aurora"] {
+  color-scheme: dark;
+
+  /* Theme metadata */
+  --theme-name: "Aurora";
+  --theme-description: "Starfield with teal accents";
+  --theme-order: 37;
+
+  /* Accent colors - teal/cyan */
+  --accent: #5de5d5;
+  --accent-light: #7eeee0;
+  --accent-dark: #3bb8a8;
+
+  /* Text colors */
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-tertiary: #8693a8;
+  --text-on-accent: #0d1117;
+
+  /* Background colors - deep charcoal with high transparency */
+  --background-solid: #0d1117;
+  --background-mica: rgba(13, 17, 23, 0.85);
+  --background-acrylic: rgba(22, 27, 34, 0.80);
+  --background-card: rgba(30, 37, 46, 0.45);
+  --background-card-secondary: rgba(22, 27, 34, 0.40);
+  /* Opaque surfaces for compositor tabs and native greeter controls. */
+  --desktop-surface: #1e252e;
+  --desktop-border: #26303b;
+  --desktop-focus: #5de5d5;
+  --miller-bg: rgba(16, 21, 28, 0.6);
+  --content-bg: radial-gradient(ellipse at 50% 0%, rgba(93, 229, 213, 0.04) 0%, transparent 50%);
+
+  /* Surface/border colors - teal-tinted */
+  --surface-stroke: rgba(93, 229, 213, 0.12);
+  --surface-stroke-flyout: rgba(93, 229, 213, 0.15);
+  --divider: rgba(93, 229, 213, 0.06);
+
+  /* Control/input backgrounds */
+  --control-fill: rgba(93, 229, 213, 0.06);
+  --control-fill-secondary: rgba(93, 229, 213, 0.09);
+  --control-fill-tertiary: rgba(93, 229, 213, 0.03);
+  --control-fill-disabled: rgba(93, 229, 213, 0.03);
+
+  /* Subtle hover/active fills */
+  --subtle-fill: transparent;
+  --subtle-fill-secondary: rgba(93, 229, 213, 0.07);
+  --subtle-fill-tertiary: rgba(93, 229, 213, 0.04);
+
+  /* Control borders */
+  --control-stroke: rgba(93, 229, 213, 0.12);
+  --control-stroke-secondary: rgba(93, 229, 213, 0.08);
+
+  /* Address bar - subtle teal glow */
+  --address-bar-bg: rgba(93, 229, 213, 0.06);
+  --address-bar-stroke: rgba(93, 229, 213, 0.15);
+  --address-bar-highlight: rgba(93, 229, 213, 0.03);
+  --address-bar-bg-hover: rgba(93, 229, 213, 0.10);
+  --address-bar-stroke-hover: rgba(93, 229, 213, 0.22);
+
+  /* Breadcrumb styling - teal pill segments */
+  --breadcrumb-bg: rgba(93, 229, 213, 0.06);
+  --breadcrumb-text: #94a3b8;
+  --breadcrumb-active-bg: rgba(93, 229, 213, 0.12);
+  --breadcrumb-hover-bg: rgba(93, 229, 213, 0.10);
+  --breadcrumb-radius: 12px;
+  --breadcrumb-gap: 3px;
+
+  /* Focus indicators */
+  --focus-stroke-outer: #5de5d5;
+  --focus-stroke-inner: #0d1117;
+
+  /* System status colors */
+  --system-critical: #f87171;
+  --system-success: #5de5d5;
+  --system-caution: #fbbf24;
+
+  /* Shadows - deep charcoal with teal glow */
+  --shadow-flyout: 0 8px 24px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.35), 0 0 12px rgba(93, 229, 213, 0.05);
+  --shadow-dialog: 0 32px 64px rgba(0, 0, 0, 0.7), 0 4px 24px rgba(0, 0, 0, 0.4);
+  --shadow-tooltip: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-card: 0 1px 4px rgba(0, 0, 0, 0.25), 0 0 1px rgba(0, 0, 0, 0.2), 0 0 8px rgba(93, 229, 213, 0.03);
+  --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.2);
+
+  /* Mica overlay - aurora gradient with teal banding */
+  --mica-overlay: linear-gradient(
+    170deg,
+    rgba(93, 229, 213, 0.04) 0%,
+    rgba(59, 184, 168, 0.02) 20%,
+    transparent 40%,
+    rgba(93, 229, 213, 0.01) 80%,
+    transparent 100%
+  );
+
+  /* Per-section transparency - high transparency to show starfield */
+  --sidebar-opacity: 0.85;
+  --toolbar-opacity: 0.85;
+  --content-opacity: 0.80;
+  --titlebar-opacity: 0.85;
+  --statusbar-opacity: 0.85;
+
+  /* Icon colors - teal folder, suggest material icons */
+  --icon-folder: #5de5d5;
+  --icon-git-badge: #fbbf24;
+  --theme-icon-pack: 'material';
+
+  /* Background animation - starfield with constellation lines */
+  --theme-bg-animation: 'starfield';
+}

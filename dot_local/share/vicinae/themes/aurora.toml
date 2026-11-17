@@ -1,0 +1,29 @@
+[meta]
+version = 1
+name = "Aurora"
+description = "Deep charcoal with Arctic teal accents"
+variant = "dark"
+
+[colors.core]
+background = "#0D1117"
+foreground = "#E2E8F0"
+secondary_background = "#161B22"
+border = "#26303B"
+accent = "#5DE5D5"
+
+[colors.accents]
+blue = "#60A5FA"
+green = "#4ADE80"
+magenta = "#C084FC"
+orange = "#FBBF24"
+purple = "#C084FC"
+red = "#F87171"
+yellow = "#FBBF24"
+cyan = "#5DE5D5"
+
+[colors.list.item.selection]
+background = { name = "#1F3A3D", opacity = 0.9 }
+secondary_background = "#1E252E"
+
+[colors.list.item.hover]
+background = { name = "#1E252E", opacity = 0.6 }
