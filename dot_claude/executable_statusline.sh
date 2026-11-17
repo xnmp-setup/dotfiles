@@ -351,6 +351,9 @@ def rebuild_context_bar(m):
 
 SEP = " | "  # separator used by ccstatusline (can be NBSP or regular space)
 NBSP_SEP = "\xa0|\xa0"
+# A ccstatusline separator, optionally wrapped in its own fg color + reset
+# (newer ccstatusline versions colour separators; older ones emit them bare).
+SEP_RE = r"(?:\x1b\[38;5;\d+m)?\xa0\|\xa0(?:\x1b\[39m)?"
 
 for line in sys.stdin:
     if THEME == "light":
@@ -361,9 +364,8 @@ for line in sys.stdin:
             f"\x1b[48;5;{cwd_bg}m\x1b[38;5;{cwd_fg}m", line
         )
         line = re.sub(r"\x1b\[38;5;155m", f"\x1b[38;5;{branch_fg}m", line)
-    # strip "no git" and the orphaned separator+color it leaves behind
-    line = line.replace("⎇\xa0no\xa0git", "")
-    line = re.sub(r"\x1b\[38;5;\d+m\x1b\[39m\xa0\|\xa0", "", line)
+    # strip the "no git" branch widget together with the separator before it
+    line = re.sub(SEP_RE + r"\x1b\[38;5;\d+m⎇\xa0no\xa0git\x1b\[39m", "", line)
     # shorten model name to just the family and recolor orange
     # model uses color 30 (dark teal) from ccstatusline
     def recolor_model(m2):
@@ -372,9 +374,9 @@ for line in sys.stdin:
         return f"\x1b[38;5;{color}m{name}"
     line = re.sub(r"\x1b\[38;5;30m([^\x1b]+)", recolor_model, line)
     # remove separator: cwd | branch (after \e[49m, before \e[38;5;155m⎇)
-    line = re.sub(r"(\x1b\[49m)\xa0\|\xa0(\x1b\[38;5;\d+m⎇)", r"\1 \2", line)
+    line = re.sub(r"(\x1b\[49m)" + SEP_RE + r"(\x1b\[38;5;\d+m⎇)", r"\1 \2", line)
     # remove separator: model | bar (before \e[38;5;Nm[ where [ starts the bar)
-    line = re.sub(r"\xa0\|\xa0(\x1b\[38;5;\d+m\[)", r" \1", line)
+    line = re.sub(SEP_RE + r"(\x1b\[38;5;\d+m\[)", r" \1", line)
     # 1000k -> 1m (for parts outside the context bar)
     line = re.sub(r"(\d+)000k", r"\g<1>m", line)
     # rebuild context bar: match \e[38;5;Nm[████░░░░] Xk/Yk (N%)\e[39m
