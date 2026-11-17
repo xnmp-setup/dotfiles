@@ -1337,21 +1337,6 @@ if [[ -f "$config" ]]; then
   fi
   rm -f -- "$ghostty_rendered"
 
-  # window-flash.glsl is colored by the desktop theme's accent (see the
-  # shader). Rewrite its THEME_ACCENT line before the reload below recompiles
-  # it; a theme without an accent gets the shader's ANSI-blue fallback.
-  flash_shader="$HOME/.config/ghostty/shaders/window-flash.glsl"
-  if [[ -f "$flash_shader" ]]; then
-    flash_accent=$(norm_hex "$(css_var "$HOME/.config/tauri-explorer/themes/$slug.css" accent)")
-    if [[ "$flash_accent" =~ ^[[:xdigit:]]{6}$ ]]; then
-      flash_accent=${flash_accent,,}
-      flash_value="vec3(0x${flash_accent:0:2}, 0x${flash_accent:2:2}, 0x${flash_accent:4:2}) / 255.0"
-    else
-      flash_value="vec3(-1.0)"
-    fi
-    sed -i "s|^const vec3 THEME_ACCENT = .*;|const vec3 THEME_ACCENT = $flash_value;|" "$flash_shader"
-  fi
-
   if reload_ghostty_config; then
     echo "    reloaded running Ghostty"
     reload+=("Ghostty: reloaded automatically")

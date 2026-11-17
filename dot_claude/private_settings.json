@@ -45,10 +45,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.local/bin/ghostty-pulse --hook"
-          },
-          {
-            "type": "command",
             "command": "~/.local/bin/wezterm-agent-status working"
           },
           {

@@ -30,3 +30,10 @@
 # The voice persona is now loaded as Codex's base instructions from its own
 # configuration directory, rather than read from the personal-materials inbox.
 Documents/Inbox/SOUL.md
+
+# The Enter-flash pulse wrote palette entry 254, which tinted any cell drawn in
+# that colour (the light statusline) after its consumer shaders were disabled.
+.local/bin/ghostty-pulse
+.config/zsh/ghostty-command-pulse.zsh
+.config/ghostty/shaders/command-line-flash.glsl
+.config/ghostty/shaders/window-flash.glsl

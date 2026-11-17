@@ -165,22 +165,26 @@ def shorten_model(text):
 THEME = os.environ.get("STATUSLINE_THEME", "dark")
 PALETTES = {
     "dark": {
-        "cwd": ("236", "110"), "branch": "155",
-        "bg_empty": "238", "fg_on_fill": "0", "empty_text_scale": 1.0,
+        "cwd": ("5;236", "110"), "branch": "155",
+        "bg_empty": "5;238", "fg_on_fill": "0", "empty_text_scale": 1.0,
         "models": {"Opus": "208", "Sonnet": "216", "Haiku": "223", "Fable": "204",
                    "DS Flash": "81", "DS Pro": "75"},
         "rewarm": ("203", "179", "108"),
         "cache_cold": "131",
     },
     "light": {
-        "cwd": ("254", "24"), "branch": "28",
-        "bg_empty": "254", "fg_on_fill": "0", "empty_text_scale": 0.6,
+        "cwd": ("2;228;228;228", "24"), "branch": "28",
+        "bg_empty": "2;228;228;228", "fg_on_fill": "0", "empty_text_scale": 0.6,
         "models": {"Opus": "166", "Sonnet": "172", "Haiku": "130", "Fable": "161",
                    "DS Flash": "31", "DS Pro": "25"},
         "rewarm": ("160", "136", "65"),
         "cache_cold": "124",
     },
 }
+# Backgrounds ("cwd"[0], "bg_empty") are SGR colour specs after "48;": "5;N" for
+# ansi256, "2;R;G;B" for truecolor. Light uses truecolor #e4e4e4 (= xterm 254)
+# so the bar never depends on high palette entries that terminal integrations
+# repurpose (ghostty-agent-integration.zsh rewrites 255 as a state channel).
 PALETTE = PALETTES.get(THEME, PALETTES["dark"])
 BG_EMPTY = PALETTE["bg_empty"]
 FG_ON_FILL = PALETTE["fg_on_fill"]
@@ -345,7 +349,7 @@ def rebuild_context_bar(m):
         result += f"\x1b[48;2;{r};{g};{b};38;5;{FG_ON_FILL}m{text_filled}"
     if text_empty:
         r, g, b = (round(c * PALETTE["empty_text_scale"]) for c in (r, g, b))
-        result += f"\x1b[48;5;{BG_EMPTY};38;2;{r};{g};{b}m{text_empty}"
+        result += f"\x1b[48;{BG_EMPTY};38;2;{r};{g};{b}m{text_empty}"
     result += "\x1b[0m"
     return result
 
@@ -361,7 +365,7 @@ for line in sys.stdin:
         branch_fg = PALETTE["branch"]
         line = re.sub(
             r"\x1b\[48;5;236m\x1b\[38;5;110m",
-            f"\x1b[48;5;{cwd_bg}m\x1b[38;5;{cwd_fg}m", line
+            f"\x1b[48;{cwd_bg}m\x1b[38;5;{cwd_fg}m", line
         )
         line = re.sub(r"\x1b\[38;5;155m", f"\x1b[38;5;{branch_fg}m", line)
     # strip the "no git" branch widget together with the separator before it
