@@ -17,10 +17,10 @@ const float TAU = 6.28318530718;
 
 // ---- tunables --------------------------------------------------------------
 const float DRIFT_SPEED       = 0.075; // horizontal cycles per second
-const float WORKING_INTENSITY = 0.28;
+const float WORKING_INTENSITY = 0.38;
 const float ALERT_INTENSITY   = 0.20;
-const float CORE_DEPTH        = 2.2;   // pixels
-const float HAZE_DEPTH        = 13.0;  // pixels
+const float CORE_DEPTH        = 2.8;   // pixels
+const float HAZE_DEPTH        = 16.0;  // pixels
 // ---------------------------------------------------------------------------
 
 const vec3 CLAUDE_SIGNAL = vec3(176.0, 154.0, 192.0) / 255.0;
