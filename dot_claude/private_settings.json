@@ -117,6 +117,7 @@
     "typescript-lsp@claude-plugins-official": true,
     "pyright-lsp@claude-plugins-official": true,
     "svelte-lsp@local": true,
+    "msg-jump@local": true,
     "oh-my-claudecode@omc": false,
     "i-have-adhd@i-have-adhd": true,
     "clangd-lsp@claude-plugins-official": true
@@ -149,6 +150,7 @@
   },
   "skipDangerousModePermissionPrompt": true,
   "theme": "custom:desktop",
+  "tui": "fullscreen",
   "agentPushNotifEnabled": true,
   "voiceEnabled": true
 }

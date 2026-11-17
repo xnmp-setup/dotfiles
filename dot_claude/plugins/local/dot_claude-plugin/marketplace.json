@@ -19,7 +19,9 @@
       "lspServers": {
         "svelte": {
           "command": "svelteserver",
-          "args": ["--stdio"],
+          "args": [
+            "--stdio"
+          ],
           "extensionToLanguage": {
             ".svelte": "svelte"
           }
@@ -35,6 +37,17 @@
       },
       "source": "./gh-issues",
       "category": "workflow",
+      "strict": false
+    },
+    {
+      "name": "msg-jump",
+      "description": "Fullscreen TUI: ctrl+up/ctrl+down jump to the previous/next prompt you sent",
+      "version": "0.1.0",
+      "author": {
+        "name": "chong"
+      },
+      "source": "./msg-jump",
+      "category": "productivity",
       "strict": false
     }
   ]

@@ -1,0 +1,5 @@
+{
+  "name": "msg-jump",
+  "version": "0.1.0",
+  "description": "In the fullscreen TUI, ctrl+up/ctrl+down scroll the transcript to the previous/next prompt you sent"
+}
