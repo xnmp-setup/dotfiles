@@ -188,6 +188,19 @@ class EarlyReset(unittest.TestCase):
         # Once it gets a response its figure changes, and that counts.
         self.assertEqual(run([*self.BEFORE, ses(at(2, 19.6), 95), ses(at(2, 19.7), 3)]).used, 3)
 
+    def test_reset_that_starts_a_new_window_drops_the_old_windows_readings(self):
+        # A banked reset at 19:00 opens a fresh 7-day window ending a week later.
+        start = at(2, 19)
+        new = int(start + 7 * DAY)
+        events = [*self.BEFORE[:4], bar(at(2, 19.1), 0)]
+        pace = run([*events, ses(at(2, 19.2), 2, reset=new)])
+        self.assertEqual(pace.used, 2)
+        self.assertAlmostEqual(pace.on_track, (at(3, 0) - start) / (7 * DAY) * 100)
+        self.assertAlmostEqual(pace.day_used, 2 * 7)
+        # An idle session still on the old window must not resurrect its 53.
+        idle = run([*events, ses(at(2, 19.2), 2, reset=new), ses(at(2, 19.3), 53, sid="idle")])
+        self.assertEqual(idle.used, 0)
+
     def test_tomorrow_counts_from_midnight_against_the_fresh_quota(self):
         pace = run([*self.BEFORE, bar(at(2, 23), 10), bar(at(3, 10), 20), ses(at(3, 10.5), 20)])
         self.assertAlmostEqual(pace.day_used, 10 * 7)
