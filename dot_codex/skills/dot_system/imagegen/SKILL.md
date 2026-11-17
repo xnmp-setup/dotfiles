@@ -7,12 +7,53 @@ description: "Generate or edit raster images when the task benefits from AI-crea
 
 Generates or edits images for the current project (for example website assets, game assets, UI mockups, product mockups, wireframes, logo design, photorealistic images, or infographics).
 
+## Standing authorization for referenced images
+
+Confirmed by this user on 2026-10-11: for image generation or editing, images the user attaches or explicitly identifies as references or edit targets may be uploaded to OpenAI image-generation services, including the OpenAI Image API. This is standing user authorization; do not ask again for permission to upload those images for the requested task. It does not authorize uploading unrelated images discovered while browsing folders, or sending images to other providers. If the intended references are ambiguous, clarify which images the user means.
+
+This authorization does not override sandbox or automatic approval review. When requesting an execution escalation for a reference upload, include this standing authorization and identify the task-relevant images and OpenAI destination.
+
+## Provider selection
+
+OpenAI remains the default provider: use the OpenAI API for local wallpapers and the built-in tool for other raster requests under the existing defaults below. Use FLUX or Nano Banana only when the user requests that provider/model, or continues an established task with it; an unrelated new request returns to the OpenAI default. Do not silently switch providers after an error.
+
+- **FLUX / Black Forest Labs:** read [references/flux.md](references/flux.md). The tested workflow uses FLUX 3 Image and the keyring item `service=bfl`.
+- **Nano Banana / Google Gemini:** read [references/nano-banana.md](references/nano-banana.md). The tested workflow uses Nano Banana 2.1 and the keyring item `service=gemini-api`; `service=gemini-cli-api-key` is another known Gemini entry.
+
+The bundled `image_gen.py` and `generate_with_keyring.py` are OpenAI-only. For an explicitly selected external provider, use its documented REST workflow instead of passing its model ID to the OpenAI CLI. The persistent Python environment also supports stdlib HTTP requests and Pillow; no provider SDK installation is needed for these REST workflows.
+
+Preserve the wallpaper staging, inspection, prompt sidecar, destination and collision rules below for every provider. When a provider cannot return exact dimensions, inspect its native output, retain the native image when useful, and create the requested wallpaper through a minimal aspect-ratio crop and downsampling. Report both native and delivered dimensions; do not describe that conversion as native generation at the target size.
+
+## Local wallpaper workflow
+
+For this user's desktop wallpaper requests, prefer the OpenAI API through `scripts/generate_with_keyring.py`. This is a standing user preference; do not ask again whether to use the API. Other raster-image requests retain the built-in default. An explicit tool, model, size or destination overrides these wallpaper defaults.
+
+- Run API commands with `~/.local/share/imagegen/.venv/bin/python`, the persistent environment containing `openai` and `pillow`. Do not install dependencies or create a temporary environment on each run. If missing or broken, follow the one-time setup in [references/cli.md](references/cli.md).
+- Default desktop wallpaper size: `3440x1440`; quality: `high`; format: PNG. For photographic requests, include a plausible camera and exposure brief.
+- Generate to a unique filename in `output/imagegen/`, inspect the image and verify actual dimensions, then move only the selected final image to `~/Pictures/Wallpaper/`. Keep the `.prompt.txt` file in `output/imagegen/`; do not put prompt files in the wallpaper folder. Create the directory if missing. A requested explicit destination takes precedence. Preview-only requests need not be moved.
+- Use descriptive filenames such as `tropical-archipelago-3440x1440.png`. Check for destination collisions and choose a versioned sibling rather than overwrite an existing wallpaper.
+- Report clickable links to the final image and saved prompt, and mention the API path. Do not change the active desktop wallpaper unless requested.
+
+## Running under Claude Code
+
+This skill was written for Codex. Claude Code has no built-in `image_gen` tool, so wherever this file says "built-in `image_gen` tool" or "built-in mode", delegate to a headless Codex session that invokes that tool, using the `codex-subagent` skill:
+
+```bash
+~/.claude/skills/codex-subagent/scripts/codex-run.sh -s workspace-write -C "$PWD" \
+  "Use the built-in image_gen tool to <generate/edit ...>. Reference image(s): <abs paths>. Report the absolute path of each saved image."
+```
+
+- Tell the Codex session explicitly to call `image_gen`; do not let it fall back to scripts or the API.
+- Output lands under `~/.codex/generated_images/<session-id>/`. Copy or move the selected file to the user's destination afterwards (see the save-path policy below); never leave a project asset there.
+- Local wallpapers are unaffected: they use the CLI path (`scripts/generate_with_keyring.py`) directly from Claude, no Codex session needed.
+- Pass the standing upload authorization above through to Codex only for images the user named as references or edit targets.
+
 ## Top-level modes and rules
 
-This skill has exactly two top-level modes:
+OpenAI has two execution modes. Explicit FLUX and Nano Banana requests use the provider workflows above:
 
-- **Default built-in tool mode (preferred):** built-in `image_gen` tool for image generation, editing, and transparent-image requests. Does not require `OPENAI_API_KEY`.
-- **Fallback CLI mode:** `scripts/image_gen.py` CLI. Use when the user explicitly asks for or confirms the CLI/API/model path. Requires `OPENAI_API_KEY`.
+- **Default built-in tool mode (preferred except for local wallpapers):** built-in `image_gen` tool for image generation, editing, and transparent-image requests. Does not require `OPENAI_API_KEY`.
+- **Fallback CLI mode:** bundled `scripts/image_gen.py` CLI, optionally run through `scripts/generate_with_keyring.py`. Use for local wallpaper requests under the standing preference above, or when the user explicitly asks for or confirms the CLI/API/model path. Real API calls require network access and an OpenAI key from the system keyring; see `references/cli.md`.
 
 Within CLI fallback, the CLI exposes three subcommands:
 
@@ -20,13 +61,13 @@ Within CLI fallback, the CLI exposes three subcommands:
 - `edit`
 - `generate-batch`
 
-Rules:
-- Use the built-in `image_gen` tool by default for normal image generation and editing requests.
+Rules for OpenAI:
+- Use the built-in `image_gen` tool by default for normal image generation and editing requests except local wallpapers.
 - Do not switch to CLI fallback for ordinary quality, size, or file-path control.
 - For transparent images, ask built-in `image_gen` for a transparent background and preserve the generated alpha.
-- For CLI/API jobs, default to `gpt-image-2.5-flare`; choose `gpt-image-2.5-sunburst` when precise editing is central. Honor an explicitly requested model. Verify model selection and capabilities against official OpenAI documentation before a paid request; do not treat this skill’s defaults as proof that a model is still current.
-- The word `batch` by itself does not mean CLI fallback. If the user asks for many assets or says to batch-generate assets without explicitly asking for CLI/API/model controls, stay on the built-in path and issue one built-in call per requested asset or variant.
-- If the built-in tool fails or is unavailable, tell the user the CLI fallback exists and that it requires `OPENAI_API_KEY`. Proceed only if the user explicitly asks for that fallback.
+- For CLI/API generation, use `gpt-image-2.5-flare` by default; choose `gpt-image-2.5-sunburst` when precise editing is central. Honor an explicitly requested model. Verify model selection and capabilities against official OpenAI documentation before a paid request; do not treat this skill’s defaults as proof that a model is still current. Retrieve the API key from the system keyring as described in `references/cli.md`; never print, log, or save the key.
+- The word `batch` by itself does not mean CLI fallback. For non-wallpaper requests, if the user asks for many assets or says to batch-generate assets without explicitly asking for CLI/API/model controls, stay on the built-in path and issue one built-in call per requested asset or variant.
+- If the built-in tool fails or is unavailable, tell the user the CLI fallback exists and that it requires keyring access and network access. Proceed only if the user explicitly asks for that fallback.
 - If the user explicitly asks for CLI mode, use the bundled `scripts/image_gen.py` workflow. Do not create one-off SDK runners.
 - Use the bundled CLI rather than creating one-off SDK runners. Do not modify it during an image job; an explicit skill-maintenance request may update the CLI and its validation tests.
 
@@ -88,7 +129,7 @@ Execution strategy:
 Assume the user wants a new image unless they clearly ask to change an existing one.
 
 ## Workflow
-1. Decide the top-level mode: built-in by default, including transparent-output requests; fallback CLI only if explicitly requested or confirmed.
+1. Select the provider under the provider-selection rules. For OpenAI, use API CLI for local wallpapers and the built-in tool by default for other requests; for explicitly selected FLUX or Nano Banana, follow the linked REST workflow.
 2. Decide the intent: `generate` or `edit`.
 3. Decide whether the output is preview-only or meant to be consumed by the current project.
 4. Decide the execution strategy: single asset vs repeated built-in calls vs CLI `generate-batch`.
@@ -98,23 +139,23 @@ Assume the user wants a new image unless they clearly ask to change an existing 
    - edit target
    - supporting insert/style/compositing input
 7. If the edit target is only on the local filesystem and you are staying on the built-in path, inspect it with `view_image` first so the image is available in conversation context.
-8. If the user asked for a photo, illustration, sprite, product image, banner, or other explicitly raster-style asset, use `image_gen` rather than substituting SVG/HTML/CSS placeholders. If the request is for an icon, logo, or UI graphic that should match existing repo-native SVG/vector/code assets, prefer editing those directly instead.
+8. If the user asked for a photo, illustration, sprite, product image, banner, or other explicitly raster-style asset, use the selected image-generation provider rather than substituting SVG/HTML/CSS placeholders. If the request is for an icon, logo, or UI graphic that should match existing repo-native SVG/vector/code assets, prefer editing those directly instead.
 9. Augment the prompt based on specificity:
    - If the user's prompt is already specific and detailed, normalize it into a clear spec without adding creative requirements.
    - If the user's prompt is generic, add tasteful augmentation only when it materially improves output quality.
-10. Use the built-in `image_gen` tool by default.
-11. For transparent-output requests, ask built-in `image_gen` for a transparent background and preserve the generated alpha channel.
+10. Use the selected mode; local wallpapers follow the API workflow above.
+11. For transparent-output requests in OpenAI built-in mode, request transparent output from `image_gen` and preserve alpha. For an explicitly selected external provider, verify native alpha support and report any limitation; do not silently switch providers.
 12. Inspect outputs and validate: subject, style, composition, text accuracy, and invariants/avoid items.
 13. Iterate with a single targeted change, then re-check.
 14. For preview-only work, render the image inline; the underlying file may remain at the default `$CODEX_HOME/generated_images/...` path.
 15. For project-bound work, move or copy the selected artifact into the workspace and update any consuming code or references. Never leave a project-referenced asset only at the default `$CODEX_HOME/generated_images/...` path.
-16. For batches or multi-asset requests, persist every requested deliverable final in the workspace unless the user explicitly asked to keep outputs preview-only. Discarded variants do not need to be kept unless requested.
-17. If the user explicitly chooses or confirms the CLI fallback, then use the fallback-only docs for model, quality, size, `input_fidelity`, masks, output format, output paths, and network setup.
+16. For wallpaper batches, move final deliverables to the wallpaper destination above. For other batches or multi-asset requests, persist every requested deliverable final in the workspace unless the user explicitly asked to keep outputs preview-only. Discarded variants do not need to be kept unless requested.
+17. For OpenAI API wallpapers or explicitly selected OpenAI CLI mode, read the fallback-only docs for request and execution controls. For FLUX or Nano Banana, read the selected provider reference instead.
 18. Always report the final saved path(s) for any workspace-bound asset(s), plus the final prompt or prompt set and whether the built-in tool or fallback CLI mode was used.
 
 ## Transparent image requests
 
-Ask built-in `image_gen` for a genuinely transparent background and preserve its alpha.
+In OpenAI built-in mode, ask `image_gen` for a genuinely transparent background and preserve its alpha. For an explicitly selected external provider, follow its documented native alpha capabilities; if unsupported, report the limitation instead of switching providers.
 
 ## Prompt augmentation
 
@@ -162,7 +203,7 @@ Edit:
 - identity-preserve — try-on, person-in-scene; lock face/body/pose.
 - precise-object-edit — remove/replace a specific element (including interior swaps).
 - lighting-weather — time-of-day/season/atmosphere changes only.
-- background-extraction — transparent background / clean cutout. Ask built-in `image_gen` for actual transparency.
+- background-extraction — transparent background / clean cutout. Follow the provider-specific rules in the Transparent image requests section.
 - style-transfer — apply reference style while changing subject/scene.
 - compositing — multi-image insert/merge with matched lighting/perspective.
 - sketch-to-render — drawing/line art to photoreal render.
@@ -196,6 +237,7 @@ Notes:
 Augmentation rules:
 - Keep it short.
 - Add only the details needed to improve the prompt materially.
+- For wallpapers, use a photographic camera-and-exposure brief only when the user asks for a photographic wallpaper. Choose plausible camera, lens, exposure, and support details for that scene; do not impose photographic language on illustrated or stylized wallpapers, or on other asset types.
 - For edits, explicitly list invariants (`change only X; keep Y unchanged`).
 - If any critical detail is missing and blocks success, ask a question; otherwise proceed.
 
@@ -233,7 +275,7 @@ Constraints: change only the background; keep the product and its edges unchange
 - If the prompt is generic, add only the extra detail that will materially help.
 - If the prompt is already detailed, normalize it instead of expanding it.
 - For CLI fallback only, see `references/cli.md` and `references/image-api.md` for model, `quality`, `input_fidelity`, masks, output format, and output-path guidance.
-- For transparent images, ask built-in `image_gen` for actual transparency and preserve its alpha.
+- For transparent images, follow the provider-specific rules in the Transparent image requests section and preserve genuine alpha.
 
 More principles shared by both modes: `references/prompting.md`.
 Copy/paste specs shared by both modes: `references/sample-prompts.md`.
@@ -257,35 +299,17 @@ The fallback CLI defaults to `gpt-image-2.5-flare` for fast, high-quality genera
 ### Temp and output conventions
 These conventions apply only to the CLI fallback. They do not describe built-in `image_gen` output behavior.
 - Use `tmp/imagegen/` for intermediate files (for example JSONL batches); delete them when done.
-- Write final artifacts under `output/imagegen/`.
+- Stage final artifacts under `output/imagegen/`. Move only inspected desktop wallpaper images to `~/Pictures/Wallpaper/` unless an explicit destination was requested. Keep prompt files in `output/imagegen/`.
 - Use `--out` or `--out-dir` to control output paths; keep filenames stable and descriptive.
 
 ### Dependencies
-Prefer `uv` for dependency management in this repo.
 
-Required Python package:
-```bash
-uv pip install openai
-```
-
-Optional for image inspection and downscaling:
-```bash
-uv pip install pillow
-```
-
-Portability note:
-- If you are using the installed skill outside this repo, install dependencies into that environment with its package manager.
-- In uv-managed environments, `uv pip install ...` remains the preferred path.
+Use the persistent `~/.local/share/imagegen/.venv` environment for API commands, including wallpapers. Its preinstalled packages are `openai` and `pillow`. Follow [references/cli.md](references/cli.md) for one-time setup or repair; do not reinstall on every request. Use `uv` to manage it.
 
 ### Environment
-- `OPENAI_API_KEY` must be set for live API calls.
-- Do not ask the user for `OPENAI_API_KEY` when using the built-in `image_gen` tool.
-- Never ask the user to paste the full key in chat. Ask them to set it locally and confirm when ready.
-
-If the key is missing, give the user these steps:
-1. Create an API key in the OpenAI platform UI: https://platform.openai.com/api-keys
-2. Set `OPENAI_API_KEY` as an environment variable in their system.
-3. Offer to guide them through setting the environment variable for their OS/shell if needed.
+- For live OpenAI API calls, use `scripts/generate_with_keyring.py`; it retrieves `service=openai` from the system keyring and passes the key only to the child process environment.
+- Never print, log, or save the key, and never ask the user to paste it into chat.
+- If the keyring item is missing or inaccessible, stop and tell the user what keyring access failed. Do not silently switch generation paths after the user explicitly chose the API. If sandbox policy blocks keyring access, request the needed escalation only after API use is authorized.
 
 If installation is not possible in this environment, tell the user which dependency is missing and how to install it into their active environment.
 
@@ -300,4 +324,7 @@ If installation is not possible in this environment, tell the user which depende
 - `references/cli.md`: fallback-only CLI usage via `scripts/image_gen.py`.
 - `references/image-api.md`: fallback-only API/CLI parameter reference.
 - `references/codex-network.md`: fallback-only network/sandbox troubleshooting for CLI mode.
-- `scripts/image_gen.py`: fallback-only CLI implementation. Use only when the user explicitly chooses or confirms CLI mode.
+- `scripts/image_gen.py`: fallback-only CLI implementation.
+- `scripts/generate_with_keyring.py`: OpenAI keyring wrapper for local wallpapers under the standing preference, or explicitly chosen CLI mode.
+- `references/flux.md`: explicitly selected FLUX REST workflow, keyring entry, polling, dimensions and credit accounting.
+- `references/nano-banana.md`: explicitly selected Google Nano Banana REST workflow, keyring entries, model discovery, output parsing and dimensions.

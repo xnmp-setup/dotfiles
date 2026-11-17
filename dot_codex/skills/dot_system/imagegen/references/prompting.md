@@ -30,6 +30,7 @@ This file is about prompt structure, specificity, and iteration. Fallback-only e
 - If the prompt is generic, you may add tasteful detail when it materially improves the output.
 - Treat examples in `sample-prompts.md` as fully-authored recipes, not as the default amount of augmentation to add to every request.
 - For photorealism, include `photorealistic` directly when that is the goal, plus concrete real-world texture such as pores, wrinkles, fabric wear, material grain, or imperfect everyday detail.
+- For wallpapers, add camera and exposure specifics only when the user wants a photographic wallpaper. Choose plausible details for the scene (camera format, focal length, aperture, ISO, shutter speed, tripod or filter where useful). Do not apply this photo recipe to stylized or illustrated wallpapers or to other image types.
 
 ## Allowed and disallowed augmentation
 

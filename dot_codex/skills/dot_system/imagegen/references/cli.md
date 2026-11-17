@@ -1,6 +1,6 @@
 # CLI reference (`scripts/image_gen.py`)
 
-This file is for the fallback CLI mode only. Read it when the user explicitly asks to use `scripts/image_gen.py` / CLI / API / model controls, including an explicit model choice.
+This file covers CLI mode, including the preferred local wallpaper workflow. Read it for desktop wallpaper requests or when the user explicitly asks to use `scripts/image_gen.py` / CLI / API / model controls, including an explicit model choice.
 
 `generate-batch` is a CLI subcommand in this fallback path. It is not a top-level mode of the skill.
 The word `batch` in a user request is not CLI opt-in by itself.
@@ -10,24 +10,39 @@ The word `batch` in a user request is not CLI opt-in by itself.
 - `edit`: edit one or more existing images
 - `generate-batch`: run many generation jobs from a JSONL file after the user explicitly chooses CLI/API/model controls
 
-Real API calls require **network access** + `OPENAI_API_KEY`. `--dry-run` does not.
+Real API calls require **network access** and an OpenAI API key. `--dry-run` does not require either. Prefer the bundled `scripts/generate_with_keyring.py` wrapper for live requests: it retrieves `service=openai` from the system keyring and passes the key only through the child process environment. It does not print or save the key. If keyring access is blocked by the sandbox, request the required escalation only after the user has authorized the API call. If the keyring item is missing or unavailable, stop and explain the access issue; never ask the user to paste the key.
 
 ## Quick start (works from any repo)
-Set a stable path to the skill CLI (default `CODEX_HOME` is `~/.codex`):
+Use the persistent Python environment and stable skill paths:
 
-```
-export CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
-export IMAGE_GEN="$CODEX_HOME/skills/.system/imagegen/scripts/image_gen.py"
+```bash
+export IMAGE_GEN_SKILL_ROOT="${CODEX_HOME:-$HOME/.codex}/skills/.system/imagegen"
+export IMAGE_GEN="$IMAGE_GEN_SKILL_ROOT/scripts/image_gen.py"
+export IMAGE_GEN_KEYRING="$IMAGE_GEN_SKILL_ROOT/scripts/generate_with_keyring.py"
+export IMAGE_GEN_PYTHON="$HOME/.local/share/imagegen/.venv/bin/python"
 ```
 
-Install dependencies into that environment with its package manager. In uv-managed environments, `uv pip install ...` remains the preferred path.
+One-time setup (or repair if the environment is missing or imports fail):
+
+```bash
+uv venv "$HOME/.local/share/imagegen/.venv"
+uv pip install --python "$IMAGE_GEN_PYTHON" openai pillow
+```
+
+Run subsequent requests directly with `"$IMAGE_GEN_PYTHON"`; do not use a temporary `uv run --with` environment or install packages on every run. Check imports without calling the API:
+
+```bash
+"$IMAGE_GEN_PYTHON" -c 'import openai; from PIL import Image'
+```
+
+Desktop wallpapers default to the API path, `3440x1440`, `high` quality and PNG. Generate to a unique `output/imagegen/` filename, inspect and verify dimensions, then move only the selected image to `~/Pictures/Wallpaper/`. Keep `.prompt.txt` files in `output/imagegen/`. Honor explicit destinations and avoid overwriting existing wallpapers. See the local wallpaper workflow in `SKILL.md`.
 
 ## Quick start
 
 Dry-run (no API call; no network required; does not require the `openai` package):
 
 ```bash
-python "$IMAGE_GEN" generate \
+"$IMAGE_GEN_PYTHON" "$IMAGE_GEN_KEYRING" generate \
   --prompt "Test" \
   --out output/imagegen/test.png \
   --dry-run
@@ -37,10 +52,10 @@ Notes:
 - One-off dry-runs print the API payload and the computed output path(s).
 - Repo-local finals should live under `output/imagegen/`.
 
-Generate (requires `OPENAI_API_KEY` + network):
+Generate (requires keyring access + network):
 
 ```bash
-python "$IMAGE_GEN" generate \
+"$IMAGE_GEN_PYTHON" "$IMAGE_GEN_KEYRING" generate \
   --prompt "A cozy alpine cabin at dawn" \
   --size 1024x1024 \
   --out output/imagegen/alpine-cabin.png
@@ -49,17 +64,17 @@ python "$IMAGE_GEN" generate \
 Edit:
 
 ```bash
-python "$IMAGE_GEN" edit \
+"$IMAGE_GEN_PYTHON" "$IMAGE_GEN_KEYRING" edit \
   --image input.png \
   --prompt "Replace only the background with a warm sunset" \
   --out output/imagegen/sunset-edit.png
 ```
 
 ## Guardrails
-- Use the bundled CLI directly (`python "$IMAGE_GEN" ...`) after activating the correct environment.
+- Use `scripts/generate_with_keyring.py` for live requests. Use `scripts/image_gen.py` directly for dry-runs or when the caller intentionally supplies an authorized API environment.
 - Do **not** create one-off runners (for example `gen_images.py`) unless the user explicitly asks for a custom wrapper.
 - Do not modify the CLI during an image job. Explicit skill-maintenance requests may update and validate it.
-- Preserve an explicitly requested model. Use GPT Image 2.5 Sunburst when editing precision is central, and Flare for everyday generation.
+- Use `gpt-image-2.5-flare` by default for generation. Use `gpt-image-2.5-sunburst` when editing precision is central. Preserve an explicitly requested model.
 
 ## Defaults
 - Model: `gpt-image-2.5-flare`
@@ -101,7 +116,7 @@ Popular `gpt-image-2.5-flare` sizes:
 Fast draft:
 
 ```bash
-python "$IMAGE_GEN" generate \
+"$IMAGE_GEN_PYTHON" "$IMAGE_GEN_KEYRING" generate \
   --prompt "A product thumbnail of a matte ceramic mug on a stone surface" \
   --quality low \
   --size 1024x1024 \
@@ -111,7 +126,7 @@ python "$IMAGE_GEN" generate \
 Final 2K landscape:
 
 ```bash
-python "$IMAGE_GEN" generate \
+"$IMAGE_GEN_PYTHON" "$IMAGE_GEN_KEYRING" generate \
   --prompt "A polished landing-page hero image of a matte ceramic mug on a stone surface" \
   --quality high \
   --size 2048x1152 \
@@ -121,7 +136,7 @@ python "$IMAGE_GEN" generate \
 4K landscape:
 
 ```bash
-python "$IMAGE_GEN" generate \
+"$IMAGE_GEN_PYTHON" "$IMAGE_GEN_KEYRING" generate \
   --prompt "A detailed architectural visualization at golden hour" \
   --size 3840x2160 \
   --quality high \
@@ -131,7 +146,7 @@ python "$IMAGE_GEN" generate \
 Native transparent output:
 
 ```bash
-python "$IMAGE_GEN" generate \
+"$IMAGE_GEN_PYTHON" "$IMAGE_GEN_KEYRING" generate \
   --model gpt-image-2.5-flare \
   --prompt "A clean product cutout on a transparent background" \
   --background transparent \
@@ -151,7 +166,7 @@ These are explicit CLI controls. They are not built-in `image_gen` tool argument
 Example:
 
 ```bash
-python "$IMAGE_GEN" edit \
+"$IMAGE_GEN_PYTHON" "$IMAGE_GEN_KEYRING" edit \
   --model gpt-image-2.5-sunburst \
   --image input.png \
   --prompt "Change only the background" \
@@ -171,7 +186,7 @@ Mask notes:
 
 ## Output handling
 - Use `tmp/imagegen/` for temporary JSONL inputs or scratch files.
-- Use `output/imagegen/` for final outputs.
+- Use `output/imagegen/` for project outputs and wallpaper staging. After inspection, move only final desktop wallpaper images to `~/Pictures/Wallpaper/` unless the user specified another destination. Keep prompt files in `output/imagegen/`.
 - Reruns fail if a target file already exists unless you pass `--force`.
 - `--out-dir` changes one-off naming to `image_1.<ext>`, `image_2.<ext>`, and so on.
 - Downscaled copies use the default suffix `-web` unless you override it.
@@ -181,7 +196,7 @@ Mask notes:
 Generate with augmentation fields:
 
 ```bash
-python "$IMAGE_GEN" generate \
+"$IMAGE_GEN_PYTHON" "$IMAGE_GEN_KEYRING" generate \
   --prompt "A minimal hero image of a ceramic coffee mug" \
   --use-case "product-mockup" \
   --style "clean product photography" \
@@ -193,7 +208,7 @@ python "$IMAGE_GEN" generate \
 Generate + also write a downscaled copy for fast web loading:
 
 ```bash
-python "$IMAGE_GEN" generate \
+"$IMAGE_GEN_PYTHON" "$IMAGE_GEN_KEYRING" generate \
   --prompt "A cozy alpine cabin at dawn" \
   --size 1024x1024 \
   --downscale-max-dim 1024 \
@@ -209,7 +224,7 @@ cat > tmp/imagegen/prompts.jsonl << 'EOF'
 {"prompt":"Gray wolf in profile in a snowy forest","use_case":"photorealistic-natural","composition":"eye-level","constraints":"no logos or trademarks; no watermark","size":"1024x1024"}
 EOF
 
-python "$IMAGE_GEN" generate-batch \
+"$IMAGE_GEN_PYTHON" "$IMAGE_GEN_KEYRING" generate-batch \
   --input tmp/imagegen/prompts.jsonl \
   --out-dir output/imagegen/batch \
   --concurrency 5

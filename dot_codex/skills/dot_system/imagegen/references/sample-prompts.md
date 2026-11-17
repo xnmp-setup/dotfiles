@@ -35,6 +35,20 @@ Constraints: natural color balance; no heavy retouching; no glamorization; no wa
 Avoid: studio polish; staged look
 ```
 
+### Photographic wallpaper (only when the user requests a photographic wallpaper)
+```text
+Use case: photorealistic-natural
+Asset type: ultrawide desktop wallpaper
+Primary request: a natural landscape photograph of a clear alpine lake with distant low islands
+Style/medium: actual DSLR landscape photography, natural color and optical rendering
+Camera and exposure: full-frame DSLR, 35mm prime lens, tripod, ISO 100, f/8, 1/4-second shutter with a neutral-density filter to soften fine water ripples while retaining realistic reflections
+Composition/framing: wide panorama with open central water and landforms toward the horizon and lower edges
+Lighting/mood: bright natural daylight, realistic highlight detail
+Constraints: no text, interface, border, people, boats, CGI look, artificial HDR halos, or painterly treatment
+```
+
+Use camera and exposure settings appropriate to the requested scene; these sample values are not a universal formula.
+
 ### product-mockup
 ```
 Use case: product-mockup
