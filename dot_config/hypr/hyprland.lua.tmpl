@@ -195,11 +195,21 @@ hl.config({
         dim_inactive = false,
         dim_strength = 0.4,
         dim_special  = 0.4,
+        -- Frosted glass behind translucent windows (see the *-opacity window
+        -- rules). Effective radius grows with size × 2^passes, so passes is
+        -- what makes it read as frost rather than a soft smudge. 2 passes:
+        -- 3 smeared the scratchpad/launcher backdrop (blur.special uses these
+        -- same globals) into an unreadable wash.
+        -- vibrancy keeps the wallpaper's colour through the blur, noise breaks
+        -- up banding on large flat areas, popups frosts menus/tooltips too.
         blur = {
-            enabled = true,
-            size    = 3,
-            passes  = 1,
-            special = true,
+            enabled   = true,
+            size      = 8,
+            passes    = 2,
+            vibrancy  = 0.2,
+            noise     = 0.02,
+            popups    = true,
+            special   = true,
         },
     },
 
@@ -458,7 +468,8 @@ hl.window_rule({
     match = { class = "tauri-explorer", initial_title = "negative:.* - Tauri Explorer" },
     float = true,
 })
-hl.window_rule({ name = "ghostty-opacity",   match = { class = "com.mitchellh.ghostty" },   opacity = theme.window_opacity(0.95) })
+-- No ghostty-opacity rule: Ghostty's background-opacity handles it and keeps
+-- text opaque; a rule here would multiply with it and fade the glyphs.
 
 hl.window_rule({ name = "imv-float",  match = { class = "^imv$" }, float = true })
 hl.window_rule({ name = "imv-center", match = { class = "^imv$" }, center = true })
@@ -715,20 +726,21 @@ hl.bind("F7", app_switcher.toggle({
     launch = "tauri-explorer",
     cycle_windows = true,
 }))
--- Zed's binary is `zeditor` on both nixpkgs and Arch (the name `zed` is taken
--- by the ZFS event daemon) but `zed` in upstream's own installer and on macOS.
--- Probed when the key is pressed rather than templated at apply time, so the
--- same config follows a machine that switches install method.
-hl.bind("F10", app_switcher.toggle({
-    name = "zed",
-    classes = { ["dev.zed.Zed"] = true, ["dev.zed.Zed-Dev"] = true },
-    launch = "for z in zeditor zed; do command -v $z >/dev/null 2>&1 && exec $z --new; done",
-}))
-hl.bind("F11", app_switcher.toggle({
-    name = "lite-xl",
-    classes = { ["com.lite_xl.LiteXL"] = true },
-    launch = "lite-xl",
-}))
+-- F10 (zed) / F11 (lite-xl) app switchers disabled.
+-- -- Zed's binary is `zeditor` on both nixpkgs and Arch (the name `zed` is taken
+-- -- by the ZFS event daemon) but `zed` in upstream's own installer and on macOS.
+-- -- Probed when the key is pressed rather than templated at apply time, so the
+-- -- same config follows a machine that switches install method.
+-- hl.bind("F10", app_switcher.toggle({
+--     name = "zed",
+--     classes = { ["dev.zed.Zed"] = true, ["dev.zed.Zed-Dev"] = true },
+--     launch = "for z in zeditor zed; do command -v $z >/dev/null 2>&1 && exec $z --new; done",
+-- }))
+-- hl.bind("F11", app_switcher.toggle({
+--     name = "lite-xl",
+--     classes = { ["com.lite_xl.LiteXL"] = true },
+--     launch = "lite-xl",
+-- }))
 
 ---------------------
 ---- SCRATCHPADS ----
