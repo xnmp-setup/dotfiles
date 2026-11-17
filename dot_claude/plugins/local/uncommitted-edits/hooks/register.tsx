@@ -152,7 +152,7 @@ export const register: Register = on => {
 
     return (
       <Box>
-        <Text color={band.kind === 'committed' ? 'success' : undefined} dimColor={band.kind !== 'committed'}>
+        <Text color={band.kind === 'committed' ? 'success' : 'warning'}>
           {mark}
         </Text>
         <Text dimColor>{line.slice(mark.length)}</Text>
