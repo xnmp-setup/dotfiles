@@ -148,7 +148,7 @@
     "mode": "hold"
   },
   "skipDangerousModePermissionPrompt": true,
-  "theme": "dark",
+  "theme": "custom:desktop",
   "agentPushNotifEnabled": true,
   "voiceEnabled": true
 }

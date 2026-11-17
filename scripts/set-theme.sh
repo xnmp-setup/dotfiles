@@ -18,6 +18,8 @@ source "$set_theme_script_dir/lib/theme-wallpaper.sh"
 source "$set_theme_script_dir/lib/chrome-layout.sh"
 # shellcheck source=lib/chrome-theme.sh
 source "$set_theme_script_dir/lib/chrome-theme.sh"
+# shellcheck source=lib/claude-theme.sh
+source "$set_theme_script_dir/lib/claude-theme.sh"
 # shellcheck source=lib/darkreader-theme.sh
 source "$set_theme_script_dir/lib/darkreader-theme.sh"
 # shellcheck source=lib/desktop-color-scheme.sh
@@ -942,7 +944,7 @@ if [[ -n "$wallpaper_path" ]]; then
 
   if (( ${#wallpaper_configs[@]} > 0 )); then
     echo "  ✓ Wallpaper → $(basename "$wallpaper_path") (${wallpaper_configs[*]})"
-    if apply_hyprpaper_live "$wallpaper_path" "$hyprpaper_fit_mode"; then
+    if apply_hyprpaper_live "$wallpaper_path" "$hyprpaper_fit_mode" "$hyprpaper_config"; then
       echo "    Hyprpaper applied immediately"
       reload+=("Hyprpaper: applied automatically; Hyprlock: next lock")
     else
@@ -1401,6 +1403,28 @@ else
   # uses its ANSI `terminal` theme, which at least follows the terminal.
   rm -f -- "$lig_colors"
   skipped+=("lig ($lig_theme_error; using ANSI colours)")
+fi
+
+# --- Claude Code ---
+# Theme generated from the Ghostty theme file, since Claude draws on the
+# terminal's own background (see lib/claude-theme.sh). settings.json selects
+# it as "custom:desktop"; running sessions reload it live. Not gated on the
+# claude binary, like Starship above: the file is harmless unused.
+claude_terminal_theme="$HOME/.config/ghostty/themes/$title"
+claude_theme="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/themes/desktop.json"
+if claude_generate_theme "$claude_terminal_theme" "$theme_mode" "Desktop ($title)" "$claude_theme"; then
+  echo "  ✓ Claude Code → $slug ($theme_mode)"
+  reload+=("Claude Code: recolours live (theme \"custom:desktop\")")
+  ((changed++))
+else
+  # Keep light/dark in step with the desktop even without the palette; a
+  # stale file would paint the previous theme's colours.
+  claude_error="$claude_theme_error"
+  if claude_write_plain_theme "$theme_mode" "Desktop ($title)" "$claude_theme"; then
+    skipped+=("Claude Code ($claude_error; using the plain $theme_mode theme)")
+  else
+    skipped+=("Claude Code ($claude_error; $claude_theme_error)")
+  fi
 fi
 
 # --- Powerlevel10k (zsh prompt) ---
