@@ -377,6 +377,8 @@ for line in sys.stdin:
     line = re.sub(r"(\x1b\[49m)" + SEP_RE + r"(\x1b\[38;5;\d+m⎇)", r"\1 \2", line)
     # remove separator: model | bar (before \e[38;5;Nm[ where [ starts the bar)
     line = re.sub(SEP_RE + r"(\x1b\[38;5;\d+m\[)", r" \1", line)
+    # render the remaining separators as a bold dot, keeping their colour
+    line = re.sub(r"\xa0\|\xa0", "\xa0•\xa0", line)
     # 1000k -> 1m (for parts outside the context bar)
     line = re.sub(r"(\d+)000k", r"\g<1>m", line)
     # rebuild context bar: match \e[38;5;Nm[████░░░░] Xk/Yk (N%)\e[39m
