@@ -1,6 +1,7 @@
 {
   "respectGitignore": false,
   "remoteControlAtStartup": false,
+  "terminalProgressBarEnabled": false,
   "cleanupPeriodDays": 365,
   "env": {
     "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "40",
