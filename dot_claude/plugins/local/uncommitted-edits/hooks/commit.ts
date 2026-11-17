@@ -56,12 +56,9 @@ export const without = (paths: readonly string[], drop: readonly string[]): stri
 
 export type Kind = 'uncommitted' | 'committed'
 
-/**
- * `● 3 uncommitted edits: a.ts, b.ts +1` (or `✓ 2 edits committed: …`) in at
- * most `width` characters: basenames, deduplicated, as many as fit. Empty
- * when there are no files. Counts code points, so wide (CJK) names may run a
- * little over on screen.
- */
+/** The line's leading mark: `●` uncommitted, `✓` committed. */
+export const markOf = (kind: Kind): string => (kind === 'committed' ? '✓' : '●')
+
 /**
  * What the band shows: the uncommitted files if any, else the last turn's
  * edits once git shows every one of them committed. A last turn with no
@@ -80,6 +77,12 @@ export function bandFor(
   return committed.length > 0 ? { kind: 'committed', files: committed } : null
 }
 
+/**
+ * `● 3 uncommitted edits: a.ts, b.ts +1` (or `✓ 2 edits committed: …`) in at
+ * most `width` characters: basenames, deduplicated, as many as fit. Empty
+ * when there are no files. Counts code points, so wide (CJK) names may run a
+ * little over on screen.
+ */
 export function summary(files: readonly string[], width: number, kind: Kind = 'uncommitted'): string {
   if (files.length === 0) {
     return ''
@@ -87,7 +90,9 @@ export function summary(files: readonly string[], width: number, kind: Kind = 'u
   const names = [...new Set(files.map(baseOf).filter(n => n !== ''))]
   const noun = files.length === 1 ? 'edit' : 'edits'
   const prefix =
-    kind === 'uncommitted' ? `● ${files.length} uncommitted ${noun}` : `✓ ${files.length} ${noun} committed`
+    kind === 'uncommitted'
+      ? `${markOf(kind)} ${files.length} uncommitted ${noun}`
+      : `${markOf(kind)} ${files.length} ${noun} committed`
   const len = (s: string) => [...s].length
 
   if (names.length === 0 || len(prefix) >= width) {

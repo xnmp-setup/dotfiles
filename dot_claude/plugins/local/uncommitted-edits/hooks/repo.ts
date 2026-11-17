@@ -66,3 +66,38 @@ export async function checkTracked(
 
   return { dirty: known.filter(isListed), clean: known.filter(f => !isListed(f)) }
 }
+
+/** The session repo's HEAD commit, or null (no git, no repo, no commit yet). */
+export async function headOf($: EngineInterface, cwd: string): Promise<string | null> {
+  const sha = ((await git($, cwd, ['rev-parse', '--verify', '--quiet', 'HEAD'])) ?? '').trim()
+
+  return sha === '' ? null : sha
+}
+
+/**
+ * Of `files` (absolute), those a commit after `base` touched: `base..HEAD`,
+ * or every commit up to HEAD when the repo had none at `base` (null). Empty
+ * when git can't tell (no repo, `base` gone after a rewrite).
+ */
+export async function committedSince(
+  $: EngineInterface,
+  cwd: string,
+  base: string | null,
+  files: readonly string[],
+): Promise<string[]> {
+  const repo = await topLevel($, cwd)
+
+  if (repo === null || files.length === 0) {
+    return []
+  }
+  const inRepo = files.filter(f => relativeTo(repo, f) !== null)
+  const range = base === null ? 'HEAD' : `${base}..HEAD`
+  const out = inRepo.length === 0 ? null : await git($, repo, ['log', '--format=', '--name-only', '-z', range, '--', ...inRepo])
+
+  if (out === null) {
+    return []
+  }
+  const touched = new Set(out.split(/[\0\n]/).filter(p => p !== ''))
+
+  return inRepo.filter(f => touched.has(relativeTo(repo, f) ?? ''))
+}

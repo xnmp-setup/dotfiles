@@ -16,8 +16,9 @@ const BAND = {
   },
 } as const
 
-// A fake git for a repo at /repo; `dirty` is what `status` reports.
-const fakeGit = (dirty: string) => (argv: readonly string[]) => {
+// A fake git for a repo at /repo with HEAD `abc`: `dirty` is what `status`
+// reports, `logged` what `log` lists as touched by commits since then.
+const fakeGit = (dirty: string, logged = '') => (argv: readonly string[]) => {
   const args = argv.slice(argv.indexOf('-C') + 2)
   const out = (stdout: string, exitCode = 0) => ({
     value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
@@ -25,17 +26,19 @@ const fakeGit = (dirty: string) => (argv: readonly string[]) => {
 
   switch (args[0]) {
     case 'rev-parse':
-      return out('/repo\n')
+      return args.includes('--show-toplevel') ? out('/repo\n') : out('abc\n')
     case 'status':
       return out(dirty)
+    case 'log':
+      return out(logged)
     default:
       return out('', 1)
   }
 }
 
-async function editAndFinishTurn($: any, on: any, dirty: string) {
+async function editAndFinishTurn($: any, on: any, dirty: string, logged = '') {
   on('session.cwd', () => ({ value: '/repo' }))
-  on('process.run', (_: unknown, e: { argv: readonly string[] }) => fakeGit(dirty)(e.argv))
+  on('process.run', (_: unknown, e: { argv: readonly string[] }) => fakeGit(dirty, logged)(e.argv))
   on('tool.call', () => ({ result: {} }))
   on('turn.complete', () => ({ text: '' }))
   await $.tool.call({ tool: 'Edit', file_path: '/repo/src/register.tsx', old_string: 'a', new_string: 'b' })
@@ -52,20 +55,36 @@ test('after an edit and a turn, the band says what is uncommitted', async ($, on
 
   const ui = await $.ui.mount(BAND as never)
 
-  expect((await ui.find({ type: 'Text', text: /uncommitted/ }))?.text).toBe(
-    '● 1 uncommitted edit: register.tsx',
-  )
+  expect((await ui.find({ type: 'Text', text: /^●$/ }))?.text).toBe('●')
+  expect((await ui.find({ type: 'Text', text: /uncommitted/ }))?.text).toBe(' 1 uncommitted edit: register.tsx')
   await ui.unmount()
 })
 
-test('when the last turn\'s edits are all committed, the band says so', async ($, on) => {
-  await editAndFinishTurn($, on, '')
+test('when a commit took the last turn\'s edits, the band says so', async ($, on) => {
+  await editAndFinishTurn($, on, '', 'src/register.tsx\0')
   await settle($)
 
   const ui = await $.ui.mount(BAND as never)
 
-  expect((await ui.find({ type: 'Text', text: /committed/ }))?.text).toBe('✓ 1 edit committed: register.tsx')
+  expect((await ui.find({ type: 'Text', text: /^✓$/ }))?.text).toBe('✓')
+  expect((await ui.find({ type: 'Text', text: /committed/ }))?.text).toBe(' 1 edit committed: register.tsx')
   expect(await ui.find({ type: 'Text', text: /uncommitted/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('an edit undone again is clean but not committed: no mark', async ($, on) => {
+  on('ui.render', ($, e) => {
+    const { Text } = $.ui.resolve(e)
+
+    return <Text>engine</Text>
+  })
+  await editAndFinishTurn($, on, '', '')
+  await settle($)
+
+  const ui = await $.ui.mount(BAND as never)
+
+  expect(await ui.find({ type: 'Text', text: /committed/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /engine/ })).toBeDefined()
   await ui.unmount()
 })
 
@@ -75,7 +94,7 @@ test('a later turn with no edits clears the committed mark', async ($, on) => {
 
     return <Text>engine</Text>
   })
-  await editAndFinishTurn($, on, '')
+  await editAndFinishTurn($, on, '', 'src/register.tsx\0')
   await settle($)
   await $.turn.complete({ answer: 'ok', durationMs: 1, isAborted: false, turnId: 't2', reason: 'answer' })
   await settle($)

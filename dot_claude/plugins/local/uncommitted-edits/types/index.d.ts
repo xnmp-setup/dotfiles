@@ -8,7 +8,10 @@ declare module 'claude-code' {
       // Files edited in the main turn still running / the last one that ended.
       thisTurn: Shaped<string[]>
       lastTurn: Shaped<string[]>
-      // Of lastTurn, the files git last reported committed.
+      // HEAD at the running / last turn's first edit.
+      thisBase: Shaped<string | null>
+      lastBase: Shaped<string | null>
+      // Of lastTurn, the files now clean that a commit since lastBase touched.
       committed: Shaped<string[]>
     }
   }
