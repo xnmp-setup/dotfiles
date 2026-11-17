@@ -1,0 +1,6 @@
+{
+  "name": "uncommitted-edits",
+  "version": "0.1.0",
+  "description": "A dim line above the prompt listing files Claude edited this session that are still uncommitted",
+  "types": "./types/index.d.ts"
+}

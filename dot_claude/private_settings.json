@@ -119,6 +119,7 @@
     "pyright-lsp@claude-plugins-official": true,
     "svelte-lsp@local": true,
     "msg-jump@local": true,
+    "uncommitted-edits@local": true,
     "oh-my-claudecode@omc": false,
     "i-have-adhd@i-have-adhd": true,
     "clangd-lsp@claude-plugins-official": true

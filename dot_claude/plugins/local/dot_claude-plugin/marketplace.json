@@ -49,6 +49,17 @@
       "source": "./msg-jump",
       "category": "productivity",
       "strict": false
+    },
+    {
+      "name": "uncommitted-edits",
+      "description": "A dim line above the prompt listing files Claude edited this session that are still uncommitted",
+      "version": "0.1.0",
+      "author": {
+        "name": "chong"
+      },
+      "source": "./uncommitted-edits",
+      "category": "productivity",
+      "strict": false
     }
   ]
 }
