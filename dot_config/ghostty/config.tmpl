@@ -31,16 +31,21 @@ gtk-custom-css = ~/.config/ghostty/tabs.css
 shell-integration-features = no-title
 # Don't auto-copy on text selection (use ctrl+c to copy explicitly)
 copy-on-select = false
+# Hide clipboard-copy toasts, including OSC 52 writes from terminal apps.
+app-notifications = no-clipboard-copy
 split-divider-color = #FFBF00
 font-thicken = true
 font-thicken-strength = 80
 # WezTerm uses FreeType's normal hinting; Ghostty defaults to light hinting on
 # Linux, which makes the same JetBrains Mono Regular face look thinner.
 freetype-load-flags = hinting,no-force-autohint,no-monochrome,autohint,no-light
-# Match WezTerm's bold ANSI promotion and native sRGB glyph blending.
+# Match WezTerm's bold ANSI promotion.
 bold-color = bright
-alpha-blending = native
+# Leave alpha-blending at the per-platform default (native on macOS,
+# linear-corrected elsewhere). On Linux, Ghostty 1.4.0 with `native` renders
+# colours sRGB-encoded twice, washing dark themes out to one bright blue.
 theme = {{ $desktopTheme.title }}
+#Farmhouse Light
 mouse-scroll-multiplier = 5
 
 window-padding-x = 10
@@ -96,6 +101,9 @@ keybind = ctrl+n=new_window
 # keybind = ctrl+c=copy_to_clipboard
 
 font-size = 14
+# Taller rows (25px -> 30px at 14pt) so glyph's proportional prose gets
+# Obsidian's 1.5x line spacing; other apps get slightly airier lines too.
+adjust-cell-height = 20%
 
 # Normal/full zsh tab
 keybind = ctrl+t=new_tab
