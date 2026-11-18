@@ -5,6 +5,10 @@ declare module 'claude-code' {
       edited: Shaped<string[]>
       // The subset of those that git last reported as uncommitted.
       dirty: Shaped<string[]>
+      // Of those, file -> repo name for files outside the session's repo.
+      foreign: Shaped<Record<string, string>>
+      // The session repo's uncommitted files (path -> XY code, size, mtime) when the running main turn began.
+      turnStart: Shaped<Record<string, string> | null>
       // Files edited in the main turn still running / the last one that ended.
       thisTurn: Shaped<string[]>
       lastTurn: Shaped<string[]>

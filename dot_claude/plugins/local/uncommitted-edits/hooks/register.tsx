@@ -3,12 +3,17 @@
 // turn's first edit took its edits, a green-ticked `✓ N edits committed` line
 // until the next turn ends (an edit undone again is clean, not committed). Needs `git` on PATH; without it,
 // or outside a repo, nothing is drawn.
+//
+// Edits are Edit/Write/NotebookEdit calls (any repo), plus uncommitted files in the
+// session's repo whose git status, size or mtime changed between a main turn's
+// start and end: that catches Bash edits, but also anything else that wrote to the
+// repo during the turn.
 
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import { addPath, bandFor, isSuccess, labelOf, markOf, summary, without } from './commit'
-import { checkTracked, committedSince, headOf } from './repo'
+import { addPath, bandFor, changedBetween, isSuccess, labelOf, markOf, summary, without } from './commit'
+import { checkTracked, committedSince, headOf, resumeGit, snapshot } from './repo'
 
 const SHAPE = { shape: 'v1' }
 const edited = atom({ plugin: 'uncommitted-edits', key: 'edited' } as const, [], SHAPE)
@@ -21,6 +26,8 @@ const lastTurn = atom({ plugin: 'uncommitted-edits', key: 'lastTurn' } as const,
 // HEAD when the running / last main turn first edited (null: none yet, or no commit).
 const thisBase = atom({ plugin: 'uncommitted-edits', key: 'thisBase' } as const, null, SHAPE)
 const lastBase = atom({ plugin: 'uncommitted-edits', key: 'lastBase' } as const, null, SHAPE)
+// The session repo's uncommitted files (path -> XY code, size, mtime) when the running main turn began.
+const turnStart = atom({ plugin: 'uncommitted-edits', key: 'turnStart' } as const, null, SHAPE)
 // Of lastTurn, the files now clean that a commit since lastBase touched.
 const committed = atom({ plugin: 'uncommitted-edits', key: 'committed' } as const, [], SHAPE)
 
@@ -79,7 +86,32 @@ async function refresh($: EngineInterface) {
   }
 }
 
+async function startTurn($: EngineInterface) {
+  try {
+    const cwd = await $.session.cwd()
+    const [status, head] = await Promise.all([snapshot($, cwd), headOf($, cwd)])
+    await update($, turnStart, () => status)
+    // HEAD before the turn's commits, for a turn whose edits are all Bash's.
+    await update($, thisBase, () => head)
+  } catch {
+    // Degrade silently: without a snapshot the turn's Bash edits go unseen.
+  }
+}
+
 async function endTurn($: EngineInterface) {
+  try {
+    const before = await read($, turnStart)
+    const after = before === null ? null : await snapshot($, await $.session.cwd())
+    const changed = after === null || before === null ? [] : changedBetween(before, after)
+
+    for (const path of changed) {
+      await update($, edited, paths => addPath(paths, path))
+      await update($, thisTurn, paths => addPath(paths, path))
+    }
+    await update($, turnStart, () => null)
+  } catch {
+    // Degrade silently.
+  }
   try {
     const edits = await read($, thisTurn)
     const base = await read($, thisBase)
@@ -124,7 +156,17 @@ export const register: Register = on => {
     return ran
   })
 
+  on('turn.start', async ($, e, next) => {
+    // Snapshot before the turn runs anything; a subagent's turn is inside the main one.
+    if (e.agentId === undefined) {
+      await startTurn($)
+    }
+
+    return next(e)
+  })
+
   on('session.start', async ($, e, next) => {
+    resumeGit()
     timer?.cancel()
     timer = $.clock.every(POLL_MS, () => void refresh($))
     void refresh($)

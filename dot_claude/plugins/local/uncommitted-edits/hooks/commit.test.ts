@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { addPath, bandFor, baseOf, dirOf, isSuccess, labelOf, parsePorcelainZ, relativeTo, summary, without } from './commit'
+import { addPath, bandFor, baseOf, changedBetween, dirOf, fingerprint, isSuccess, joinRepo, labelOf, parsePorcelainZ, parseStatusZ, relativeTo, summary, without } from './commit'
 
 test('porcelain -z: plain, spaces, unicode and untracked entries', () => {
   expect(parsePorcelainZ(' M src/a.ts\0?? my file.ts\0A  日本語.md\0')).toEqual([
@@ -113,4 +113,39 @@ test('labelOf prefixes only files from another repo, and summary shows the label
   expect(summary(['/repo/src/a.ts', '/other/src/b.ts'], 200, 'uncommitted', nameOf)).toBe(
     '● 2 uncommitted edits: a.ts, other:b.ts',
   )
+})
+
+test('parseStatusZ keeps each entry\'s XY code beside its path', () => {
+  expect(parseStatusZ(' M a.ts\0?? new.ts\0R  b.ts\0old.ts\0')).toEqual([
+    [' M', 'a.ts'],
+    ['??', 'new.ts'],
+    ['R ', 'b.ts'],
+  ])
+  expect(parseStatusZ('')).toEqual([])
+})
+
+test('changedBetween: newly uncommitted or differently uncommitted, never newly clean', () => {
+  const before = { '/r/same.ts': ' M', '/r/staged.ts': '??', '/r/cleaned.ts': ' M' }
+  const after = { '/r/same.ts': ' M', '/r/staged.ts': 'A ', '/r/new.ts': '??' }
+
+  expect(changedBetween(before, after)).toEqual(['/r/staged.ts', '/r/new.ts'])
+  expect(changedBetween({}, {})).toEqual([])
+  expect(changedBetween(after, after)).toEqual([])
+})
+
+test('joinRepo makes a repo-relative path absolute, root included', () => {
+  expect(joinRepo('/repo', 'src/a.ts')).toBe('/repo/src/a.ts')
+  expect(joinRepo('/', 'a.ts')).toBe('/a.ts')
+})
+
+test('fingerprint changes when an uncommitted file is written again, or deleted', () => {
+  const first = fingerprint(' M', { size: 10, mtimeMs: 1000 })
+
+  expect(fingerprint(' M', { size: 10, mtimeMs: 1000 })).toBe(first)
+  expect(fingerprint(' M', { size: 10, mtimeMs: 2000 })).not.toBe(first)
+  expect(fingerprint(' M', { size: 11, mtimeMs: 1000 })).not.toBe(first)
+  expect(fingerprint(' M', null)).not.toBe(first)
+  expect(changedBetween({ '/r/a.ts': first }, { '/r/a.ts': fingerprint(' M', { size: 10, mtimeMs: 2000 }) })).toEqual([
+    '/r/a.ts',
+  ])
 })

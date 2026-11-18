@@ -142,3 +142,156 @@ test('an uncommitted edit in a repo other than the session\'s shows, labelled wi
   expect((await ui.find({ type: 'Text', text: /uncommitted/ }))?.text).toBe(' 1 uncommitted edit: other:b.ts')
   await ui.unmount()
 })
+
+const ran = (stdout: string, exitCode = 0) => ({
+  value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
+})
+
+test('a file a Bash command changed during the turn shows as uncommitted', async ($, on) => {
+  // The repo-wide snapshot (-uall) sees nothing at turn start, then the Bash edit.
+  let snapshots = 0
+  on('session.cwd', () => ({ value: '/repo' }))
+  on('process.run', (_: unknown, e: { argv: readonly string[] }) => {
+    const args = e.argv.slice(e.argv.indexOf('-C') + 2)
+
+    if (args[0] === 'rev-parse') {
+      return args.includes('--show-toplevel') ? ran('/repo\n') : ran('abc\n')
+    }
+    if (args[0] === 'status' && args.includes('-uall')) {
+      snapshots += 1
+
+      return ran(snapshots === 1 ? ' M old.ts\0' : ' M old.ts\0 M src/bashed.ts\0')
+    }
+
+    return args[0] === 'status' ? ran(' M src/bashed.ts\0') : ran('', 1)
+  })
+  on('turn.start', () => ({ turnId: 't1' }))
+  on('turn.complete', () => ({ text: '' }))
+  await $.turn.start({ text: 'go', turnId: 't1' })
+  await $.turn.complete({ answer: 'done', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' })
+  await settle($)
+
+  const ui = await $.ui.mount(BAND as never)
+
+  // old.ts was already uncommitted before the turn: not Claude's.
+  expect((await ui.find({ type: 'Text', text: /uncommitted/ }))?.text).toBe(' 1 uncommitted edit: bashed.ts')
+  await ui.unmount()
+})
+
+test('after git times out once, it is not run again until the session restarts', async ($, on) => {
+  let runs = 0
+  let toasts = 0
+  on('session.cwd', () => ({ value: '/repo' }))
+  on('process.run', () => {
+    runs += 1
+    throw new Error('timed out')
+  })
+  on('turn.start', () => ({ turnId: 't' }))
+  on('turn.complete', () => ({ text: '' }))
+  on('ui.toast', () => {
+    toasts += 1
+
+    return { value: undefined }
+  })
+  await $.turn.start({ text: 'go', turnId: 't1' })
+  await $.turn.complete({ answer: 'done', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' })
+  await settle($)
+  const afterFirst = runs
+
+  await $.turn.start({ text: 'go', turnId: 't2' })
+  await $.turn.complete({ answer: 'done', durationMs: 1, isAborted: false, turnId: 't2', reason: 'answer' })
+  await settle($)
+
+  expect(afterFirst).toBeGreaterThan(0)
+  expect(runs).toBe(afterFirst)
+  expect(toasts).toBe(1)
+})
+
+test('a Bash edit from an earlier turn still shows after later turns change nothing', async ($, on) => {
+  // Turn 1 starts clean and ends with the Bash edit; every later snapshot is the same.
+  let snapshots = 0
+  on('session.cwd', () => ({ value: '/repo' }))
+  on('process.run', (_: unknown, e: { argv: readonly string[] }) => {
+    const args = e.argv.slice(e.argv.indexOf('-C') + 2)
+
+    if (args[0] === 'rev-parse') {
+      return args.includes('--show-toplevel') ? ran('/repo\n') : ran('abc\n')
+    }
+    if (args[0] === 'status' && args.includes('-uall')) {
+      snapshots += 1
+
+      return ran(snapshots === 1 ? '' : ' M src/bashed.ts\0')
+    }
+
+    return args[0] === 'status' ? ran(' M src/bashed.ts\0') : ran('', 1)
+  })
+  on('turn.start', () => ({ turnId: 't' }))
+  on('turn.complete', () => ({ text: '' }))
+
+  for (const turnId of ['t1', 't2', 't3']) {
+    await $.turn.start({ text: 'go', turnId })
+    await $.turn.complete({ answer: 'done', durationMs: 1, isAborted: false, turnId, reason: 'answer' })
+    await settle($)
+  }
+
+  const ui = await $.ui.mount(BAND as never)
+
+  expect((await ui.find({ type: 'Text', text: /uncommitted/ }))?.text).toBe(' 1 uncommitted edit: bashed.ts')
+  await ui.unmount()
+})
+
+test('an already-uncommitted file that a Bash command writes again shows as uncommitted', async ($, on) => {
+  // git status is the same at both ends of the turn; only the file's mtime moves.
+  let mtimeMs = 1000
+  on('session.cwd', () => ({ value: '/repo' }))
+  on('fs.stat', () => ({ value: { kind: 'file', size: 10, mtimeMs, isLink: false } }))
+  on('process.run', (_: unknown, e: { argv: readonly string[] }) => {
+    const args = e.argv.slice(e.argv.indexOf('-C') + 2)
+
+    if (args[0] === 'rev-parse') {
+      return args.includes('--show-toplevel') ? ran('/repo\n') : ran('abc\n')
+    }
+
+    return args[0] === 'status' ? ran(' M src/again.ts\0') : ran('', 1)
+  })
+  on('turn.start', () => ({ turnId: 't1' }))
+  on('turn.complete', () => ({ text: '' }))
+  await $.turn.start({ text: 'go', turnId: 't1' })
+  mtimeMs = 2000
+  await $.turn.complete({ answer: 'done', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' })
+  await settle($)
+
+  const ui = await $.ui.mount(BAND as never)
+
+  expect((await ui.find({ type: 'Text', text: /uncommitted/ }))?.text).toBe(' 1 uncommitted edit: again.ts')
+  await ui.unmount()
+})
+
+test('an already-uncommitted file nobody touched during the turn does not show', async ($, on) => {
+  on('session.cwd', () => ({ value: '/repo' }))
+  on('fs.stat', () => ({ value: { kind: 'file', size: 10, mtimeMs: 1000, isLink: false } }))
+  on('process.run', (_: unknown, e: { argv: readonly string[] }) => {
+    const args = e.argv.slice(e.argv.indexOf('-C') + 2)
+
+    if (args[0] === 'rev-parse') {
+      return args.includes('--show-toplevel') ? ran('/repo\n') : ran('abc\n')
+    }
+
+    return args[0] === 'status' ? ran(' M src/untouched.ts\0') : ran('', 1)
+  })
+  on('turn.start', () => ({ turnId: 't1' }))
+  on('turn.complete', () => ({ text: '' }))
+  on('ui.render', ($, e) => {
+    const { Text } = $.ui.resolve(e)
+
+    return <Text>engine</Text>
+  })
+  await $.turn.start({ text: 'go', turnId: 't1' })
+  await $.turn.complete({ answer: 'done', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' })
+  await settle($)
+
+  const ui = await $.ui.mount(BAND as never)
+
+  expect(await ui.find({ type: 'Text', text: /uncommitted/ })).toBeUndefined()
+  await ui.unmount()
+})

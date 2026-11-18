@@ -1,13 +1,26 @@
 // Reads git through $.process. Every failure (git missing, not a repo, a
-// timeout) answers null, never throws.
+// timeout) answers null, never throws. A run that rejects (a timeout, or git
+// that cannot start) turns git off until `resumeGit`, which session.start
+// calls: a slow repo costs one wait per session, not one per turn.
 
 import type { EngineInterface } from 'claude-code'
 
-import { baseOf, dirOf, parsePorcelainZ, relativeTo } from './commit'
+import { baseOf, dirOf, fingerprint, joinRepo, parsePorcelainZ, parseStatusZ, relativeTo } from './commit'
 
 const TIMEOUT_MS = 5000
 
+// Module-level on purpose: a reload re-runs register and session.start.
+let isGitOff = false
+
+/** Turns git back on after a timeout; called when a session starts or resumes. */
+export const resumeGit = (): void => {
+  isGitOff = false
+}
+
 async function git($: EngineInterface, dir: string, args: readonly string[]): Promise<string | null> {
+  if (isGitOff) {
+    return null
+  }
   try {
     const ran = await $.process.run(['git', '--no-optional-locks', '-C', dir, ...args], {
       timeoutMs: TIMEOUT_MS,
@@ -15,6 +28,15 @@ async function git($: EngineInterface, dir: string, args: readonly string[]): Pr
 
     return ran.exitCode === 0 ? ran.stdout : null
   } catch {
+    if (!isGitOff) {
+      isGitOff = true
+      try {
+        $.ui.toast('uncommitted-edits: git timed out; off until the session restarts')
+      } catch {
+        // The toast is a courtesy.
+      }
+    }
+
     return null
   }
 }
@@ -81,6 +103,24 @@ export async function checkTracked(
       ok.filter(c => c.repo !== session).flatMap(c => c.files.map(f => [f, baseOf(c.repo)] as const)),
     ),
   }
+}
+
+/**
+ * The session repo's uncommitted entries, untracked files listed one by one:
+ * absolute path -> fingerprint (XY code, size, mtime). Null when git can't tell.
+ * One stat per uncommitted file, no extra git run.
+ */
+export async function snapshot($: EngineInterface, cwd: string): Promise<Record<string, string> | null> {
+  const repo = await topLevel($, cwd)
+  const out = repo === null ? null : await git($, repo, ['status', '--porcelain=v1', '-z', '-uall'])
+
+  if (repo === null || out === null) {
+    return null
+  }
+  const entries = parseStatusZ(out).map(([code, rel]) => [code, joinRepo(repo, rel)] as const)
+  const stats = await Promise.all(entries.map(([, path]) => $.fs.stat(path).catch(() => null)))
+
+  return Object.fromEntries(entries.map(([code, path], i) => [path, fingerprint(code, stats[i] ?? null)]))
 }
 
 /** The session repo's HEAD commit, or null (no git, no repo, no commit yet). */

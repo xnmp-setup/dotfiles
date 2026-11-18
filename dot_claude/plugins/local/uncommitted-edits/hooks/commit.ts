@@ -17,14 +17,14 @@ export const dirOf = (path: string): string => {
 export const baseOf = (path: string): string => path.slice(path.lastIndexOf('/') + 1)
 
 /**
- * Paths from `git status --porcelain=v1 -z`: entries are `XY path` split by NUL;
- * a rename or copy is followed by one more entry, the old path, which is
- * skipped. -z never quotes, so names are taken literally. Malformed entries are
- * skipped.
+ * Entries from `git status --porcelain=v1 -z` as `[XY code, path]`: entries
+ * are `XY path` split by NUL; a rename or copy is followed by one more entry,
+ * the old path, which is skipped. -z never quotes, so names are taken
+ * literally. Malformed entries are skipped.
  */
-export function parsePorcelainZ(out: string): string[] {
+export function parseStatusZ(out: string): Array<readonly [string, string]> {
   const parts = out.split('\0')
-  const paths: string[] = []
+  const entries: Array<readonly [string, string]> = []
 
   for (let i = 0; i < parts.length; i++) {
     const entry = parts[i] ?? ''
@@ -33,15 +33,39 @@ export function parsePorcelainZ(out: string): string[] {
       continue
     }
     const isMove = 'RC'.includes(entry[0] ?? '') || 'RC'.includes(entry[1] ?? '')
-    paths.push(entry.slice(3))
+    entries.push([entry.slice(0, 2), entry.slice(3)])
 
     if (isMove) {
       i += 1
     }
   }
 
-  return paths
+  return entries
 }
+
+/** Paths from `git status --porcelain=v1 -z` (see parseStatusZ). */
+export const parsePorcelainZ = (out: string): string[] => parseStatusZ(out).map(([, path]) => path)
+
+/** `rel` (a repo-relative path) made absolute under `repo`. */
+export const joinRepo = (repo: string, rel: string): string => (repo === '/' ? `/${rel}` : `${repo}/${rel}`)
+
+/**
+ * A snapshot entry: the XY code with the file's size and modification time,
+ * so a file already uncommitted that is written again reads as changed. A
+ * file that cannot be stat'd (deleted) is `gone`.
+ */
+export const fingerprint = (code: string, stat: { size: number; mtimeMs: number } | null): string =>
+  stat === null ? `${code} gone` : `${code} ${stat.size} ${stat.mtimeMs}`
+
+/**
+ * Of two snapshots (path -> fingerprint), the paths the time between them
+ * changed: newly uncommitted, uncommitted differently (e.g. untracked ->
+ * added), or written again. A path that became clean is not a change made here.
+ */
+export const changedBetween = (
+  before: Readonly<Record<string, string>>,
+  after: Readonly<Record<string, string>>,
+): string[] => Object.keys(after).filter(path => before[path] !== after[path])
 
 /** `path` relative to `dir`, or null when it does not lie under it. */
 export function relativeTo(dir: string, path: string): string | null {
