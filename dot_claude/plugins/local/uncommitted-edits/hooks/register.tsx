@@ -1,5 +1,5 @@
 // uncommitted-edits: a dim line above the prompt naming the files Claude edited this
-// session that git still shows as uncommitted, or, when a commit since the last
+// session, in the session's repo or any other, that git still shows as uncommitted, or, when a commit since the last
 // turn's first edit took its edits, a green-ticked `✓ N edits committed` line
 // until the next turn ends (an edit undone again is clean, not committed). Needs `git` on PATH; without it,
 // or outside a repo, nothing is drawn.
@@ -7,12 +7,14 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import { addPath, bandFor, isSuccess, markOf, summary, without } from './commit'
+import { addPath, bandFor, isSuccess, labelOf, markOf, summary, without } from './commit'
 import { checkTracked, committedSince, headOf } from './repo'
 
 const SHAPE = { shape: 'v1' }
 const edited = atom({ plugin: 'uncommitted-edits', key: 'edited' } as const, [], SHAPE)
 const dirty = atom({ plugin: 'uncommitted-edits', key: 'dirty' } as const, [], SHAPE)
+// File -> repo name, for edited files that live outside the session's repo.
+const foreign = atom({ plugin: 'uncommitted-edits', key: 'foreign' } as const, {}, SHAPE)
 // Files edited in the main turn still running, and in the last one that ended.
 const thisTurn = atom({ plugin: 'uncommitted-edits', key: 'thisTurn' } as const, [], SHAPE)
 const lastTurn = atom({ plugin: 'uncommitted-edits', key: 'lastTurn' } as const, [], SHAPE)
@@ -57,9 +59,11 @@ async function refresh($: EngineInterface) {
     if (check === null) {
       // Nothing checkable (no git, no repo, nothing tracked): show nothing.
       await update($, dirty, () => [])
+      await update($, foreign, () => ({}))
       await update($, committed, () => [])
     } else {
       await update($, dirty, () => check.dirty)
+      await update($, foreign, () => check.foreign)
       // Clean is not committed: an edit undone again is clean too.
       const clean = last.filter(f => check.clean.includes(f))
       const cwd = await $.session.cwd()
@@ -147,7 +151,7 @@ export const register: Register = on => {
     const { Box, Text } = $.ui.resolve(e)
     const width = e.props.bodyColumns > 0 ? e.props.bodyColumns : DEFAULT_COLUMNS
 
-    const line = summary(band.files, width, band.kind)
+    const line = summary(band.files, width, band.kind, labelOf(await read($, foreign)))
     const mark = markOf(band.kind)
 
     return (

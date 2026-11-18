@@ -77,17 +77,28 @@ export function bandFor(
   return committed.length > 0 ? { kind: 'committed', files: committed } : null
 }
 
+/** A file's display name: its basename, prefixed `repo:` when it lives in another repo. */
+export const labelOf =
+  (foreign: Readonly<Record<string, string>>) =>
+  (path: string): string =>
+    foreign[path] === undefined ? baseOf(path) : `${foreign[path]}:${baseOf(path)}`
+
 /**
  * `● 3 uncommitted edits: a.ts, b.ts +1` (or `✓ 2 edits committed: …`) in at
- * most `width` characters: basenames, deduplicated, as many as fit. Empty
+ * most `width` characters: names (basenames, `repo:` prefixed outside the session repo), deduplicated, as many as fit. Empty
  * when there are no files. Counts code points, so wide (CJK) names may run a
  * little over on screen.
  */
-export function summary(files: readonly string[], width: number, kind: Kind = 'uncommitted'): string {
+export function summary(
+  files: readonly string[],
+  width: number,
+  kind: Kind = 'uncommitted',
+  nameOf: (path: string) => string = baseOf,
+): string {
   if (files.length === 0) {
     return ''
   }
-  const names = [...new Set(files.map(baseOf).filter(n => n !== ''))]
+  const names = [...new Set(files.map(nameOf).filter(n => n !== ''))]
   const noun = files.length === 1 ? 'edit' : 'edits'
   const prefix =
     kind === 'uncommitted'

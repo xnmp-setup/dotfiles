@@ -3,7 +3,7 @@
 
 import type { EngineInterface } from 'claude-code'
 
-import { dirOf, parsePorcelainZ, relativeTo } from './commit'
+import { baseOf, dirOf, parsePorcelainZ, relativeTo } from './commit'
 
 const TIMEOUT_MS = 5000
 
@@ -30,41 +30,57 @@ export type Check = {
   clean: string[]
   // Tracked files git checked and found uncommitted (absolute).
   dirty: string[]
+  // Checked files that live in a repo other than the session's: file -> that
+  // repo's directory name, so the band can tell them apart.
+  foreign: Record<string, string>
 }
 
-/** Checks the tracked files that lie in the session's repo; null when that cannot be told. */
+/**
+ * Checks each tracked file against the repo it lives in (the session's or any
+ * other); null when none lies in a repo. A repo whose `git status` fails is
+ * skipped: its files are neither clean nor dirty.
+ */
 export async function checkTracked(
   $: EngineInterface,
   cwd: string,
   tracked: readonly string[],
 ): Promise<Check | null> {
-  const repo = await topLevel($, cwd)
-
-  if (repo === null) {
-    return null
-  }
+  const session = await topLevel($, cwd)
   const dirs = [...new Set(tracked.map(dirOf))]
   const results = await Promise.all(dirs.map(dir => topLevel($, dir)))
   const tops = new Map(dirs.map((dir, i) => [dir, results[i] ?? null]))
-  // A file's own repo, resolved through its directory, is the session's repo;
-  // the path prefix test keeps the answer in the repo's own spelling.
-  const here = tracked.filter(f => tops.get(dirOf(f)) === repo)
+  const byRepo = new Map<string, string[]>()
 
-  if (here.length === 0) {
-    return { clean: [], dirty: [] }
+  for (const file of tracked) {
+    const repo = tops.get(dirOf(file)) ?? null
+
+    // A file outside the repo's own spelling of its path (a symlinked checkout)
+    // cannot be matched, so it is neither clean nor dirty: left tracked, not shown.
+    if (repo !== null && relativeTo(repo, file) !== null) {
+      byRepo.set(repo, [...(byRepo.get(repo) ?? []), file])
+    }
   }
-  const status = await git($, repo, ['status', '--porcelain=v1', '-z', '--', ...here])
 
-  if (status === null) {
+  if (byRepo.size === 0) {
     return null
   }
-  const listed = new Set(parsePorcelainZ(status))
-  // A file outside the repo's own spelling of its path (a symlinked checkout)
-  // cannot be matched, so it is neither clean nor dirty: left tracked, not shown.
-  const known = here.filter(f => relativeTo(repo, f) !== null)
-  const isListed = (f: string) => listed.has(relativeTo(repo, f) ?? '')
+  const checked = await Promise.all(
+    [...byRepo].map(async ([repo, files]) => {
+      const status = await git($, repo, ['status', '--porcelain=v1', '-z', '--', ...files])
 
-  return { dirty: known.filter(isListed), clean: known.filter(f => !isListed(f)) }
+      return status === null ? null : { repo, files, listed: new Set(parsePorcelainZ(status)) }
+    }),
+  )
+  const ok = checked.filter(c => c !== null)
+  const isListed = (c: (typeof ok)[number], f: string) => c.listed.has(relativeTo(c.repo, f) ?? '')
+
+  return {
+    dirty: ok.flatMap(c => c.files.filter(f => isListed(c, f))),
+    clean: ok.flatMap(c => c.files.filter(f => !isListed(c, f))),
+    foreign: Object.fromEntries(
+      ok.filter(c => c.repo !== session).flatMap(c => c.files.map(f => [f, baseOf(c.repo)] as const)),
+    ),
+  }
 }
 
 /** The session repo's HEAD commit, or null (no git, no repo, no commit yet). */

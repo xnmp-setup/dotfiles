@@ -105,3 +105,40 @@ test('a later turn with no edits clears the committed mark', async ($, on) => {
   expect(await ui.find({ type: 'Text', text: /engine/ })).toBeDefined()
   await ui.unmount()
 })
+
+// Two repos: the session's at /repo and another at /other, each with its own status.
+const twoRepos = (statusByRepo: Record<string, string>) => (argv: readonly string[]) => {
+  const dir = argv[argv.indexOf('-C') + 1] ?? ''
+  const args = argv.slice(argv.indexOf('-C') + 2)
+  const repo = dir.startsWith('/other') ? '/other' : '/repo'
+  const out = (stdout: string, exitCode = 0) => ({
+    value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
+  })
+
+  switch (args[0]) {
+    case 'rev-parse':
+      return args.includes('--show-toplevel') ? out(`${repo}\n`) : out('abc\n')
+    case 'status':
+      return out(statusByRepo[repo] ?? '')
+    default:
+      return out('', 1)
+  }
+}
+
+test('an uncommitted edit in a repo other than the session\'s shows, labelled with that repo', async ($, on) => {
+  on('session.cwd', () => ({ value: '/repo' }))
+  on('process.run', (_: unknown, e: { argv: readonly string[] }) =>
+    twoRepos({ '/other': ' M src/b.ts\0' })(e.argv),
+  )
+  on('tool.call', () => ({ result: {} }))
+  on('turn.complete', () => ({ text: '' }))
+  await $.tool.call({ tool: 'Edit', file_path: '/repo/src/a.ts', old_string: 'a', new_string: 'b' })
+  await $.tool.call({ tool: 'Edit', file_path: '/other/src/b.ts', old_string: 'a', new_string: 'b' })
+  await $.turn.complete({ answer: 'done', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' })
+  await settle($)
+
+  const ui = await $.ui.mount(BAND as never)
+
+  expect((await ui.find({ type: 'Text', text: /uncommitted/ }))?.text).toBe(' 1 uncommitted edit: other:b.ts')
+  await ui.unmount()
+})

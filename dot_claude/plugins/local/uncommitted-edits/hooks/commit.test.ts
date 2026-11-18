@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { addPath, bandFor, baseOf, dirOf, isSuccess, parsePorcelainZ, relativeTo, summary, without } from './commit'
+import { addPath, bandFor, baseOf, dirOf, isSuccess, labelOf, parsePorcelainZ, relativeTo, summary, without } from './commit'
 
 test('porcelain -z: plain, spaces, unicode and untracked entries', () => {
   expect(parsePorcelainZ(' M src/a.ts\0?? my file.ts\0A  日本語.md\0')).toEqual([
@@ -103,4 +103,14 @@ test('summary: the committed form', () => {
   expect(summary(['/r/a.ts', '/r/b.ts'], 80, 'committed')).toBe('✓ 2 edits committed: a.ts, b.ts')
   expect(summary(['/r/a.ts'], 80, 'committed')).toBe('✓ 1 edit committed: a.ts')
   expect(summary(['/r/a.ts'], 10, 'committed')).toBe('✓ 1 edit committed')
+})
+
+test('labelOf prefixes only files from another repo, and summary shows the label', () => {
+  const nameOf = labelOf({ '/other/src/b.ts': 'other' })
+
+  expect(nameOf('/other/src/b.ts')).toBe('other:b.ts')
+  expect(nameOf('/repo/src/a.ts')).toBe('a.ts')
+  expect(summary(['/repo/src/a.ts', '/other/src/b.ts'], 200, 'uncommitted', nameOf)).toBe(
+    '● 2 uncommitted edits: a.ts, other:b.ts',
+  )
 })
